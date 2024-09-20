@@ -12,7 +12,7 @@ from pose_tracking.utils.trimesh_utils import load_mesh
 from tqdm import tqdm
 
 
-def load_list_scene(self, root_dir, split=None):
+def load_list_scene(root_dir, split=None):
     if isinstance(split, str):
         if split is not None:
             split_folder = osp.join(root_dir, split)
@@ -37,7 +37,7 @@ def load_list_scene(self, root_dir, split=None):
     return list_scenes
 
 
-def load_scene(self, path, use_visible_mask=True):
+def load_scene(path, use_visible_mask=True):
     # Load rgb and mask images
     rgb_paths = sorted(Path(path).glob("rgb/*.png"))
     if use_visible_mask:
@@ -57,7 +57,7 @@ def load_scene(self, path, use_visible_mask=True):
     }
 
 
-def load_metadata(self, root_dir, split, force_recreate: bool = False, shuffle: bool = False):
+def load_metadata(root_dir, split, force_recreate: bool = False, shuffle: bool = False):
     """
     Loads metadata for the given split.
     Args:
@@ -84,10 +84,14 @@ def load_metadata(self, root_dir, split, force_recreate: bool = False, shuffle: 
     metadata_path = osp.join(root_dir, f"{split}_metadata.csv")
     if not osp.exists(metadata_path) or force_recreate:
         logger.info(f"Metadata at {metadata_path} will be created")
-        list_scenes = self.load_list_scene(root_dir, split)
-        for scene_path in tqdm(list_scenes, desc="Loading metadata"):
+        list_scenes = load_list_scene(root_dir, split)
+        for scene_path in tqdm(list_scenes, desc="Scenes"):
             scene_id = scene_path.split("/")[-1]
             rgb_paths = sorted(Path(scene_path).glob("rgb/*.png"))
+            if len(rgb_paths) == 0:
+                rgb_paths = sorted(Path(scene_path).glob("rgb/*.jpg"))
+                assert len(rgb_paths) > 0, f"No images found in {scene_path}"
+
             mask_paths = sorted(Path(scene_path).glob("mask/*.png"))
             mask_paths = [str(x) for x in mask_paths]
             mask_visib_paths = sorted(Path(scene_path).glob("mask_visib/*.png"))
@@ -104,7 +108,7 @@ def load_metadata(self, root_dir, split, force_recreate: bool = False, shuffle: 
                 else:
                     video_metadata[json_name] = None
             # load templates metadata
-            for idx_frame in range(len(rgb_paths)):
+            for idx_frame in tqdm(range(len(rgb_paths)), desc="Frames"):
                 # get rgb path
                 rgb_path = rgb_paths[idx_frame]
                 # get id frame
@@ -176,7 +180,7 @@ def load_metadata(self, root_dir, split, force_recreate: bool = False, shuffle: 
     return metadata
 
 
-def load_cad(self, cad_dir):
+def load_cad(cad_dir):
     cad_names = sorted([x for x in os.listdir(cad_dir) if x.endswith(".ply") and not x.endswith("_old.ply")])
     models_info = load_json(osp.join(cad_dir, "models_info.json"))
     cads = {}
