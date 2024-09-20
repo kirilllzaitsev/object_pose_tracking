@@ -178,6 +178,19 @@ itodd_symmetry_obj_names = [
     "obj28",
 ]
 
+ycbineoat_videoname_to_objects = {
+    "bleach0": "021_bleach_cleanser",
+    "bleach_hard_00_03_chaitanya": "021_bleach_cleanser",
+    "cracker_box_reorient": "003_cracker_box",
+    "cracker_box_yalehand0": "003_cracker_box",
+    "mustard0": "006_mustard_bottle",
+    "mustard_easy_00_02": "006_mustard_bottle",
+    "sugar_box1": "004_sugar_box",
+    "sugar_box_yalehand0": "004_sugar_box",
+    "tomato_soup_can_yalehand0": "005_tomato_soup_can",
+}
+ycbineoat_symmetry_obj_names = []
+
 
 def get_obj_info(dataset_name):
     if dataset_name not in ["lm", "ycbv", "tless", "tudl", "hb", "icbin", "itodd"]:
