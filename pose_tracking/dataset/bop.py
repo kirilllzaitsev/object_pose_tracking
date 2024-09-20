@@ -1,20 +1,13 @@
-import logging
 import os
 import os.path as osp
-import random
 import time
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pandas as pd
-import trimesh
-from PIL import Image
 from pose_tracking import logger
-from pose_tracking.utils.geom import crop_frame, render_pts_to_image
-from pose_tracking.utils.io import cast_formats_for_json, load_json, save_json
+from pose_tracking.utils.io import load_json
 from pose_tracking.utils.pose import combine_R_and_T
-from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -25,9 +18,9 @@ class BaseBOP(Dataset):
         self,
         root_dir,
         split,
-        cad_dir,
         rot_repr="rotation6d",
-        **kwargs,
+        cad_dir=None,
+        do_load_cad=False,
     ):
         """
         Read a dataset in the BOP format.
@@ -37,14 +30,19 @@ class BaseBOP(Dataset):
         self.split = split
         self.rot_repr = rot_repr
         self.cad_dir = cad_dir
-        self.load_list_scene(split)
-        # self.metadata = self.load_metadata(use_existing=True)
+        self.list_scenes = self.load_list_scene(root_dir, split)
+        self.metadata = self.load_metadata(root_dir, split)
+        if do_load_cad:
+            assert cad_dir is not None, "CAD dir must be provided"
+            self.cads = self.load_cad(cad_dir)
+        else:
+            self.cads = None
 
-    def load_list_scene(self, split=None):
+    def load_list_scene(self, root_dir, split=None):
         if isinstance(split, str):
             if split is not None:
-                split_folder = osp.join(self.root_dir, split)
-            self.list_scenes = sorted(
+                split_folder = osp.join(root_dir, split)
+            list_scenes = sorted(
                 [
                     osp.join(split_folder, scene)
                     for scene in os.listdir(split_folder)
@@ -52,16 +50,17 @@ class BaseBOP(Dataset):
                 ]
             )
         elif isinstance(split, list):
-            self.list_scenes = []
+            list_scenes = []
             for scene in split:
                 if not isinstance(scene, str):
                     scene = f"{scene:06d}"
-                if os.path.isdir(osp.join(self.root_dir, scene)):
-                    self.list_scenes.append(osp.join(self.root_dir, scene))
-            self.list_scenes = sorted(self.list_scenes)
+                if os.path.isdir(osp.join(root_dir, scene)):
+                    list_scenes.append(osp.join(root_dir, scene))
+            list_scenes = sorted(list_scenes)
         else:
             raise NotImplementedError
-        logger.info(f"Found {len(self.list_scenes)} scenes")
+        logger.info(f"Found {len(list_scenes)} scenes")
+        return list_scenes
 
     def load_scene(self, path, use_visible_mask=True):
         # Load rgb and mask images
@@ -82,12 +81,12 @@ class BaseBOP(Dataset):
             "scene_camera": scene_camera,
         }
 
-    def load_metadata(self, use_existing: bool, force_recreate: bool = False):
+    def load_metadata(self, root_dir, split, force_recreate: bool = False, shuffle: bool = False):
         """
         Loads metadata for the given split.
         Args:
-            use_existing: loads existing metadata if exists
             force_recreate: forces to recreate metadata
+            shuffle: shuffle metadata rows
         """
         start_time = time.time()
         metadata = {
@@ -105,11 +104,12 @@ class BaseBOP(Dataset):
             "bbox_visib": [],
             "intrinsic": [],
         }
-        split = self.split
         logger.info(f"Loading metadata for split {split}")
-        metadata_path = osp.join(self.root_dir, f"{split}_metadata.json")
+        metadata_path = osp.join(root_dir, f"{split}_metadata.csv")
         if not osp.exists(metadata_path) or force_recreate:
-            for scene_path in tqdm(self.list_scenes, desc="Loading metadata"):
+            logger.info(f"Metadata at {metadata_path} will be created")
+            list_scenes = self.load_list_scene(root_dir, split)
+            for scene_path in tqdm(list_scenes, desc="Loading metadata"):
                 scene_id = scene_path.split("/")[-1]
                 rgb_paths = sorted(Path(scene_path).glob("rgb/*.png"))
                 mask_paths = sorted(Path(scene_path).glob("mask/*.png"))
@@ -185,40 +185,38 @@ class BaseBOP(Dataset):
                             if "bbox_visib" in video_metadata["scene_gt_info"][f"{id_frame}"][idx_obj]
                             else None
                         )
-            # casting format of metadata
-            metadata_json = cast_formats_for_json(metadata)
-            save_json(metadata_path, metadata_json)
+
+            metadata = pd.DataFrame.from_dict(metadata, orient="index")
+            metadata = metadata.transpose()
+            metadata = metadata.sort_values(by=["scene_id", "frame_id", "obj_id"])
+            metadata.to_csv(metadata_path, index=False)
             logger.info(f"Saved metadata to {metadata_path}")
 
-        metadata = load_json(metadata_path)
-
-        metadata = pd.DataFrame.from_dict(metadata, orient="index")
-        metadata = metadata.transpose()
-        # shuffle data
-        metadata = metadata.sample(frac=1, random_state=1)
-        metadata = metadata.reset_index(drop=True)
+        metadata = pd.read_csv(metadata_path)
+        if shuffle:
+            metadata = metadata.sample(frac=1, random_state=1).reset_index(drop=True)
         finish_time = time.time()
         logger.info(f"Finish loading metadata of size {len(metadata)} in {finish_time - start_time:.2f} seconds")
         return metadata
 
-    def load_cad(self):
-        cad_names = sorted([x for x in os.listdir(self.cad_dir) if x.endswith(".ply") and not x.endswith("_old.ply")])
-        models_info = load_json(osp.join(self.cad_dir, "models_info.json"))
-        self.cads = {}
+    def load_cad(self, cad_dir):
+        cad_names = sorted([x for x in os.listdir(cad_dir) if x.endswith(".ply") and not x.endswith("_old.ply")])
+        models_info = load_json(osp.join(cad_dir, "models_info.json"))
+        cads = {}
         for cad_name in cad_names:
             cad_id = int(cad_name.split(".")[0].replace("obj_", ""))
-            cad_path = osp.join(self.cad_dir, cad_name)
+            cad_path = osp.join(cad_dir, cad_name)
             if os.path.exists(cad_path):
                 mesh = load_mesh(cad_path)
             else:
                 logger.warning("CAD model unavailable")
                 mesh = None
-            self.cads[cad_id] = {
+            cads[cad_id] = {
                 "mesh": mesh,
                 "model_info": (models_info[f"{cad_id}"] if f"{cad_id}" in models_info else models_info[cad_id]),
             }
         logger.info(f"Loaded {len(cad_names)} models for dataset done!")
-        return self.cads
+        return cads
 
 
 if __name__ == "__main__":
@@ -228,10 +226,7 @@ if __name__ == "__main__":
     # tless is special
     for dataset_name, split_ in zip(["tless/test", "tless/train"], ["test_primesense", "train_primesense"]):
         ds_dir = PROJ_DIR / "data" / dataset_name
-        dataset = BaseBOP(ds_dir, split_, cad_dir=PROJ_DIR / "data" / "tless/models_cad")
-        dataset.load_list_scene(split=split_)
-        # dataset.load_metadata(reset_metadata=True)
-        # dataset.load_cad(cad_name="models_cad")
+        dataset = BaseBOP(ds_dir, split_, cad_dir=PROJ_DIR / "data" / "tless/models_cad", do_load_cad=True)
         for scene_path in dataset.list_scenes:
             scene_id = scene_path.split("/")[-1]
             ...
