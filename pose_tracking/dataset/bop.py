@@ -54,9 +54,8 @@ class BaseBOP(Dataset):
         self.seq_length = seq_length
         self.step_skip = step_skip
         self.seq_start = seq_start
-        for scene_id, traj_objs in list(self.metadata.groupby("scene_id")):
-            traj_objs_grouped = traj_objs.groupby("frame_id")
-            self.trajs.append((scene_id, traj_objs))
+        for scene_id, frame_obj_flat in list(self.metadata.groupby("scene_id")):
+            self.trajs.append((scene_id, frame_obj_flat))
 
     def __len__(self):
         return len(self.trajs)
@@ -65,11 +64,6 @@ class BaseBOP(Dataset):
         seq_start = self.seq_start
         scene_id, traj_objs = self.trajs[idx]
 
-        def parse_tensor_from_str(x, shape=(4, 4)):
-            return torch.tensor(np.array(np.matrix(x, dtype=np.float32)).reshape(shape))
-
-        traj_objs.pose = traj_objs.pose.apply(lambda x: parse_tensor_from_str(x, shape=(4, 4)))
-        traj_objs.intrinsic = traj_objs.intrinsic.apply(lambda x: parse_tensor_from_str(x, shape=(3, 3)))
         # discard frame_ids
         traj = [to[1] for to in traj_objs.groupby("frame_id")]
         if seq_start is None:
@@ -84,6 +78,8 @@ class BaseBOP(Dataset):
         for ts in range(self.seq_length):
             frame_idx = seq_start + ts * self.step_skip
             sample = traj[frame_idx].to_dict(orient="list")
+            sample['pose'] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample['pose']]
+            sample['intrinsic'] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample['intrinsic']]
             masks = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_path"]])
             masks_visib = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_visib_path"]])
             depth = load_bop_depth(sample["depth_path"][0])
@@ -91,7 +87,7 @@ class BaseBOP(Dataset):
 
             sample["mask"] = masks
             sample["mask_visib"] = masks_visib
-            sample["depth"] = depth
+            sample["depth"] = depth / 1000
             sample["rgb"] = rgb
 
             for k in [
@@ -122,6 +118,10 @@ class BaseBOP(Dataset):
             sample_traj_seq[k] = torch.stack(v)
 
         return sample_traj_seq
+
+
+def parse_tensor_from_str(x, shape=(4, 4)):
+    return torch.tensor(np.array(np.matrix(x, dtype=np.float32)).reshape(shape))
 
 
 if __name__ == "__main__":
