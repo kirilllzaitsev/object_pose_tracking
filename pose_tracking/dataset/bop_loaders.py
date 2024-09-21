@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pose_tracking import logger
+from pose_tracking.config import logger
 from pose_tracking.utils.io import load_json
 from pose_tracking.utils.pose import combine_R_and_T
 from pose_tracking.utils.trimesh_utils import load_mesh
