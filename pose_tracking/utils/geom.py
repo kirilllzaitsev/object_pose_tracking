@@ -4,29 +4,43 @@ import torch
 from pose_tracking.config import logger
 
 
-def project_3d_to_2d(pt, K, ob_in_cam):
+def project_3d_to_2d(pt, K, rt):
     pt = pt.reshape(4, 1)
-    projected = K @ ((ob_in_cam @ pt)[:3, :])
+    projected = K @ ((rt @ pt)[:3, :])
     projected = projected.reshape(-1)
     projected = projected / projected[2]
     return projected.reshape(-1)[:2].round().astype(int)
 
 
-def backproj_depth(depth, intrinsics, instance_mask, do_flip_xy=True):
+def world_to_cam(pts, rt):
+    # returns N x 3 pts in camera frame
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    if pts.shape[1] == 3:
+        pts = pts.T
+    pts = np.vstack([pts, np.ones((1, pts.shape[1]), dtype=np.float32)])
+    new_pts = rt @ pts
+    new_pts = new_pts[:3, :] / new_pts[3, :]
+    return new_pts.T
+
+
+def backproj_depth(depth, intrinsics, instance_mask=None, do_flip_xy=True):
     """
     Backproject depth for selected pixels
     """
     intrinsics_inv = np.linalg.inv(intrinsics)
     val_depth = depth > 0
-    val_instance_mask = np.logical_and(instance_mask, val_depth)
-    idxs = np.where(val_instance_mask)
+    if instance_mask is None:
+        val_mask = val_depth
+    else:
+        val_mask = np.logical_and(instance_mask, val_depth)
+    idxs = np.where(val_mask)
     grid = np.array([idxs[1], idxs[0]])
     length = grid.shape[1]
     ones = np.ones([1, length])
     uv_grid = np.concatenate((grid, ones), axis=0)  # [3, n]
     xyz = intrinsics_inv @ uv_grid
     xyz = np.transpose(xyz)
-    
+
     # rescale
     z = depth[idxs[0], idxs[1]]
     pts = xyz * z[:, np.newaxis] / xyz[:, -1:]
@@ -35,6 +49,21 @@ def backproj_depth(depth, intrinsics, instance_mask, do_flip_xy=True):
         pts[:, 0] = -pts[:, 0]
         pts[:, 1] = -pts[:, 1]
     return pts, idxs
+
+
+def pose_to_egocentric_delta_pose(A_in_cam, B_in_cam):
+    """Extract r and t deltas from two poses in the same frame"""
+    trans_delta = B_in_cam[:, :3, 3] - A_in_cam[:, :3, 3]
+    rot_mat_delta = B_in_cam[:, :3, :3] @ A_in_cam[:, :3, :3].permute(0, 2, 1)
+    return trans_delta, rot_mat_delta
+
+
+def egocentric_delta_pose_to_pose(A_in_cam, trans_delta, rot_mat_delta):
+    """Infer a new pose from a pose and deltas"""
+    B_in_cam = torch.eye(4, dtype=torch.float, device=A_in_cam.device)[None].expand(len(A_in_cam), -1, -1).contiguous()
+    B_in_cam[:, :3, 3] = A_in_cam[:, :3, 3] + trans_delta
+    B_in_cam[:, :3, :3] = rot_mat_delta @ A_in_cam[:, :3, :3]
+    return B_in_cam
 
 
 def to_homo(pts):
