@@ -26,12 +26,14 @@ class BaseBOP(Dataset):
         seq_length=1,
         step_skip=1,
         seq_start=0,
+        use_keyframes=False,
+        keyframe_path=None,
     ):
         """
         Read a dataset in the BOP format.
         See https://github.com/thodan/bop_toolkit/blob/master/docs/bop_datasets_format.md
         """
-        self.root_dir = root_dir
+        self.root_dir = Path(root_dir)
         self.split = split
         self.rot_repr = rot_repr
         self.cad_dir = cad_dir
@@ -49,12 +51,23 @@ class BaseBOP(Dataset):
             self.cad_dir = cad_dir
         else:
             self.cads = None
+        
+        if use_keyframes:
+            if keyframe_path is None:
+                keyframe_path = self.root_dir / "keyframe.txt"
+                assert keyframe_path.exists(), f"{keyframe_path} does not exist"
+            self.keyframes = load_keyframes(keyframe_path)
 
         self.trajs = []
         self.seq_length = seq_length
         self.step_skip = step_skip
         self.seq_start = seq_start
         for scene_id, frame_obj_flat in list(self.metadata.groupby("scene_id")):
+            if use_keyframes:
+                scene_id_format = format_scene_id(scene_id)
+                if scene_id_format not in self.keyframes:
+                    continue
+                frame_obj_flat = frame_obj_flat[frame_obj_flat["frame_id"].apply(lambda x: format_frame_id(x) in self.keyframes[scene_id_format])]
             self.trajs.append((scene_id, frame_obj_flat))
 
     def __len__(self):
