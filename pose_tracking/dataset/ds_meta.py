@@ -178,7 +178,7 @@ itodd_symmetry_obj_names = [
     "obj28",
 ]
 
-ycbineoat_videoname_to_objects = {
+ycbineoat_videoname_to_obj = {
     "bleach0": "021_bleach_cleanser",
     "bleach_hard_00_03_chaitanya": "021_bleach_cleanser",
     "cracker_box_reorient": "003_cracker_box",

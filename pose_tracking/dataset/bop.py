@@ -1,15 +1,12 @@
 import os
 from collections import defaultdict
+from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
-from bop_toolkit_lib.dataset.bop_imagewise import (
-    io_load_masks,
-    load_bop_depth,
-    load_bop_rgb,
-)
 from PIL import Image
+from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -26,15 +23,19 @@ class BaseBOP(Dataset):
         seq_length=1,
         step_skip=1,
         seq_start=0,
+        use_keyframes=False,
+        keyframe_path=None,
+        depth_scaler_to_mm=1.0,
     ):
         """
         Read a dataset in the BOP format.
         See https://github.com/thodan/bop_toolkit/blob/master/docs/bop_datasets_format.md
         """
-        self.root_dir = root_dir
+        self.root_dir = Path(root_dir)
         self.split = split
         self.rot_repr = rot_repr
         self.cad_dir = cad_dir
+        self.depth_scaler_to_mm = depth_scaler_to_mm
         self.list_scenes = load_list_scene(root_dir, split)
         self.metadata = load_metadata(root_dir, split)
         if do_load_cad:
@@ -50,11 +51,24 @@ class BaseBOP(Dataset):
         else:
             self.cads = None
 
+        if use_keyframes:
+            if keyframe_path is None:
+                keyframe_path = self.root_dir / "keyframe.txt"
+                assert keyframe_path.exists(), f"{keyframe_path} does not exist"
+            self.keyframes = load_keyframes(keyframe_path)
+
         self.trajs = []
         self.seq_length = seq_length
         self.step_skip = step_skip
         self.seq_start = seq_start
         for scene_id, frame_obj_flat in list(self.metadata.groupby("scene_id")):
+            if use_keyframes:
+                scene_id_format = format_scene_id(scene_id)
+                if scene_id_format not in self.keyframes:
+                    continue
+                frame_obj_flat = frame_obj_flat[
+                    frame_obj_flat["frame_id"].apply(lambda x: format_frame_id(x) in self.keyframes[scene_id_format])
+                ]
             self.trajs.append((scene_id, frame_obj_flat))
 
     def __len__(self):
@@ -65,21 +79,22 @@ class BaseBOP(Dataset):
         scene_id, traj_objs = self.trajs[idx]
 
         # discard frame_ids
-        traj = [to[1] for to in traj_objs.groupby("frame_id")]
+        traj = [to for (_, to) in traj_objs.groupby("frame_id")]
+        timesteps = self.seq_length if self.seq_length is not None else len(traj)
         if seq_start is None:
             seq_start = torch.randint(
                 0,
-                max(1, len(traj) + 1 - self.seq_length * self.step_skip),
+                max(1, len(traj) + 1 - timesteps * self.step_skip),
                 (1,),
             ).item()
         assert self.step_skip > 0, f"{self.step_skip=}"
         sample_traj_seq = defaultdict(list)
 
-        for ts in range(self.seq_length):
+        for ts in range(timesteps):
             frame_idx = seq_start + ts * self.step_skip
             sample = traj[frame_idx].to_dict(orient="list")
-            sample['pose'] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample['pose']]
-            sample['intrinsic'] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample['intrinsic']]
+            sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
+            sample["intrinsic"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
             masks = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_path"]])
             masks_visib = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_visib_path"]])
             depth = load_bop_depth(sample["depth_path"][0])
@@ -87,7 +102,7 @@ class BaseBOP(Dataset):
 
             sample["mask"] = masks
             sample["mask_visib"] = masks_visib
-            sample["depth"] = depth / 1000
+            sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
             sample["rgb"] = rgb
 
             for k in [
@@ -108,10 +123,11 @@ class BaseBOP(Dataset):
                 "rgb_path",
                 "mask_path",
                 "mask_visib_path",
-                "depth_path",]:
-                    sample_traj_seq[k].append(sample[k][0])
-            sample_traj_seq["scene_id"].append(format_scene_id(sample['scene_id'][0]))
-            sample_traj_seq["frame_id"].append(format_frame_id(sample['frame_id'][0]))
+                "depth_path",
+            ]:
+                sample_traj_seq[k].append(sample[k][0])
+            sample_traj_seq["scene_id"].append(format_scene_id(sample["scene_id"][0]))
+            sample_traj_seq["frame_id"].append(format_frame_id(sample["frame_id"][0]))
 
         for k in ["rgb", "depth", "mask", "mask_visib"]:
             v = sample_traj_seq[k]
@@ -122,13 +138,39 @@ class BaseBOP(Dataset):
         return sample_traj_seq
 
 
+def load_bop_depth(depth_path):
+    return cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+
+
+def load_bop_rgb(rgb_path):
+    return cv2.imread(rgb_path)[:, :, ::-1]
+
+
+def load_keyframes(path):
+    keyframes = open(path).readlines()
+    keyframes_grouped = defaultdict(list)
+
+    for idx, k in enumerate(keyframes):
+        scene_id, frame_id = k.strip().split("/")
+        new_scene_id = format_scene_id(scene_id)
+        new_frame_id = format_frame_id(frame_id)
+        keyframes_grouped[new_scene_id].append(new_frame_id)
+    return keyframes_grouped
+
+
+def format_scene_id(scene_id):
+    return f"{int(scene_id):06d}"
+
+
+def format_frame_id(scene_id):
+    return f"{int(scene_id):06d}"
+
+
 def parse_tensor_from_str(x, shape=(4, 4)):
     return torch.tensor(np.array(np.matrix(x, dtype=np.float32)).reshape(shape))
 
 
-if __name__ == "__main__":
-    from pose_tracking.config import DATA_DIR
-
+def check_data():
     for dataset_name, split_ in zip(["tless/test", "tless/train"], ["test_primesense", "train_primesense"]):
         ds_dir = DATA_DIR / dataset_name
         dataset = BaseBOP(ds_dir, split_, cad_dir=DATA_DIR / "tless/models_cad", do_load_cad=True)
