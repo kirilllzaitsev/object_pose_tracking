@@ -1,6 +1,7 @@
 # https://github.com/nv-nguyen/nope/tree/main/src/utils
 import numpy as np
 import open3d as o3d
+import torch
 
 
 def convert_numpy_to_o3d(numpy_points, color=None):
@@ -64,3 +65,19 @@ def vis_pcl_cam_o3d(geometries: list[dict]):
             vis.add_geometry(geo["data"])
     vis.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0]))
     vis.run()
+
+
+def vis_pcl(x, color=[0.2, 0.2, 0.2]):
+    if isinstance(x, o3d.geometry.PointCloud):
+        x = x.points
+    if isinstance(x, list):
+        assert len(x) == 1, "Only one point cloud can be plotted at a time"
+        x = x[0]
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    x = np.squeeze(x)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(x)
+    pcd.paint_uniform_color(color)
+    o3d.visualization.draw_plotly([pcd])
+    return pcd

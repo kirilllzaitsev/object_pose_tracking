@@ -12,6 +12,20 @@ def parse_rle_mask(seg_obj):
     return mask
 
 
+def rle_to_mask(rle: dict) -> np.ndarray:
+    """Compute a binary mask from an uncompressed RLE."""
+    h, w = rle["size"]
+    mask = np.empty(h * w, dtype=bool)
+    idx = 0
+    parity = False
+    for count in rle["counts"]:
+        mask[idx : idx + count] = parity
+        idx += count
+        parity ^= True
+    mask = mask.reshape(w, h)
+    return mask.transpose()  # Put in C order
+
+
 def load_json(path):
     with open(path, "r") as f:
         info = yaml.load(f, Loader=yaml.CLoader)

@@ -14,25 +14,25 @@ from skimage.feature import canny
 from skimage.morphology import binary_dilation
 
 
-def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transparency=0, is_input_rgb=False):
+def draw_xyz_axis(rgb, rt, scale=0.1, K=np.eye(3), thickness=3, transparency=0, is_input_rgb=False):
     """
     @color: BGR
     """
     if is_input_rgb:
-        color = cv2.cvtColor(color, cv2.COLOR_RGB2BGR)
+        rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     xx = np.array([1, 0, 0, 1]).astype(float)
     yy = np.array([0, 1, 0, 1]).astype(float)
     zz = np.array([0, 0, 1, 1]).astype(float)
     xx[:3] = xx[:3] * scale
     yy[:3] = yy[:3] * scale
     zz[:3] = zz[:3] * scale
-    origin = tuple(project_3d_to_2d(np.array([0, 0, 0, 1]), K, ob_in_cam))
-    xx = tuple(project_3d_to_2d(xx, K, ob_in_cam))
-    yy = tuple(project_3d_to_2d(yy, K, ob_in_cam))
-    zz = tuple(project_3d_to_2d(zz, K, ob_in_cam))
+    origin = tuple(project_3d_to_2d(np.array([0, 0, 0, 1]), K, rt))
+    xx = tuple(project_3d_to_2d(xx, K, rt))
+    yy = tuple(project_3d_to_2d(yy, K, rt))
+    zz = tuple(project_3d_to_2d(zz, K, rt))
     line_type = cv2.LINE_AA
     arrow_len = 0
-    tmp = color.copy()
+    tmp = rgb.copy()
     tmp1 = tmp.copy()
     tmp1 = cv2.arrowedLine(
         tmp1, origin, xx, color=(0, 0, 255), thickness=thickness, line_type=line_type, tipLength=arrow_len
@@ -58,7 +58,7 @@ def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transpa
     return tmp
 
 
-def draw_posed_3d_box(K, img, ob_in_cam, bbox, line_color=(0, 255, 0), linewidth=2):
+def draw_posed_3d_box(K, img, rt, bbox, line_color=(0, 255, 0), linewidth=2):
     """Revised from 6pack dataset/inference_dataset_nocs.py::projection
     @bbox: (2,3) min/max
     @line_color: RGB
@@ -70,7 +70,7 @@ def draw_posed_3d_box(K, img, ob_in_cam, bbox, line_color=(0, 255, 0), linewidth
 
     def draw_line3d(start, end, img):
         pts = np.stack((start, end), axis=0).reshape(-1, 3)
-        pts = (ob_in_cam @ to_homo(pts).T).T[:, :3]  # (2,3)
+        pts = (rt @ to_homo(pts).T).T[:, :3]  # (2,3)
         projected = (K @ pts.T).T
         uv = np.round(projected[:, :2] / projected[:, 2].reshape(-1, 1)).astype(int)  # (2,2)
         img = cv2.line(img, uv[0].tolist(), uv[1].tolist(), color=line_color, thickness=linewidth, lineType=cv2.LINE_AA)
@@ -97,7 +97,7 @@ def draw_posed_3d_box(K, img, ob_in_cam, bbox, line_color=(0, 255, 0), linewidth
     return img
 
 
-def draw_bbox(K, img, ob_in_cam, bbox, color_id, linewidth=2):
+def draw_bbox(K, img, rt, bbox, color_id, linewidth=2):
     def search_fit(points):
         """
         @points: (N,3)
@@ -146,8 +146,8 @@ def draw_bbox(K, img, ob_in_cam, bbox, color_id, linewidth=2):
     cam_fx = K[0, 0]
     cam_fy = K[1, 1]
 
-    target_r = ob_in_cam[:3, :3]
-    target_t = ob_in_cam[:3, 3] * 1000
+    target_r = rt[:3, :3]
+    target_t = rt[:3, 3] * 1000
 
     target = copy.deepcopy(bbox)
     limit = search_fit(target)
@@ -198,7 +198,7 @@ def draw_bbox_pil(img_PIL, bbox, color="red", width=3):
     return img_PIL
 
 
-def plot_kpts(
+def plot_kpt_matches(
     src_img,
     src_pts,
     tar_img,
