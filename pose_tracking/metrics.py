@@ -7,23 +7,42 @@ from sklearn import metrics
 
 
 def calc_metrics(
-    pred, gt, model, class_name, bbox=None, handle_visibility=False, use_miou=False, use_symmetry=True, diameter=None
+    pred_rt,
+    gt_rt,
+    model,
+    class_name,
+    bbox_3d=None,
+    handle_visibility=False,
+    use_miou=False,
+    use_symmetry=True,
+    diameter=None,
 ):
     """
-    Calculate required metrics for pose estimation
+    Calculate required metrics for pose estimation.
+    Args:
+        pred_rt: predicted pose
+        gt_rt: ground truth pose
+        model: CAD model of the object as a trimesh object
+        class_name: name of the object (applies to Linemod)
+        bbox: bounding box of the object
+        handle_visibility: account for visibility of a handle (e.g., for a mug)
+        use_miou: whether to include miou
+        use_symmetry: whether to use symmetry when calculating miou
+        diameter: diameter of the object for ADD/ADDS-10 calculation
+
     """
-    add = calc_add(pred, gt, model)
-    adds = calc_adds(pred, gt, model)
+    add = calc_add(pred_rt, gt_rt, model)
+    adds = calc_adds(pred_rt, gt_rt, model)
     res = {
         "add": add,
         "adds": adds,
     }
     if use_miou:
-        assert bbox is not None
+        assert bbox_3d is not None
         miou = calc_3d_iou_new(
-            pred,
-            gt,
-            bbox=bbox,
+            pred_rt,
+            gt_rt,
+            bbox=bbox_3d,
             handle_visibility=handle_visibility,
             class_name=class_name,
             use_symmetry=use_symmetry,
@@ -34,7 +53,7 @@ def calc_metrics(
     # if use_miou and res["miou"] < 0.25:
     #     add_rt_errors = False
     if add_rt_errors:
-        rt_errors = calc_rt_errors(pred, gt, class_name=class_name, handle_visibility=handle_visibility)
+        rt_errors = calc_rt_errors(pred_rt, gt_rt, class_name=class_name, handle_visibility=handle_visibility)
         res.update(rt_errors)
 
     if diameter is not None:
@@ -45,36 +64,45 @@ def calc_metrics(
     return res
 
 
-def calc_add(pred, gt, model):
+def calc_add(rt1, rt2, model):
     """
     TODO: ensure aligns with bop's (wrt using obj diameter)
     """
     pred_model = copy.deepcopy(model)
     gt_model = copy.deepcopy(model)
-    pred_model.apply_transform(pred)
-    gt_model.apply_transform(gt)
-    e = np.linalg.norm(np.asarray(pred_model.vertices) - np.asarray(gt_model.vertices), axis=1).mean()
+    pred_model.apply_transform(rt1)
+    gt_model.apply_transform(rt2)
+    pts1 = np.asarray(pred_model.vertices)
+    pts2 = np.asarray(gt_model.vertices)
+    e = calc_add_pts(pts1, pts2)
     return e
 
 
-def calc_adds(pred, gt, model):
-    """
-    @pred: 4x4 mat
-    @gt:
-    @model: open3d pcd model
-    """
+def calc_add_pts(pts1, pts2):
+    assert pts1.shape[1] == pts2.shape[1] == 3
+    return np.linalg.norm(pts1 - pts2, axis=1).mean()
+
+
+def calc_adds(pred_rt, gt_rt, model):
     pred_model = copy.deepcopy(model)
     gt_model = copy.deepcopy(model)
-    pred_model.apply_transform(pred)
-    gt_model.apply_transform(gt)
+    pred_model.apply_transform(pred_rt)
+    gt_model.apply_transform(gt_rt)
+    pts_pred = np.asarray(pred_model.vertices)
+    pts_gt = np.asarray(gt_model.vertices)
 
-    nn_index = cKDTree(np.asarray(pred_model.vertices).copy())
-    nn_dists, _ = nn_index.query(np.asarray(gt_model.vertices).copy(), k=1)
+    e = calc_adds_pts(pts_pred, pts_gt)
+    return e
+
+
+def calc_adds_pts(pts_pred, pts_gt):
+    nn_index = cKDTree(pts_pred)
+    nn_dists, _ = nn_index.query(pts_gt, k=1)
     e = nn_dists.mean()
     return e
 
 
-def calc_auc_sklearn(errs, max_val=0.1, step=0.001):
+def calc_auc(errs, max_val=0.1, step=0.001):
 
     errs = np.sort(np.array(errs))
     X = np.arange(0, max_val + step, step)
@@ -93,6 +121,9 @@ def calc_auc_sklearn(errs, max_val=0.1, step=0.001):
 
 
 def calc_rt_errors(rt1, rt2, handle_visibility, class_name):
+    """Calculate rotation and translation errors between two poses.
+    Can handle symmetries in Linemod objects.
+    """
 
     R1 = rt1[:3, :3] / np.cbrt(np.linalg.det(rt1[:3, :3]))
     T1 = rt1[:3, 3]
@@ -106,6 +137,7 @@ def calc_rt_errors(rt1, rt2, handle_visibility, class_name):
         y2 = R2 @ y
         theta = np.arccos(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)))
     elif class_name == "mug" and handle_visibility:
+        # mag can appear symmetric when handle is not visible
         y = np.array([0, 1, 0])
         y1 = R1 @ y
         y2 = R2 @ y
