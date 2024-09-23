@@ -7,14 +7,7 @@ from sklearn import metrics
 
 
 def calc_metrics(
-    pred,
-    gt,
-    model,
-    class_name,
-    bbox=None,
-    handle_visibility=False,
-    use_miou=False,
-    use_symmetry=True,
+    pred, gt, model, class_name, bbox=None, handle_visibility=False, use_miou=False, use_symmetry=True, diameter=None
 ):
     """
     Calculate required metrics for pose estimation
@@ -26,38 +19,41 @@ def calc_metrics(
         "adds": adds,
     }
     if use_miou:
-        assert bbox is not None and class_name is not None
+        assert bbox is not None
         miou = calc_3d_iou_new(
             pred,
             gt,
-            bbox1=bbox,
-            bbox2=bbox,
+            bbox=bbox,
             handle_visibility=handle_visibility,
             class_name=class_name,
             use_symmetry=use_symmetry,
         )
         res["miou"] = miou
 
-    rt_errors = calc_rt_errors(pred, gt, class_name=class_name, handle_visibility=handle_visibility)
     add_rt_errors = True
-    if use_miou and res["miou"] < 0.25:
-        add_rt_errors = False
+    # if use_miou and res["miou"] < 0.25:
+    #     add_rt_errors = False
     if add_rt_errors:
+        rt_errors = calc_rt_errors(pred, gt, class_name=class_name, handle_visibility=handle_visibility)
         res.update(rt_errors)
+
+    if diameter is not None:
+        thresh = diameter * 0.1
+        res["add10"] = add < thresh
+        res["adds10"] = adds < thresh
 
     return res
 
 
 def calc_add(pred, gt, model):
     """
-    Average Distance of Model Points for objects with no indistinguishable views
-    - by Hinterstoisser et al. (ACCV 2012).
+    TODO: ensure aligns with bop's (wrt using obj diameter)
     """
     pred_model = copy.deepcopy(model)
     gt_model = copy.deepcopy(model)
-    pred_model.transform(pred)
-    gt_model.transform(gt)
-    e = np.linalg.norm(np.asarray(pred_model.points) - np.asarray(gt_model.points), axis=1).mean()
+    pred_model.apply_transform(pred)
+    gt_model.apply_transform(gt)
+    e = np.linalg.norm(np.asarray(pred_model.vertices) - np.asarray(gt_model.vertices), axis=1).mean()
     return e
 
 
@@ -69,11 +65,11 @@ def calc_adds(pred, gt, model):
     """
     pred_model = copy.deepcopy(model)
     gt_model = copy.deepcopy(model)
-    pred_model.transform(pred)
-    gt_model.transform(gt)
+    pred_model.apply_transform(pred)
+    gt_model.apply_transform(gt)
 
-    nn_index = cKDTree(np.asarray(pred_model.points).copy())
-    nn_dists, _ = nn_index.query(np.asarray(gt_model.points).copy(), k=1)
+    nn_index = cKDTree(np.asarray(pred_model.vertices).copy())
+    nn_dists, _ = nn_index.query(np.asarray(gt_model.vertices).copy(), k=1)
     e = nn_dists.mean()
     return e
 
@@ -88,8 +84,12 @@ def calc_auc_sklearn(errs, max_val=0.1, step=0.001):
         Y[i] = y
         if y >= 1:
             break
-    auc = metrics.auc(X, Y) / (max_val * 1)
-    return auc
+    auc = metrics.auc(X, Y) / (max_val)
+    return {
+        "auc": auc,
+        "recall": Y,
+        "thresholds": X,
+    }
 
 
 def calc_rt_errors(rt1, rt2, handle_visibility, class_name):
@@ -123,19 +123,38 @@ def calc_rt_errors(rt1, rt2, handle_visibility, class_name):
     shift = np.linalg.norm(T1 - T2)
     result = {"r_err": theta, "t_err": shift}
 
+    deg_cm_errors = calc_n_deg_m_cm_errors(rt1, rt2)
+    result.update(deg_cm_errors)
+
     return result
 
 
-def calc_3d_iou_new(rt1, rt2, bbox1, bbox2, handle_visibility, class_name, use_symmetry=True):
+def calc_n_deg_m_cm_errors(rt1, rt2):
+    r1 = rt1[:3, :3]
+    r2 = rt2[:3, :3]
+    t1 = rt1[:3, 3]
+    t2 = rt2[:3, 3]
+
+    r_geodesic = geodesic_numpy(r1, r2)
+    t_dist = np.linalg.norm(t1 - t2)
+    t_dist_cm = t_dist * 0.1
+    res = {}
+    for r_t, t_t in [
+        (5, 5),
+        (2, 2),
+    ]:
+        name = f"{r_t}deg{t_t}cm"
+        value = np.logical_and(r_geodesic <= r_t, t_dist_cm <= t_t)
+        res[name] = value
+    return res
+
+
+def calc_3d_iou_new(rt1, rt2, bbox, handle_visibility, class_name, use_symmetry=True):
     """Computes IoU overlaps between two 3d bboxes."""
 
-    assert bbox1.shape == (8, 3) and bbox2.shape == (8, 3)
+    assert bbox.shape == (8, 3) and bbox.shape == (8, 3)
 
-    if (
-        use_symmetry
-        and (class_name in ["bottle", "bowl", "can"] and class_name)
-        or (class_name == "mug" and class_name and handle_visibility == 0)
-    ):
+    if use_symmetry and (class_name in ["bottle", "bowl", "can"]) or (class_name == "mug" and handle_visibility == 0):
 
         def y_rotation_matrix(theta):
             return np.array(
@@ -151,17 +170,17 @@ def calc_3d_iou_new(rt1, rt2, bbox1, bbox2, handle_visibility, class_name, use_s
         max_iou = 0
         for i in range(n):
             rotated_rt_1 = rt1 @ y_rotation_matrix(2 * np.pi * i / float(n))
-            max_iou = max(max_iou, asymmetric_3d_iou(rotated_rt_1, rt2, bbox1, bbox2))
+            max_iou = max(max_iou, asymmetric_3d_iou(rotated_rt_1, rt2, bbox))
     else:
-        max_iou = asymmetric_3d_iou(rt1, rt2, bbox1, bbox2)
+        max_iou = asymmetric_3d_iou(rt1, rt2, bbox)
 
     return max_iou
 
 
-def asymmetric_3d_iou(rt1, rt2, bbox1_w, bbox2_w):
-    bbox1_c = world_to_cam(bbox1_w, rt1)
+def asymmetric_3d_iou(rt1, rt2, bbox_w):
+    bbox1_c = world_to_cam(bbox_w, rt1)
 
-    bbox2_c = world_to_cam(bbox2_w, rt2)
+    bbox2_c = world_to_cam(bbox_w, rt2)
 
     bbox1_max = np.amax(bbox1_c, axis=0)
     bbox1_min = np.amin(bbox1_c, axis=0)
@@ -179,3 +198,14 @@ def asymmetric_3d_iou(rt1, rt2, bbox1_w, bbox2_w):
     union = np.prod(bbox1_max - bbox1_min) + np.prod(bbox2_max - bbox2_min) - intersections
     overlaps = intersections / union
     return overlaps
+
+
+def check_spheres_overlap(t1, t2, diameter):
+    center_dist = np.linalg.norm(t1 - t2)
+    return center_dist < diameter
+
+
+def geodesic_numpy(R1, R2):
+    theta = (np.trace(R2.dot(R1.T)) - 1) / 2
+    theta = np.clip(theta, -1, 1)
+    return np.degrees(np.arccos(theta))
