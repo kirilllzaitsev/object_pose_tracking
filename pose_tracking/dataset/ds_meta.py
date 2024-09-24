@@ -189,7 +189,29 @@ ycbineoat_videoname_to_obj = {
     "sugar_box_yalehand0": "004_sugar_box",
     "tomato_soup_can_yalehand0": "005_tomato_soup_can",
 }
+ycbineoat_obj_to_videoname = {
+    "021_bleach_cleanser": "bleach0",
+}
 ycbineoat_symmetry_obj_names = []
+
+
+color_map = {
+    "OrangeRed": [255, 69, 0],
+    "LawnGreen": [124, 252, 0],
+    "Cyan2": [0, 238, 238],
+    "Yellow2": [238, 238, 0],
+    "BlueViolet_Custom": [155, 48, 255],
+    "Blue2": [0, 0, 238],
+    "Magenta_Custom": [255, 131, 250],
+    "DarkKhaki": [189, 183, 107],
+    "Brown": [165, 42, 42],
+    "Green2": [0, 234, 0],
+    "Red2": [234, 0, 0],
+    "DarkOrange": [255, 140, 0],
+    "Gold": [255, 215, 0],
+    "Purple_Custom": [160, 32, 240],
+    "Yellow": [255, 255, 0],
+}
 
 
 def get_obj_info(dataset_name):

@@ -49,12 +49,8 @@ def calc_metrics(
         )
         res["miou"] = miou
 
-    add_rt_errors = True
-    # if use_miou and res["miou"] < 0.25:
-    #     add_rt_errors = False
-    if add_rt_errors:
-        rt_errors = calc_rt_errors(pred_rt, gt_rt, class_name=class_name, handle_visibility=handle_visibility)
-        res.update(rt_errors)
+    rt_errors = calc_rt_errors(pred_rt, gt_rt, class_name=class_name, handle_visibility=handle_visibility)
+    res.update(rt_errors)
 
     if diameter is not None:
         thresh = diameter * 0.1
