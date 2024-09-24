@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
-class BaseBOP(Dataset):
+class BOPDataset(Dataset):
     def __init__(
         self,
         root_dir,
@@ -25,6 +25,9 @@ class BaseBOP(Dataset):
         seq_start=0,
         use_keyframes=False,
         keyframe_path=None,
+        include_rgb=True,
+        include_masks=False,
+        include_depth=False,
         depth_scaler_to_mm=1.0,
     ):
         """
@@ -35,6 +38,9 @@ class BaseBOP(Dataset):
         self.split = split
         self.rot_repr = rot_repr
         self.cad_dir = cad_dir
+        self.include_rgb = include_rgb
+        self.include_depth = include_depth
+        self.include_masks = include_masks
         self.depth_scaler_to_mm = depth_scaler_to_mm
         self.list_scenes = load_list_scene(root_dir, split)
         self.metadata = load_metadata(root_dir, split)
@@ -95,55 +101,92 @@ class BaseBOP(Dataset):
             sample = traj[frame_idx].to_dict(orient="list")
             sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
             sample["intrinsic"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
-            masks = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_path"]])
-            masks_visib = np.array([cv2.imread(p, cv2.IMREAD_UNCHANGED) for p in sample["mask_visib_path"]])
-            depth = load_bop_depth(sample["depth_path"][0])
-            rgb = load_bop_rgb(sample["rgb_path"][0])
 
-            sample["mask"] = masks
-            sample["mask_visib"] = masks_visib
-            sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
-            sample["rgb"] = rgb
+            if self.include_rgb:
+                rgb = load_bop_rgb(sample["rgb_path"][0])
+                sample["rgb"] = rgb
 
-            for k in [
+            if self.include_depth:
+                depth = load_bop_depth(sample["depth_path"][0])
+                sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
+                sample_traj_seq["depth"].append(sample["depth"])
+
+            if self.include_masks:
+                masks = np.array([load_bop_mask(p) for p in sample["mask_path"]])
+                masks_visib = np.array([load_bop_mask(p) for p in sample["mask_visib_path"]])
+                sample["mask"] = masks
+                sample["mask_visib"] = masks_visib
+
+            keys_in_sample = [
                 "obj_id",
                 "idx_obj",
                 "pose",
                 "visib_fract",
                 "bbox_obj",
                 "bbox_visib",
-                "intrinsic",
-                "rgb",
-                "depth",
-                "mask",
-                "mask_visib",
-            ]:
+                "mask_path",
+                "mask_visib_path",
+            ]
+            if self.include_rgb:
+                keys_in_sample.append("rgb")
+            if self.include_masks:
+                keys_in_sample.extend(["mask", "mask_visib"])
+
+            for k in keys_in_sample:
                 sample_traj_seq[k].append(sample[k])
             for k in [
                 "rgb_path",
-                "mask_path",
-                "mask_visib_path",
                 "depth_path",
+                "intrinsic",
             ]:
                 sample_traj_seq[k].append(sample[k][0])
+
             sample_traj_seq["scene_id"].append(format_scene_id(sample["scene_id"][0]))
             sample_traj_seq["frame_id"].append(format_frame_id(sample["frame_id"][0]))
 
-        for k in ["rgb", "depth", "mask", "mask_visib"]:
-            v = sample_traj_seq[k]
-            if isinstance(v[0], np.ndarray):
-                v = [torch.from_numpy(x) for x in v]
-            sample_traj_seq[k] = torch.stack(v)
+        keys_to_convert = []
+        if self.include_rgb:
+            keys_to_convert.append("rgb")
+        if self.include_masks:
+            keys_to_convert.extend(["mask", "mask_visib"])
+        if self.include_depth:
+            keys_to_convert.append("depth")
+        for k in keys_to_convert:
+            v_tensor = convert_arr_to_tensor(sample_traj_seq[k])
+            sample_traj_seq[k] = v_tensor
 
         return sample_traj_seq
 
 
-def load_bop_depth(depth_path):
-    return cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+class BOPDatasetBenchmark(BOPDataset):
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        kwargs["include_rgb"] = False
+        kwargs["include_depth"] = False
+        kwargs["include_depth"] = False
+        super().__init__(*args, **kwargs)
 
 
-def load_bop_rgb(rgb_path):
-    return cv2.imread(rgb_path)[:, :, ::-1]
+def convert_arr_to_tensor(v):
+    if isinstance(v[0], np.ndarray):
+        v = [torch.from_numpy(x) for x in v]
+    v_tensor = torch.stack(v)
+    return v_tensor
+
+
+def load_bop_depth(path):
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+
+
+def load_bop_mask(path):
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+
+def load_bop_rgb(path):
+    return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 
 
 def load_keyframes(path):
@@ -173,7 +216,7 @@ def parse_tensor_from_str(x, shape=(4, 4)):
 def check_data():
     for dataset_name, split_ in zip(["tless/test", "tless/train"], ["test_primesense", "train_primesense"]):
         ds_dir = DATA_DIR / dataset_name
-        dataset = BaseBOP(ds_dir, split_, cad_dir=DATA_DIR / "tless/models_cad", do_load_cad=True)
+        dataset = BOPDataset(ds_dir, split_, cad_dir=DATA_DIR / "tless/models_cad", do_load_cad=True)
 
     dataset_names = ["lmo"]
     for dataset_name in tqdm(dataset_names):
@@ -181,4 +224,4 @@ def check_data():
         splits = [s for s in os.listdir(ds_dir) if os.path.isdir(ds_dir / s)]
         splits = [s for s in splits if s.startswith("train") or s.startswith("val") or s.startswith("test")]
         for split_ in splits:
-            dataset = BaseBOP(ds_dir, split_)
+            dataset = BOPDataset(ds_dir, split_)
