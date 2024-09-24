@@ -1,5 +1,6 @@
 import numpy as np
 import trimesh
+from bop_toolkit_lib.transform import euler_matrix
 
 
 def combine_R_and_T(R, T, scale_translation=1.0):
@@ -34,3 +35,34 @@ def sample_views_icosphere(n_views, subdivisions=None, radius=1):
     cam_in_obs[:, :3, 1] = y_axis
     cam_in_obs[:, :3, 2] = z_axis
     return cam_in_obs
+
+
+def symmetry_tfs_from_info(info, rot_angle_discrete=5):
+    symmetry_tfs = [np.eye(4)]
+    if "symmetries_discrete" in info:
+        tfs = np.array(info["symmetries_discrete"]).reshape(-1, 4, 4)
+        tfs[..., :3, 3] *= 0.001
+        symmetry_tfs = [np.eye(4)]
+        symmetry_tfs += list(tfs)
+    if "symmetries_continuous" in info:
+        axis = np.array(info["symmetries_continuous"][0]["axis"]).reshape(3)
+        offset = info["symmetries_continuous"][0]["offset"]
+        rxs = [0]
+        rys = [0]
+        rzs = [0]
+        if axis[0] > 0:
+            rxs = np.arange(0, 360, rot_angle_discrete) / 180.0 * np.pi
+        elif axis[1] > 0:
+            rys = np.arange(0, 360, rot_angle_discrete) / 180.0 * np.pi
+        elif axis[2] > 0:
+            rzs = np.arange(0, 360, rot_angle_discrete) / 180.0 * np.pi
+        for rx in rxs:
+            for ry in rys:
+                for rz in rzs:
+                    tf = euler_matrix(rx, ry, rz)
+                    tf[:3, 3] = offset
+                    symmetry_tfs.append(tf)
+    if len(symmetry_tfs) == 0:
+        symmetry_tfs = [np.eye(4)]
+    symmetry_tfs = np.array(symmetry_tfs)
+    return symmetry_tfs
