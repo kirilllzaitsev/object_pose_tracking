@@ -8,13 +8,15 @@ import copy
 import cv2
 import matplotlib
 import numpy as np
+import torch
+import torchvision
 from PIL import Image, ImageDraw
-from pose_tracking.utils.geom import to_homo, project_3d_to_2d
+from pose_tracking.utils.geom import project_3d_to_2d, to_homo
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
 
 
-def draw_xyz_axis(rgb, rt, scale=0.1, K=np.eye(3), thickness=3, transparency=0, is_input_rgb=False):
+def draw_xyz_axis(rgb, rt, K, scale=10, thickness=3, transparency=0, is_input_rgb=False):
     """
     @color: BGR
     """
@@ -58,7 +60,7 @@ def draw_xyz_axis(rgb, rt, scale=0.1, K=np.eye(3), thickness=3, transparency=0, 
     return tmp
 
 
-def draw_posed_3d_box(K, img, rt, bbox, line_color=(0, 255, 0), linewidth=2):
+def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
     """Revised from 6pack dataset/inference_dataset_nocs.py::projection
     @bbox: (2,3) min/max
     @line_color: RGB
@@ -97,7 +99,7 @@ def draw_posed_3d_box(K, img, rt, bbox, line_color=(0, 255, 0), linewidth=2):
     return img
 
 
-def draw_bbox(K, img, rt, bbox, color_id, linewidth=2):
+def draw_bbox(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
     def search_fit(points):
         """
         @points: (N,3)
@@ -147,7 +149,7 @@ def draw_bbox(K, img, rt, bbox, color_id, linewidth=2):
     cam_fy = K[1, 1]
 
     target_r = rt[:3, :3]
-    target_t = rt[:3, 3] * 1000
+    target_t = rt[:3, 3]
 
     target = copy.deepcopy(bbox)
     limit = search_fit(target)
@@ -155,20 +157,6 @@ def draw_bbox(K, img, rt, bbox, color_id, linewidth=2):
 
     bbox = np.dot(bbox, target_r.T) + target_t
 
-    color = np.array(
-        [
-            [255, 69, 0],
-            [124, 252, 0],
-            [0, 238, 238],
-            [238, 238, 0],
-            [155, 48, 255],
-            [0, 0, 238],
-            [255, 131, 250],
-            [189, 183, 107],
-            [165, 42, 42],
-            [0, 234, 0],
-        ]
-    )
     vis = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     for tg in bbox:
         y = int(tg[0] * cam_fx / tg[2] + cam_cx)
@@ -179,7 +167,7 @@ def draw_bbox(K, img, rt, bbox, color_id, linewidth=2):
 
         for xxx in range(x - linewidth + 1, x + linewidth):
             for yyy in range(y - linewidth + 1, y + linewidth):
-                vis[xxx][yyy] = color[color_id]
+                vis[xxx][yyy] = line_color
 
     vis = cv2.cvtColor(vis, cv2.COLOR_RGB2BGR)
     return vis
@@ -324,6 +312,18 @@ def PIL_image_grid(imgs, rows, cols):
 
     for i, img in enumerate(imgs):
         grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
+def make_grid_image(imgs, nrow, padding=5, pad_value=255):
+    """
+    @imgs: (B,H,W,C) np array
+    @nrow: num of images per row
+    """
+    grid = torchvision.utils.make_grid(
+        torch.as_tensor(np.asarray(imgs)).permute(0, 3, 1, 2), nrow=nrow, padding=padding, pad_value=pad_value
+    )
+    grid = grid.permute(1, 2, 0).contiguous().data.cpu().numpy().astype(np.uint8)
     return grid
 
 
