@@ -1,5 +1,6 @@
 import glob
 import os
+from pathlib import Path
 
 import cv2
 import imageio
@@ -8,13 +9,34 @@ import trimesh
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_meta import ycbineoat_videoname_to_obj
 from pose_tracking.utils.geom import backproj_depth
+from torch.utils.data import Dataset
 
 
-class YcbineoatReader:
+class YCBineoatDataset(Dataset):
     # https://github.com/NVlabs/FoundationPose/blob/main/datareader.py#L57
-    def __init__(self, video_dir, downscale=1, shorter_side=None, zfar=np.inf):
+    def __init__(
+        self,
+        video_dir,
+        downscale=1,
+        shorter_side=None,
+        zfar=np.inf,
+        ycb_meshes_dir=None,
+        include_rgb=True,
+        include_depth=True,
+        include_mask=True,
+        include_xyz_map=False,
+        include_occ_mask=False,
+        include_gt_pose=True,
+    ):
         self.video_dir = video_dir
         self.downscale = downscale
+        self.ycb_meshes_dir = ycb_meshes_dir
+        self.include_rgb = include_rgb
+        self.include_mask = include_mask
+        self.include_depth = include_depth
+        self.include_xyz_map = include_xyz_map
+        self.include_occ_mask = include_occ_mask
+        self.include_gt_pose = include_gt_pose
         self.zfar = zfar
         self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
         self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
@@ -33,19 +55,30 @@ class YcbineoatReader:
 
         self.gt_pose_files = sorted(glob.glob(f"{self.video_dir}/annotated_poses/*"))
 
-    def get_video_name(self):
-        return self.video_dir.split("/")[-1]
-
     def __len__(self):
         return len(self.color_files)
 
+    def __getitem__(self, i):
+        sample = {}
+
+        if self.include_rgb:
+            sample["color"] = self.get_color(i)
+        if self.include_mask:
+            sample["mask"] = self.get_mask(i)
+        if self.include_depth:
+            sample["depth"] = self.get_depth(i)
+        if self.include_xyz_map:
+            sample["xyz_map"] = self.get_xyz_map(i)
+        if self.include_occ_mask:
+            sample["occ_mask"] = self.get_occ_mask(i)
+        if self.include_gt_pose:
+            sample["pose"] = self.get_gt_pose(i)
+
+        return sample
+
     def get_gt_pose(self, i):
-        try:
-            pose = np.loadtxt(self.gt_pose_files[i]).reshape(4, 4)
-            return pose
-        except:
-            logger.info("GT pose not found, return None")
-            return None
+        pose = np.loadtxt(self.gt_pose_files[i]).reshape(4, 4)
+        return pose
 
     def get_color(self, i):
         color = imageio.imread(self.color_files[i])[..., :3]
@@ -70,7 +103,7 @@ class YcbineoatReader:
 
     def get_xyz_map(self, i):
         depth = self.get_depth(i)
-        xyz_map = backproj_depth(depth, self.K)
+        xyz_map = backproj_depth(depth, self.K, do_flip_xy=True)
         return xyz_map
 
     def get_occ_mask(self, i):
@@ -88,7 +121,25 @@ class YcbineoatReader:
         return occ_mask.astype(np.uint8)
 
     def get_gt_mesh(self):
+        assert self.ycb_meshes_dir is not None, "ycb_meshes_dir is not set"
         ob_name = ycbineoat_videoname_to_obj[self.get_video_name()]
-        YCB_VIDEO_DIR = os.getenv("YCB_VIDEO_DIR")
-        mesh = trimesh.load(f"{YCB_VIDEO_DIR}/models/{ob_name}/textured_simple.obj")
+        mesh = trimesh.load(f"{self.ycb_meshes_dir}/{ob_name}/textured_simple.obj")
         return mesh
+
+    def get_video_name(self):
+        return self.video_dir.split("/")[-1]
+
+
+class YCBineoatDatasetBenchmark(YCBineoatDataset):
+    def __init__(self, preds_path, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.preds_path = Path(preds_path)
+
+    def get_pred_pose(self, i):
+        pose = np.loadtxt(self.preds_path / f"{self.id_strs[i]}.txt").reshape(4, 4)
+        return pose
+
+    def __getitem__(self, i):
+        sample = super().__getitem__(i)
+        sample["pose_pred"] = self.get_pred_pose(i)
+        return sample
