@@ -186,40 +186,56 @@ def draw_bbox_pil(img_PIL, bbox, color="red", width=3):
     return img_PIL
 
 
-def plot_kpt_matches(
-    src_img,
-    src_pts,
-    tar_img,
-    tar_pts,
-    border_color,
-    patch_size=14,
-    concate_input=True,
-    write_num_matches=True,
-):
-    if patch_size != 1:
-        src_pts = np.array(src_pts) * patch_size  # + patch_size * 0.5
-        tar_pts = np.array(tar_pts) * patch_size  # + patch_size * 0.5
-    src_pts = [cv2.KeyPoint(x, y, 1) for x, y in np.float32(src_pts)]
-    tar_pts = [cv2.KeyPoint(x, y, 1) for x, y in np.float32(tar_pts)]
+def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color, kpts0=None, kpts1=None, text=[], dpi=75, path=None):
+    # draw image pair
+    assert mkpts0.shape[0] == mkpts1.shape[0], f"mkpts0: {mkpts0.shape[0]} v.s. mkpts1: {mkpts1.shape[0]}"
+    fig, axes = plt.subplots(1, 2, figsize=(10, 6), dpi=dpi)
+    axes[0].imshow(img0, cmap="gray")
+    axes[1].imshow(img1, cmap="gray")
+    for i in range(2):  # clear all frames
+        axes[i].get_yaxis().set_ticks([])
+        axes[i].get_xaxis().set_ticks([])
+        for spine in axes[i].spines.values():
+            spine.set_visible(False)
+    plt.tight_layout(pad=1)
 
-    matches = [cv2.DMatch(i, i, 0) for i in range(len(src_pts))]
-    matched_img = cv2.drawMatchesKnn(
-        img1=src_img,
-        keypoints1=src_pts,
-        img2=tar_img,
-        keypoints2=tar_pts,
-        matches1to2=[matches],
-        outImg=None,
-        flags=2,
+    if kpts0 is not None:
+        assert kpts1 is not None
+        axes[0].scatter(kpts0[:, 0], kpts0[:, 1], c="w", s=2)
+        axes[1].scatter(kpts1[:, 0], kpts1[:, 1], c="w", s=2)
+
+    # draw matches
+    if mkpts0.shape[0] != 0 and mkpts1.shape[0] != 0:
+        fig.canvas.draw()
+        transFigure = fig.transFigure.inverted()
+        fkpts0 = transFigure.transform(axes[0].transData.transform(mkpts0))
+        fkpts1 = transFigure.transform(axes[1].transData.transform(mkpts1))
+        fig.lines = [
+            matplotlib.lines.Line2D(
+                (fkpts0[i, 0], fkpts1[i, 0]),
+                (fkpts0[i, 1], fkpts1[i, 1]),
+                transform=fig.transFigure,
+                c=color[i],
+                linewidth=1,
+            )
+            for i in range(len(mkpts0))
+        ]
+
+        axes[0].scatter(mkpts0[:, 0], mkpts0[:, 1], c=color, s=4)
+        axes[1].scatter(mkpts1[:, 0], mkpts1[:, 1], c=color, s=4)
+
+    # put txts
+    txt_color = "k" if img0[:100, :200].mean() > 200 else "w"
+    fig.text(
+        0.01, 0.99, "\n".join(text), transform=fig.axes[0].transAxes, fontsize=15, va="top", ha="left", color=txt_color
     )
-    if border_color is not None:
-        matched_img = add_border(matched_img, color=border_color)
-    if write_num_matches:
-        write_text_on_image(image=matched_img, text=f"{len(matches)} matches")
-    if concate_input:
-        input_imgs = np.concatenate([src_img, tar_img], axis=1)
-        matched_img = np.concatenate([input_imgs, matched_img], axis=0)
-    return matched_img
+
+    # save or return figure
+    if path:
+        plt.savefig(str(path), bbox_inches="tight", pad_inches=0)
+        plt.close()
+    else:
+        return axes
 
 
 def plot_kpts_pil(img_PIL, points_2d, color="blue"):
