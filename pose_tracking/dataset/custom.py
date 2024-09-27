@@ -25,11 +25,13 @@ import numpy as np
 import torch
 from pose_tracking.config import logger
 from torch.utils.data import Dataset
+import trimesh
 
 
 class CustomDataset(Dataset):
-    def __init__(self, root_dir, zfar=np.inf):
+    def __init__(self, root_dir, zfar=np.inf, transforms=None, mesh_path=None):
         self.root_dir = root_dir
+        self.transforms = transforms
         self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
         self.K = np.loadtxt(f"{self.root_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
@@ -39,16 +41,32 @@ class CustomDataset(Dataset):
         self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = cv2.imread(self.color_files[0].replace("rgb/", "masks/"), -1)
         self.zfar = zfar
+        self.mesh_path = mesh_path
+        if mesh_path is not None:
+            self.mesh = self.load_mesh(mesh_path)
 
     def __len__(self):
         return len(self.color_files)
 
     def __getitem__(self, idx):
+        path = self.color_files[idx]
         color = self.get_color(idx)
-        depth = self.get_depth(idx)
+        depth_raw = self.get_depth(idx)
+        if self.transforms is None:
+            rgb = torch.from_numpy(color)
+        else:
+            sample = self.transforms(image=color)
+            rgb = sample["image"]
+
+        rgb = rgb.float() / 255.0
+
+        depth = torch.from_numpy(depth_raw).float()
+
         sample = {
-            "rgb": torch.from_numpy(color).permute(2, 0, 1).float(),
-            "depth": torch.from_numpy(depth).float(),
+            "rgb": rgb,
+            "depth": depth,
+            "rgb_path": path,
+            "intrinsic": torch.from_numpy(self.K).float(),
         }
 
         return sample
@@ -63,3 +81,7 @@ class CustomDataset(Dataset):
         depth = cv2.resize(depth, (self.W, self.H), interpolation=cv2.INTER_NEAREST)
         depth[(depth < 0.001) | (depth >= self.zfar)] = 0
         return depth
+
+    def load_mesh(self, mesh_path):
+        mesh = trimesh.load(mesh_path, force="mesh")
+        return mesh
