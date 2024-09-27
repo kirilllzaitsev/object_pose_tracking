@@ -1,4 +1,4 @@
-lm_obj_name_to_id = {
+LM_OBJ_NAME_TO_ID = {
     "ape": 1,
     "benchvise": 2,
     "bowl": 3,
@@ -15,11 +15,11 @@ lm_obj_name_to_id = {
     "lamp": 14,
     "phone": 15,
 }
-lm_obj_id_to_name = {v: k for k, v in lm_obj_name_to_id.items()}
-lm_symmetry_obj_names = {"eggbox", "glue", "cup", "bowl"}
+LM_OBJ_ID_TO_NAME = {v: k for k, v in LM_OBJ_NAME_TO_ID.items()}
+LM_SYMMETRY_OBJ_NAMES = {"eggbox", "glue", "cup", "bowl"}
 
 
-ycbv_obj_name_to_id = {
+YCBV_OBJ_NAME_TO_ID = {
     "master_chef_can": 1,
     "cracker_box": 2,
     "sugar_box": 3,
@@ -42,10 +42,10 @@ ycbv_obj_name_to_id = {
     "extra_large_clamp": 20,
     "foam_brick": 21,
 }
-ycbv_obj_id_to_name = {v: k for k, v in ycbv_obj_name_to_id.items()}
-ycbv_symmetry_obj_names = {"bowl", "wood_block", "large_clamp", "extra_large_clamp", "foam_brick"}
+YCBV_OBJ_ID_TO_NAME = {v: k for k, v in YCBV_OBJ_NAME_TO_ID.items()}
+YCBV_SYMMETRY_OBJ_NAMES = {"bowl", "wood_block", "large_clamp", "extra_large_clamp", "foam_brick"}
 
-tless_obj_name_to_id = {
+TLESS_OBJ_NAME_TO_ID = {
     "obj01": 1,
     "obj02": 2,
     "obj03": 3,
@@ -77,14 +77,14 @@ tless_obj_name_to_id = {
     "obj29": 29,
     "obj30": 30,
 }
-tl_obj_id_to_name = {v: k for k, v in tless_obj_name_to_id.items()}
-tless_symmetry_obj_names = ["obj{:02d}".format(obj_id + 1) for obj_id in range(0, 30)]
+TL_OBJ_ID_TO_NAME = {v: k for k, v in TLESS_OBJ_NAME_TO_ID.items()}
+TLESS_SYMMETRY_OBJ_NAMES = ["obj{:02d}".format(obj_id + 1) for obj_id in range(0, 30)]
 
-tudl_obj_name_to_id = {"obj01": 1, "obj02": 2, "obj03": 3}
-tu_obj_id_to_name = {v: k for k, v in tudl_obj_name_to_id.items()}
-tudl_symmetry_obj_names = []
+TUDL_OBJ_NAME_TO_ID = {"obj01": 1, "obj02": 2, "obj03": 3}
+TU_OBJ_ID_TO_NAME = {v: k for k, v in TUDL_OBJ_NAME_TO_ID.items()}
+TUDL_SYMMETRY_OBJ_NAMES = []
 
-hb_obj_name_to_id = {
+HB_OBJ_NAME_TO_ID = {
     "obj01": 1,
     "obj02": 2,
     "obj03": 3,
@@ -119,14 +119,14 @@ hb_obj_name_to_id = {
     "obj32": 32,
     "obj33": 33,
 }
-hb_obj_id_to_name = {v: k for k, v in hb_obj_name_to_id.items()}
-hb_symmetry_obj_names = ["obj10", "obj11", "obj14"]
+HB_OBJ_ID_TO_NAME = {v: k for k, v in HB_OBJ_NAME_TO_ID.items()}
+HB_SYMMETRY_OBJ_NAMES = ["obj10", "obj11", "obj14"]
 
-icbin_obj_name_to_id = {"obj01": 1, "obj02": 2}
-icbin_obj_id_to_name = {v: k for k, v in icbin_obj_name_to_id.items()}
-icbin_symmetry_obj_names = ["obj01"]
+ICBIN_OBJ_NAME_TO_ID = {"obj01": 1, "obj02": 2}
+ICBIN_OBJ_ID_TO_NAME = {v: k for k, v in ICBIN_OBJ_NAME_TO_ID.items()}
+ICBIN_SYMMETRY_OBJ_NAMES = ["obj01"]
 
-itodd_obj_name_to_id = {
+ITODD_OBJ_NAME_TO_ID = {
     "obj01": 1,
     "obj02": 2,
     "obj03": 3,
@@ -156,8 +156,8 @@ itodd_obj_name_to_id = {
     "obj27": 27,
     "obj28": 28,
 }
-ito_obj_id_to_name = {v: k for k, v in itodd_obj_name_to_id.items()}
-itodd_symmetry_obj_names = [
+ITO_OBJ_ID_TO_NAME = {v: k for k, v in ITODD_OBJ_NAME_TO_ID.items()}
+ITODD_SYMMETRY_OBJ_NAMES = [
     "obj02",
     "obj03",
     "obj04",
@@ -178,7 +178,7 @@ itodd_symmetry_obj_names = [
     "obj28",
 ]
 
-ycbineoat_videoname_to_obj = {
+YCBINEOAT_VIDEONAME_TO_OBJ = {
     "bleach0": "021_bleach_cleanser",
     "bleach_hard_00_03_chaitanya": "021_bleach_cleanser",
     "cracker_box_reorient": "003_cracker_box",
@@ -188,14 +188,15 @@ ycbineoat_videoname_to_obj = {
     "sugar_box1": "004_sugar_box",
     "sugar_box_yalehand0": "004_sugar_box",
     "tomato_soup_can_yalehand0": "005_tomato_soup_can",
+    "2022-11-18-15-10-24_milk": "milk_can",
 }
-ycbineoat_obj_to_videoname = {
+YCBINEOAT_OBJ_TO_VIDEONAME = {
     "021_bleach_cleanser": "bleach0",
 }
-ycbineoat_symmetry_obj_names = []
+YCBINEOAT_SYMMETRY_OBJ_NAMES = []
 
 
-color_map = {
+COLOR_MAP = {
     "OrangeRed": [255, 69, 0],
     "LawnGreen": [124, 252, 0],
     "Cyan2": [0, 238, 238],
@@ -211,6 +212,35 @@ color_map = {
     "Gold": [255, 215, 0],
     "Purple_Custom": [160, 32, 240],
     "Yellow": [255, 255, 0],
+    "Magenta": [255, 0, 255],
+    "Cyan": [0, 255, 255],
+    "LightGreen": [144, 238, 144],
+    "LightBlue": [173, 216, 230],
+    "LightCoral": [240, 128, 128],
+    "LightPink": [255, 182, 193],
+}
+YCBV_OBJ_NAME_TO_COLOR = {
+    "master_chef_can": COLOR_MAP["OrangeRed"],
+    "cracker_box": COLOR_MAP["LawnGreen"],
+    "sugar_box": COLOR_MAP["Cyan2"],
+    "tomato_soup_can": COLOR_MAP["Yellow2"],
+    "mustard_bottle": COLOR_MAP["BlueViolet_Custom"],
+    "tuna_fish_can": COLOR_MAP["Blue2"],
+    "pudding_box": COLOR_MAP["Magenta_Custom"],
+    "gelatin_box": COLOR_MAP["DarkKhaki"],
+    "potted_meat_can": COLOR_MAP["Brown"],
+    "banana": COLOR_MAP["Green2"],
+    "pitcher_base": COLOR_MAP["Red2"],
+    "bleach_cleanser": COLOR_MAP["DarkOrange"],
+    "bowl": COLOR_MAP["Gold"],
+    "mug": COLOR_MAP["Purple_Custom"],
+    "power_drill": COLOR_MAP["Yellow"],
+    "wood_block": COLOR_MAP["Magenta"],
+    "scissors": COLOR_MAP["Cyan"],
+    "large_marker": COLOR_MAP["LightGreen"],
+    "large_clamp": COLOR_MAP["LightBlue"],
+    "extra_large_clamp": COLOR_MAP["LightCoral"],
+    "foam_brick": COLOR_MAP["LightPink"],
 }
 
 

@@ -120,15 +120,12 @@ class YCBineoatDataset(Dataset):
 
 
 class YCBineoatDatasetBenchmark(YCBineoatDataset):
-    def __init__(self, preds_path, preds_in_meters=True, *args, **kwargs):
+    def __init__(self, preds_path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.preds_path = Path(preds_path)
-        self.preds_in_meters = False
 
     def get_pred_pose(self, i):
         pose = np.loadtxt(self.preds_path / f"{self.id_strs[i]}.txt").reshape(4, 4)
-        if self.preds_in_meters:
-            pose[:3, 3] *= 1e3
         return pose
 
     def __getitem__(self, i):
