@@ -103,81 +103,8 @@ def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
     return img
 
 
-def draw_bbox(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
-    def search_fit(points):
-        """
-        @points: (N,3)
-        """
-        min_x = min(points[:, 0])
-        max_x = max(points[:, 0])
-        min_y = min(points[:, 1])
-        max_y = max(points[:, 1])
-        min_z = min(points[:, 2])
-        max_z = max(points[:, 2])
-        return [min_x, max_x, min_y, max_y, min_z, max_z]
-
-    def build_frame(min_x, max_x, min_y, max_y, min_z, max_z):
-        bbox = []
-        for i in np.arange(min_x, max_x, 1.0):
-            bbox.append([i, min_y, min_z])
-        for i in np.arange(min_x, max_x, 1.0):
-            bbox.append([i, min_y, max_z])
-        for i in np.arange(min_x, max_x, 1.0):
-            bbox.append([i, max_y, min_z])
-        for i in np.arange(min_x, max_x, 1.0):
-            bbox.append([i, max_y, max_z])
-
-        for i in np.arange(min_y, max_y, 1.0):
-            bbox.append([min_x, i, min_z])
-        for i in np.arange(min_y, max_y, 1.0):
-            bbox.append([min_x, i, max_z])
-        for i in np.arange(min_y, max_y, 1.0):
-            bbox.append([max_x, i, min_z])
-        for i in np.arange(min_y, max_y, 1.0):
-            bbox.append([max_x, i, max_z])
-
-        for i in np.arange(min_z, max_z, 1.0):
-            bbox.append([min_x, min_y, i])
-        for i in np.arange(min_z, max_z, 1.0):
-            bbox.append([min_x, max_y, i])
-        for i in np.arange(min_z, max_z, 1.0):
-            bbox.append([max_x, min_y, i])
-        for i in np.arange(min_z, max_z, 1.0):
-            bbox.append([max_x, max_y, i])
-        bbox = np.array(bbox)
-        return bbox
-
-    cam_cx = K[0, 2]
-    cam_cy = K[1, 2]
-    cam_fx = K[0, 0]
-    cam_fy = K[1, 1]
-
-    target_r = rt[:3, :3]
-    target_t = rt[:3, 3]
-
-    target = copy.deepcopy(bbox)
-    limit = search_fit(target)
-    bbox = build_frame(limit[0], limit[1], limit[2], limit[3], limit[4], limit[5])
-
-    bbox = np.dot(bbox, target_r.T) + target_t
-
-    vis = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    for tg in bbox:
-        y = int(tg[0] * cam_fx / tg[2] + cam_cx)
-        x = int(tg[1] * cam_fy / tg[2] + cam_cy)
-
-        if x - linewidth < 0 or x + linewidth > 479 or y - linewidth < 0 or y + linewidth > 639:
-            continue
-
-        for xxx in range(x - linewidth + 1, x + linewidth):
-            for yyy in range(y - linewidth + 1, y + linewidth):
-                vis[xxx][yyy] = line_color
-
-    vis = cv2.cvtColor(vis, cv2.COLOR_RGB2BGR)
-    return vis
-
-
-def draw_poses_on_video(rgbs, intrinsics, poses_obj, bbox=None, bbox_color=(255, 255, 0), scale=50.0, take_n=None):
+    rgbs, intrinsics, poses_pred, poses_gt=None, bbox=None, bbox_color=(255, 255, 0), scale=50.0, take_n=None
+):
     """
     Given a list of rgb images, camera intrinsics, CAD bounding box, and poses, draw the poses and object axes on the images. The args have to be numpy arrays.
 
@@ -194,12 +121,13 @@ def draw_poses_on_video(rgbs, intrinsics, poses_obj, bbox=None, bbox_color=(255,
     for frame_idx in tqdm(range(num_frames), desc="Frame"):
         rgb = adjust_img_for_plt(rgbs[frame_idx])
         intrinsic = cast_to_numpy(intrinsics[frame_idx])
-        gt = cast_to_numpy(poses_obj[frame_idx])
-        rgb_axes = draw_xyz_axis(rgb, scale=scale, K=intrinsic, rt=gt, is_input_rgb=True)
+        pose = cast_to_numpy(poses_pred[frame_idx])
+        final_frame = draw_xyz_axis(rgb, scale=scale, K=intrinsic, rt=pose, is_input_rgb=True)
         if bbox is not None:
-            final_frame = draw_posed_3d_box(rgb_axes, rt=gt, K=intrinsic, bbox=bbox, line_color=bbox_color)
-        else:
-            final_frame = rgb_axes
+            final_frame = draw_posed_3d_box(final_frame, rt=pose, K=intrinsic, bbox=bbox, line_color=bbox_color)
+        if poses_gt is not None:
+            pose_gt = cast_to_numpy(poses_gt[frame_idx])
+            final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=intrinsic, bbox=bbox, line_color=(0, 255, 0))
         images.append(final_frame)
     images = np.array(images)
     return images
