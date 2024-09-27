@@ -104,6 +104,9 @@ class BOPDataset(Dataset):
 
             if self.include_rgb:
                 rgb = load_bop_rgb(sample["rgb_path"][0])
+                rgb = rgb.astype(np.float32)
+                rgb /= 255.0
+                rgb = torch.from_numpy(rgb).permute(2, 0, 1)
                 sample["rgb"] = rgb
 
             if self.include_depth:
@@ -114,8 +117,8 @@ class BOPDataset(Dataset):
             if self.include_masks:
                 masks = np.array([load_bop_mask(p) for p in sample["mask_path"]])
                 masks_visib = np.array([load_bop_mask(p) for p in sample["mask_visib_path"]])
-                sample["mask"] = masks
-                sample["mask_visib"] = masks_visib
+                sample["mask"] = masks.astype(float) / 255.0
+                sample["mask_visib"] = masks_visib.astype(float) / 255.0
 
             keys_in_sample = [
                 "obj_id",
