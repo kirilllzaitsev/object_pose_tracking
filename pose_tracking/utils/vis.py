@@ -103,6 +103,7 @@ def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
     return img
 
 
+def draw_poses_on_video(
     rgbs, intrinsics, poses_pred, poses_gt=None, bbox=None, bbox_color=(255, 255, 0), scale=50.0, take_n=None
 ):
     """
