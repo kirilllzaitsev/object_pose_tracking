@@ -331,3 +331,39 @@ def get_cmap(np_img):
     cmap = matplotlib.colormaps.get_cmap("magma")
     tmp = cmap(np_img)[..., :3]
     return tmp
+
+
+def plot_rgb_depth(color, depth, axs=None):
+    if axs is None:
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    axs[0].imshow(color)
+    im = axs[1].imshow(depth, cmap="jet")
+    plt.colorbar(im, ax=axs[1])
+    return axs
+
+
+def save_video(
+    images, save_path, frame_height=480, frame_width=640, fps=10, live_preview=False, live_preview_delay=1000
+):
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    create_dir(save_path)
+    video_writer = cv2.VideoWriter(save_path, fourcc, fps, (frame_width, frame_height))
+
+    for image in images:
+        video_writer.write(image)
+        if live_preview:
+            cv2.imshow("Video", image)
+            if cv2.waitKey(live_preview_delay) & 0xFF == ord("q"):
+                break
+
+    video_writer.release()
+    cv2.destroyAllWindows()
+    fix_mp4_encoding(save_path)
+    print(f"Video saved as {save_path}")
+
+
+def fix_mp4_encoding(video_path):
+    tmp_path = str(video_path).replace(".mp4", "_tmp.mp4")
+    os.system(f"ffmpeg -i {video_path} -r 30 {tmp_path} >/dev/null 2>&1")
+    os.system(f"mv {tmp_path} {video_path}")
+    print("Changed video encoding to h264")
