@@ -18,6 +18,7 @@ from pose_tracking.config import DATA_DIR, PROJ_DIR, WORKSPACE_DIR, logger
 from pose_tracking.dataset.bop import BOPDataset
 from pose_tracking.losses import geodesic_loss
 from pose_tracking.utils.common import print_args
+from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.rotation_conversions import (
     matrix_to_quaternion,
     quaternion_to_matrix,
@@ -40,6 +41,7 @@ def parse_args():
     train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
     train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
+    train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
     train_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     train_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
@@ -187,6 +189,8 @@ def main():
     args = parse_args()
     args = postprocess_args(args)
     print_args(args)
+
+    set_seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
