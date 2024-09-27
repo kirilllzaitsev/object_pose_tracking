@@ -7,7 +7,7 @@ import imageio
 import numpy as np
 import trimesh
 from pose_tracking.config import logger
-from pose_tracking.dataset.ds_meta import ycbineoat_videoname_to_obj
+from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
 from pose_tracking.utils.geom import backproj_depth
 from torch.utils.data import Dataset
 
@@ -73,6 +73,7 @@ class YCBineoatDataset(Dataset):
             sample["occ_mask"] = self.get_occ_mask(i)
         if self.include_gt_pose:
             sample["pose"] = self.get_gt_pose(i)
+        sample["intrinsics"] = self.K
 
         return sample
 
@@ -81,25 +82,13 @@ class YCBineoatDataset(Dataset):
         return pose
 
     def get_color(self, i):
-        color = imageio.imread(self.color_files[i])[..., :3]
-        color = cv2.resize(color, (self.w, self.h), interpolation=cv2.INTER_NEAREST)
-        return color
+        return get_color(self.color_files[i], wh=(self.w, self.h))
 
     def get_mask(self, i):
-        mask = cv2.imread(self.color_files[i].replace("rgb", "masks"), -1)
-        if len(mask.shape) == 3:
-            for c in range(3):
-                if mask[..., c].sum() > 0:
-                    mask = mask[..., c]
-                    break
-        mask = cv2.resize(mask, (self.w, self.h), interpolation=cv2.INTER_NEAREST).astype(bool).astype(np.uint8)
-        return mask
+        return get_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
 
     def get_depth(self, i):
-        depth = cv2.imread(self.color_files[i].replace("rgb", "depth"), -1) / 1e3
-        depth = cv2.resize(depth, (self.w, self.h), interpolation=cv2.INTER_NEAREST)
-        depth[(depth < 0.001) | (depth >= self.zfar)] = 0
-        return depth
+        return get_depth(self.color_files[i].replace("rgb", "depth"), wh=(self.w, self.h), zfar=self.zfar)
 
     def get_xyz_map(self, i):
         depth = self.get_depth(i)
@@ -122,7 +111,7 @@ class YCBineoatDataset(Dataset):
 
     def get_gt_mesh(self):
         assert self.ycb_meshes_dir is not None, "ycb_meshes_dir is not set"
-        ob_name = ycbineoat_videoname_to_obj[self.get_video_name()]
+        ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
         mesh = trimesh.load(f"{self.ycb_meshes_dir}/{ob_name}/textured_simple.obj")
         return mesh
 
@@ -131,15 +120,50 @@ class YCBineoatDataset(Dataset):
 
 
 class YCBineoatDatasetBenchmark(YCBineoatDataset):
-    def __init__(self, preds_path, *args, **kwargs):
+    def __init__(self, preds_path, preds_in_meters=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.preds_path = Path(preds_path)
+        self.preds_in_meters = False
 
     def get_pred_pose(self, i):
         pose = np.loadtxt(self.preds_path / f"{self.id_strs[i]}.txt").reshape(4, 4)
+        if self.preds_in_meters:
+            pose[:3, 3] *= 1e3
         return pose
 
     def __getitem__(self, i):
         sample = super().__getitem__(i)
         sample["pose_pred"] = self.get_pred_pose(i)
         return sample
+
+
+def get_depth(path, wh=None, zfar=np.inf):
+    depth = cv2.imread(path, -1) / 1e3
+    if wh is not None:
+        depth = resize_img(depth, wh=wh)
+    depth[(depth < 0.001) | (depth >= zfar)] = 0
+    return depth
+
+
+def resize_img(depth, wh):
+    return cv2.resize(depth, (wh[0], wh[1]), interpolation=cv2.INTER_NEAREST)
+
+
+def get_color(path, wh=None):
+    color = imageio.imread(path)[..., :3]
+    if wh is not None:
+        color = resize_img(color, wh=wh)
+    return color
+
+
+def get_mask(path, wh=None):
+    mask = cv2.imread(path, -1)
+    if len(mask.shape) == 3:
+        for c in range(3):
+            if mask[..., c].sum() > 0:
+                mask = mask[..., c]
+                break
+    if wh is not None:
+        mask = resize_img(mask, wh=wh)
+    mask = mask.astype(bool).astype(np.uint8)
+    return mask
