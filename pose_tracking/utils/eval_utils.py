@@ -1,14 +1,17 @@
 import copy
-from collections import defaultdict
 import os
+from collections import defaultdict
 
 import cv2
 import numpy as np
 import pandas as pd
+from pose_tracking.config import PROJ_DIR, WORKSPACE_DIR
 from pose_tracking.metrics import calc_auc
+from pose_tracking.utils.common import create_dir
 
 
 def get_metrics_per_obj(metrics_all):
+    # get metrics per object from all scenes it appears in
     metrics_all_per_obj = defaultdict(lambda: defaultdict(list))
     for scene_id, scene_metrics in metrics_all.items():
         for obj_id, obj in scene_metrics.items():
@@ -60,7 +63,7 @@ def metrics_all_per_obj_to_df(metrics_all_per_obj, id_to_name):
 
 
 def save_df(df, path):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    create_dir(path)
     df.to_csv(path, index=True)
 
 
@@ -68,17 +71,18 @@ def load_df(path):
     return pd.read_csv(path, index_col=0)
 
 
-def save_video(images, save_path, frame_height=480, frame_width=640, fps=1):
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video_writer = cv2.VideoWriter(save_path, fourcc, fps, (frame_width, frame_height))
-
-    for image in images:
-        cv2.imshow("Video", image)
-        video_writer.write(image)
-        if cv2.waitKey(1000) & 0xFF == ord("q"):
-            break
-
-    video_writer.release()
-    cv2.destroyAllWindows()
-
-    print(f"Video saved as {save_path}")
+def get_preds_path_benchmark(model_name, obj_name, ds_name=None):
+    if model_name == "bundletrack":
+        preds_path = (
+            f"{WORKSPACE_DIR}/related_work/BundleTrack/results/ycbineoat/{obj_name}/poses"
+        )
+    elif model_name == "bundlesdf":
+        preds_path = f"{WORKSPACE_DIR}/related_work/BundleSDF/data/{obj_name}_out/ob_in_cam"
+    elif model_name == "se3tracknet":
+        assert ds_name is not None, "ds_name must be provided for se3tracknet"
+        preds_path = f"{WORKSPACE_DIR}/related_work/iros20-6d-pose-tracking/results/{ds_name}/{obj_name}_out/ob_in_cam"
+    elif model_name == "foundation_pose":
+        preds_path = f"{WORKSPACE_DIR}/related_work/FoundationPoseRSL/demo_data/{obj_name}/ob_in_cam"
+    else:
+        raise ValueError(f"Unknown model_name: {model_name}")
+    return preds_path
