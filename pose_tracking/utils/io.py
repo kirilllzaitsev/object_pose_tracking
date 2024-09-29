@@ -1,5 +1,7 @@
 import json
+from glob import glob
 
+import cv2
 import numpy as np
 import yaml
 from pycocotools import mask as cocomask
@@ -50,3 +52,26 @@ def cast_formats_for_json(data):
         ):
             data[key] = np.array(data[key]).tolist()
     return data
+
+
+def read_preds(pred_dir):
+    rgb_paths = sorted(glob(f"{pred_dir}/rgb/*"))
+    poses_paths = sorted(glob(f"{pred_dir}/poses/*"))
+    rgbs = []
+    poses = []
+    for rgb_path, pose_path in zip(rgb_paths, poses_paths):
+        rgb = cv2.imread(rgb_path)
+        rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+        pose = load_pose(pose_path)
+        rgbs.append(rgb)
+        poses.append(pose)
+    return {"rgbs": rgbs, "poses": poses}
+
+
+def load_pose(path):
+    if path.endswith(".npy"):
+        return np.load(path)
+    elif path.endswith(".txt"):
+        return np.loadtxt(path).reshape(4, 4)
+    else:
+        raise ValueError(f"Unknown pose format: {path}")

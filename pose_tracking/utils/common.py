@@ -8,10 +8,14 @@ def create_dir(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
 
-def print_args(args):
+def print_args(args, logger=None):
     from tabulate import tabulate
 
-    print(tabulate(sorted(vars(args).items()), tablefmt="grid"))
+    msg = tabulate(sorted(vars(args).items()), tablefmt="grid")
+    if logger:
+        logger.info(msg)
+    else:
+        print(msg)
 
 
 def adjust_img_for_plt(img):
@@ -24,7 +28,10 @@ def adjust_img_for_plt(img):
     return img
 
 
-def cast_to_numpy(img):
-    if isinstance(img, torch.Tensor):
-        img = img.detach().cpu().numpy()
-    return img
+def cast_to_numpy(arr):
+    if isinstance(arr, torch.Tensor):
+        arr = arr.detach().cpu().numpy()
+    else:
+        if isinstance(arr[0], torch.Tensor):
+            arr = [cast_to_numpy(a) for a in arr]
+    return arr
