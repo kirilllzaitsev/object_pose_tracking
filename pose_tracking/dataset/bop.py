@@ -8,6 +8,7 @@ import torch
 from PIL import Image
 from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
+from pose_tracking.utils.io import load_pose
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -169,8 +170,27 @@ class BOPDatasetBenchmark(BOPDataset):
     ):
         kwargs["include_rgb"] = False
         kwargs["include_depth"] = False
-        kwargs["include_depth"] = False
+        kwargs["include_mask"] = False
         super().__init__(*args, **kwargs)
+
+
+class BOPDatasetEval(BOPDataset):
+    def __init__(self, preds_path, *args, **kwargs):
+        kwargs["include_rgb"] = True
+        kwargs["include_depth"] = True
+        kwargs["include_mask"] = True
+        super().__init__(*args, **kwargs)
+        self.preds_path = Path(preds_path)
+
+    def get_pred_pose(self, filename_no_ext):
+        pose = load_pose(self.preds_path / f"{filename_no_ext}.txt")
+        return pose
+
+    def __getitem__(self, i):
+        sample = super().__getitem__(i)
+        filename_no_ext = [f"{Path(p).stem}" for p in sample["rgb_path"]]
+        sample["pose_pred"] = torch.stack([torch.from_numpy(self.get_pred_pose(f)) for f in filename_no_ext])
+        return sample
 
 
 def convert_arr_to_tensor(v):

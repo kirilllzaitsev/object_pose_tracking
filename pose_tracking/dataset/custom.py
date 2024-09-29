@@ -18,6 +18,7 @@
 
 import glob
 import os
+from pathlib import Path
 
 import cv2
 import imageio
@@ -25,6 +26,7 @@ import numpy as np
 import torch
 import trimesh
 from pose_tracking.config import logger
+from pose_tracking.utils.io import load_pose
 from torch.utils.data import Dataset
 
 
@@ -85,3 +87,18 @@ class CustomDataset(Dataset):
     def load_mesh(self, mesh_path):
         mesh = trimesh.load(mesh_path, force="mesh")
         return mesh
+
+
+class CustomDatasetEval(CustomDataset):
+    def __init__(self, preds_path, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.preds_path = Path(preds_path)
+
+    def get_pred_pose(self, i):
+        pose = load_pose(self.preds_path / f"{self.id_strs[i]}.txt")
+        return pose
+
+    def __getitem__(self, i):
+        sample = super().__getitem__(i)
+        sample["pose_pred"] = self.get_pred_pose(i)
+        return sample
