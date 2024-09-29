@@ -23,9 +23,9 @@ import cv2
 import imageio
 import numpy as np
 import torch
+import trimesh
 from pose_tracking.config import logger
 from torch.utils.data import Dataset
-import trimesh
 
 
 class CustomDataset(Dataset):
@@ -66,7 +66,7 @@ class CustomDataset(Dataset):
             "rgb": rgb,
             "depth": depth,
             "rgb_path": path,
-            "intrinsic": torch.from_numpy(self.K).float(),
+            "intrinsics": torch.from_numpy(self.K).float(),
         }
 
         return sample

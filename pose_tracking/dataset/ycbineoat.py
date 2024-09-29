@@ -9,6 +9,7 @@ import trimesh
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
 from pose_tracking.utils.geom import backproj_depth
+from pose_tracking.utils.io import load_pose
 from torch.utils.data import Dataset
 
 
@@ -62,15 +63,13 @@ class YCBineoatDataset(Dataset):
         sample = {}
 
         if self.include_rgb:
-            sample["color"] = self.get_color(i)
+            sample["rgb"] = self.get_color(i)
         if self.include_mask:
             sample["mask"] = self.get_mask(i)
         if self.include_depth:
             sample["depth"] = self.get_depth(i)
         if self.include_xyz_map:
             sample["xyz_map"] = self.get_xyz_map(i)
-        if self.include_occ_mask:
-            sample["occ_mask"] = self.get_occ_mask(i)
         if self.include_gt_pose:
             sample["pose"] = self.get_gt_pose(i)
         sample["intrinsics"] = self.K
@@ -96,6 +95,7 @@ class YCBineoatDataset(Dataset):
         return xyz_map
 
     def get_occ_mask(self, i):
+        # these files are not present in the dataset
         hand_mask_file = self.color_files[i].replace("rgb", "masks_hand")
         occ_mask = np.zeros((self.h, self.w), dtype=bool)
         if os.path.exists(hand_mask_file):
@@ -105,11 +105,11 @@ class YCBineoatDataset(Dataset):
         if os.path.exists(right_hand_mask_file):
             occ_mask = occ_mask | (cv2.imread(right_hand_mask_file, -1) > 0)
 
-        occ_mask = cv2.resize(occ_mask, (self.w, self.h), interpolation=cv2.INTER_NEAREST)
+        # occ_mask = cv2.resize(occ_mask.astype(np.uint8), (self.w, self.h), interpolation=cv2.INTER_NEAREST) > 0
 
         return occ_mask.astype(np.uint8)
 
-    def get_gt_mesh(self):
+    def get_mesh(self):
         assert self.ycb_meshes_dir is not None, "ycb_meshes_dir is not set"
         ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
         mesh = trimesh.load(f"{self.ycb_meshes_dir}/{ob_name}/textured_simple.obj")
@@ -125,7 +125,7 @@ class YCBineoatDatasetBenchmark(YCBineoatDataset):
         self.preds_path = Path(preds_path)
 
     def get_pred_pose(self, i):
-        pose = np.loadtxt(self.preds_path / f"{self.id_strs[i]}.txt").reshape(4, 4)
+        pose = load_pose(self.preds_path / f"{self.id_strs[i]}.txt")
         return pose
 
     def __getitem__(self, i):
@@ -134,8 +134,10 @@ class YCBineoatDatasetBenchmark(YCBineoatDataset):
         return sample
 
 
-def get_depth(path, wh=None, zfar=np.inf):
-    depth = cv2.imread(path, -1) / 1e3
+def get_depth(path, wh=None, zfar=np.inf, do_convert_to_m=True):
+    depth = cv2.imread(path, -1)
+    if do_convert_to_m:
+        depth = depth.astype(np.float32) / 1e3
     if wh is not None:
         depth = resize_img(depth, wh=wh)
     depth[(depth < 0.001) | (depth >= zfar)] = 0

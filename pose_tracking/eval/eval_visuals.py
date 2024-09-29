@@ -20,7 +20,7 @@ from tqdm import tqdm
 def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
 
     for obj_name in tqdm(obj_names, desc="Object"):
-        preds_path = get_preds_path_benchmark(model_name, obj_name)
+        preds_path = get_preds_path_benchmark(model_name, obj_name, ds_name=ds_name)
         logger.info(f"Creating video for {obj_name} with model {model_name}")
         logger.info(f"{preds_path=}")
         scene_dir = f"{YCBINEOAT_SCENE_DIR}/{obj_name}"
@@ -35,7 +35,7 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
             include_mask=False,
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
-        model = ds.get_gt_mesh()
+        model = ds.get_mesh()
         bbox = model.bounding_box.vertices
         rgbs = []
         intrinsics = []
@@ -43,7 +43,7 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
         fps = 20
         num_seconds = 20
         for sample_idx, sample in enumerate(ds):
-            rgbs.append(sample["color"])
+            rgbs.append(sample["rgb"])
             intrinsics.append(sample["intrinsics"])
             poses_obj.append(sample["pose"])
             if sample_idx == fps * num_seconds:

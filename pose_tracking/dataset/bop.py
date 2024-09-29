@@ -100,7 +100,7 @@ class BOPDataset(Dataset):
             frame_idx = seq_start + ts * self.step_skip
             sample = traj[frame_idx].to_dict(orient="list")
             sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
-            sample["intrinsic"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
+            sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
 
             if self.include_rgb:
                 rgb = load_bop_rgb(sample["rgb_path"][0])
@@ -140,7 +140,7 @@ class BOPDataset(Dataset):
             for k in [
                 "rgb_path",
                 "depth_path",
-                "intrinsic",
+                "intrinsics",
             ]:
                 sample_traj_seq[k].append(sample[k][0])
 
