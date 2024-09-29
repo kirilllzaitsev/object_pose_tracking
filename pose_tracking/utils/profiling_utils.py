@@ -77,7 +77,8 @@ def profile_func(func, save_path, *args, **kwargs):
             import pyperclip
             pyperclip.copy(msg)
         except ImportError:
-            print(msg)
+            pass
+        print(msg)
 
 
 if __name__ == "__main__":

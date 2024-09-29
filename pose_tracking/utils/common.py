@@ -35,3 +35,10 @@ def cast_to_numpy(arr):
         if isinstance(arr[0], torch.Tensor):
             arr = [cast_to_numpy(a) for a in arr]
     return arr
+
+
+def convert_arr_to_tensor(v):
+    if isinstance(v[0], np.ndarray):
+        v = [torch.from_numpy(x) for x in v]
+    v_tensor = torch.stack(v)
+    return v_tensor

@@ -69,9 +69,56 @@ def read_preds(pred_dir):
 
 
 def load_pose(path):
+    path = str(path)
     if path.endswith(".npy"):
         return np.load(path)
     elif path.endswith(".txt"):
         return np.loadtxt(path).reshape(4, 4)
     else:
         raise ValueError(f"Unknown pose format: {path}")
+
+
+def load_depth_(path):
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+
+
+def load_mask_(path):
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+
+def load_rgb_(path):
+    return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
+
+
+def load_depth(path, wh=None, zfar=np.inf, do_convert_to_m=True):
+    depth = load_depth_(path)
+    if do_convert_to_m:
+        depth = depth.astype(np.float32) / 1e3
+    if wh is not None:
+        depth = resize_img(depth, wh=wh)
+    depth[(depth < 0.001) | (depth >= zfar)] = 0
+    return depth
+
+
+def resize_img(depth, wh):
+    return cv2.resize(depth, (wh[0], wh[1]), interpolation=cv2.INTER_NEAREST)
+
+
+def load_color(path, wh=None):
+    color = load_rgb_(path)
+    if wh is not None:
+        color = resize_img(color, wh=wh)
+    return color
+
+
+def load_mask(path, wh=None):
+    mask = load_mask_(path)
+    if len(mask.shape) == 3:
+        for c in range(3):
+            if mask[..., c].sum() > 0:
+                mask = mask[..., c]
+                break
+    if wh is not None:
+        mask = resize_img(mask, wh=wh)
+    mask = mask.astype(bool).astype(np.uint8)
+    return mask
