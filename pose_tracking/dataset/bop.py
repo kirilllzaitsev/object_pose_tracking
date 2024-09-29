@@ -8,7 +8,8 @@ import torch
 from PIL import Image
 from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
-from pose_tracking.utils.io import load_pose
+from pose_tracking.utils.common import convert_arr_to_tensor
+from pose_tracking.utils.io import load_depth, load_mask, load_pose, load_rgb
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -104,20 +105,20 @@ class BOPDataset(Dataset):
             sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
 
             if self.include_rgb:
-                rgb = load_bop_rgb(sample["rgb_path"][0])
+                rgb = load_rgb(sample["rgb_path"][0])
                 rgb = rgb.astype(np.float32)
                 rgb /= 255.0
                 rgb = torch.from_numpy(rgb).permute(2, 0, 1)
                 sample["rgb"] = rgb
 
             if self.include_depth:
-                depth = load_bop_depth(sample["depth_path"][0])
+                depth = load_depth(sample["depth_path"][0])
                 sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
                 sample_traj_seq["depth"].append(sample["depth"])
 
             if self.include_masks:
-                masks = np.array([load_bop_mask(p) for p in sample["mask_path"]])
-                masks_visib = np.array([load_bop_mask(p) for p in sample["mask_visib_path"]])
+                masks = np.array([load_mask(p) for p in sample["mask_path"]])
+                masks_visib = np.array([load_mask(p) for p in sample["mask_visib_path"]])
                 sample["mask"] = masks.astype(float) / 255.0
                 sample["mask_visib"] = masks_visib.astype(float) / 255.0
 
@@ -170,7 +171,7 @@ class BOPDatasetBenchmark(BOPDataset):
     ):
         kwargs["include_rgb"] = False
         kwargs["include_depth"] = False
-        kwargs["include_mask"] = False
+        kwargs["include_masks"] = False
         super().__init__(*args, **kwargs)
 
 
@@ -178,7 +179,7 @@ class BOPDatasetEval(BOPDataset):
     def __init__(self, preds_path, *args, **kwargs):
         kwargs["include_rgb"] = True
         kwargs["include_depth"] = True
-        kwargs["include_mask"] = True
+        kwargs["include_masks"] = True
         super().__init__(*args, **kwargs)
         self.preds_path = Path(preds_path)
 
@@ -189,27 +190,8 @@ class BOPDatasetEval(BOPDataset):
     def __getitem__(self, i):
         sample = super().__getitem__(i)
         filename_no_ext = [f"{Path(p).stem}" for p in sample["rgb_path"]]
-        sample["pose_pred"] = torch.stack([torch.from_numpy(self.get_pred_pose(f)) for f in filename_no_ext])
+        sample["pose_pred"] = convert_arr_to_tensor([self.get_pred_pose(f) for f in filename_no_ext])
         return sample
-
-
-def convert_arr_to_tensor(v):
-    if isinstance(v[0], np.ndarray):
-        v = [torch.from_numpy(x) for x in v]
-    v_tensor = torch.stack(v)
-    return v_tensor
-
-
-def load_bop_depth(path):
-    return cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
-
-
-def load_bop_mask(path):
-    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
-
-
-def load_bop_rgb(path):
-    return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 
 
 def load_keyframes(path):

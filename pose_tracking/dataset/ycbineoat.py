@@ -6,10 +6,11 @@ import cv2
 import imageio
 import numpy as np
 import trimesh
+from bop_toolkit_lib.inout import load_depth
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
 from pose_tracking.utils.geom import backproj_depth
-from pose_tracking.utils.io import load_pose
+from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from torch.utils.data import Dataset
 
 
@@ -81,13 +82,13 @@ class YCBineoatDataset(Dataset):
         return pose
 
     def get_color(self, i):
-        return get_color(self.color_files[i], wh=(self.w, self.h))
+        return load_color(self.color_files[i], wh=(self.w, self.h))
 
     def get_mask(self, i):
-        return get_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
+        return load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
 
     def get_depth(self, i):
-        return get_depth(self.color_files[i].replace("rgb", "depth"), wh=(self.w, self.h), zfar=self.zfar)
+        return load_depth(self.color_files[i].replace("rgb", "depth"), wh=(self.w, self.h), zfar=self.zfar)
 
     def get_xyz_map(self, i):
         depth = self.get_depth(i)
@@ -132,37 +133,3 @@ class YCBineoatDatasetBenchmark(YCBineoatDataset):
         sample = super().__getitem__(i)
         sample["pose_pred"] = self.get_pred_pose(i)
         return sample
-
-
-def get_depth(path, wh=None, zfar=np.inf, do_convert_to_m=True):
-    depth = cv2.imread(path, -1)
-    if do_convert_to_m:
-        depth = depth.astype(np.float32) / 1e3
-    if wh is not None:
-        depth = resize_img(depth, wh=wh)
-    depth[(depth < 0.001) | (depth >= zfar)] = 0
-    return depth
-
-
-def resize_img(depth, wh):
-    return cv2.resize(depth, (wh[0], wh[1]), interpolation=cv2.INTER_NEAREST)
-
-
-def get_color(path, wh=None):
-    color = imageio.imread(path)[..., :3]
-    if wh is not None:
-        color = resize_img(color, wh=wh)
-    return color
-
-
-def get_mask(path, wh=None):
-    mask = cv2.imread(path, -1)
-    if len(mask.shape) == 3:
-        for c in range(3):
-            if mask[..., c].sum() > 0:
-                mask = mask[..., c]
-                break
-    if wh is not None:
-        mask = resize_img(mask, wh=wh)
-    mask = mask.astype(bool).astype(np.uint8)
-    return mask

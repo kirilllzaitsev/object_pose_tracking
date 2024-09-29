@@ -5,6 +5,7 @@ import re
 import cv2
 import imageio
 import numpy as np
+from pose_tracking.utils.io import load_rgb_
 import torch
 from pose_tracking.config import logger
 from torch.utils.data import Dataset
@@ -43,7 +44,7 @@ class BCOTDataset(Dataset):
         return sample
 
     def get_color(self, i):
-        color = imageio.imread(self.color_files[i])[..., :3]
+        color = load_rgb_(self.color_files[i])
         return color
 
     def parse_intrinsics(self, path):
