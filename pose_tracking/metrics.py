@@ -116,7 +116,7 @@ def calc_auc(errs, max_val=0.1, step=0.001):
     }
 
 
-def calc_rt_errors(rt1, rt2, handle_visibility, class_name):
+def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
     """Calculate rotation and translation errors between two poses.
     Can handle symmetries in Linemod objects.
     """

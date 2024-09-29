@@ -147,9 +147,13 @@ def draw_2d_bbox_pil(img_PIL, bbox, color="red", width=3):
     return img_PIL
 
 
-def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color, kpts0=None, kpts1=None, text=[], dpi=75, path=None):
+def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=None, text=[], dpi=75, path=None):
     # draw image pair
     assert mkpts0.shape[0] == mkpts1.shape[0], f"mkpts0: {mkpts0.shape[0]} v.s. mkpts1: {mkpts1.shape[0]}"
+    mkpts0 = cast_to_numpy(mkpts0)
+    mkpts1 = cast_to_numpy(mkpts1)
+    if color is None:
+        color = np.random.rand(len(mkpts0), 3)
     fig, axes = plt.subplots(1, 2, figsize=(10, 6), dpi=dpi)
     axes[0].imshow(img0, cmap="gray")
     axes[1].imshow(img1, cmap="gray")

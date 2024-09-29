@@ -10,7 +10,7 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 def get_sam_predictor():
-    sam_base = Path(f"{WORKSPACE_DIR}/segment-anything-2")
+    sam_base = Path(f"{WORKSPACE_DIR}/related_work/segment-anything-2")
     checkpoint = sam_base / "./checkpoints/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"
     predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
