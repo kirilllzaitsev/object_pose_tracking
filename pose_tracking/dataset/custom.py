@@ -26,14 +26,15 @@ import numpy as np
 import torch
 import trimesh
 from pose_tracking.config import logger
-from pose_tracking.utils.io import load_color, load_depth, load_pose
+from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from torch.utils.data import Dataset
 
 
 class CustomDataset(Dataset):
-    def __init__(self, root_dir, zfar=np.inf, transforms=None, mesh_path=None):
+    def __init__(self, root_dir, include_masks=False, zfar=np.inf, transforms=None, mesh_path=None):
         self.root_dir = root_dir
         self.transforms = transforms
+        self.include_masks = include_masks
         self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
         self.K = np.loadtxt(f"{self.root_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
@@ -70,6 +71,10 @@ class CustomDataset(Dataset):
             "rgb_path": path,
             "intrinsics": torch.from_numpy(self.K).float(),
         }
+
+        if self.include_masks:
+            mask = load_mask(path.replace("rgb/", "masks/"))
+            sample["mask"] = torch.from_numpy(mask).float()
 
         return sample
 
