@@ -2,6 +2,7 @@ import argparse
 import os
 import pickle
 import shutil
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,14 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
-from pose_tracking.config import DATA_DIR, PROJ_DIR, WORKSPACE_DIR, logger
+from pose_tracking.config import (
+    ARTIFACTS_DIR,
+    DATA_DIR,
+    PROJ_DIR,
+    WORKSPACE_DIR,
+    log_exception,
+    prepare_logger,
+)
 from pose_tracking.dataset.bop import BOPDataset
 from pose_tracking.losses import geodesic_loss
 from pose_tracking.utils.common import print_args
@@ -25,6 +33,7 @@ from pose_tracking.utils.rotation_conversions import (
 )
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, models, transforms
 from tqdm.auto import tqdm
 
@@ -34,17 +43,23 @@ matplotlib.use("TKAgg")
 def parse_args():
     parser = argparse.ArgumentParser()
 
+    pipe_args = parser.add_argument_group("Training arguments")
+
+    pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
+    pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
+    pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
+    pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
+    pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
+
     train_args = parser.add_argument_group("Training arguments")
-    train_args.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    train_args.add_argument("--validate_every", type=int, default=5, help="Validate every N epochs")
-    train_args.add_argument("--save_every", type=int, default=10, help="Save model every N epochs")
+    train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
+    train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
+    train_args.add_argument("--save_epoch_freq", type=int, default=10, help="Save model every N epochs")
     train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
     train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
-    train_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
-    train_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
 
     return parser.parse_args()
 
@@ -161,8 +176,6 @@ class SceneDataset(torch.utils.data.Dataset):
         mask = self.scene["mask"][idx][obj_idx]
         rgb_path = self.scene["rgb_path"][idx]
 
-        # rgb = (rgb * mask).float()
-
         if self.transform:
             rgb = self.transform(rgb)
             mask = self.transform(mask)
@@ -211,6 +224,22 @@ def main():
     else:
         is_main_process = True
 
+    now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    logdir = f"{ARTIFACTS_DIR}/{args.exp_name}_{now}"
+    writer = SummaryWriter(log_dir=logdir)
+    preds_base_dir = f"{logdir}/preds"
+    preds_dir = Path(preds_base_dir) / now
+    preds_dir.mkdir(parents=True, exist_ok=True)
+    model_path = preds_dir / "model.pth"
+
+    if is_main_process:
+        logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
+        sys.excepthook = log_exception
+    else:
+        logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
+        logger.remove()
+    logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
+
     model = PoseCNN().to(device)
     logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
@@ -221,7 +250,7 @@ def main():
     criterion_rot = geodesic_loss
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.epochs // 1, gamma=0.5, verbose=False)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
     transform = transforms.Compose([])
 
@@ -259,13 +288,6 @@ def main():
 
     logger.info(f"{len(train_dataset)=}")
 
-    preds_base_dir = f"{WORKSPACE_DIR}/preds"
-    now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    preds_dir = Path(preds_base_dir) / now
-    preds_dir.mkdir(parents=True, exist_ok=True)
-    model_path = preds_dir / "model.pth"
-
-    collate_fn = None
     collate_fn = custom_collate_fn
     if args.ddp:
         train_sampler = DistributedSampler(train_dataset)
@@ -286,7 +308,7 @@ def main():
 
     history = defaultdict(lambda: defaultdict(list))
 
-    for epoch in tqdm(range(1, args.epochs + 1), desc="Epochs"):
+    for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
@@ -323,10 +345,10 @@ def main():
             history["train"][k].append(running_loss)
 
         lr_scheduler.step()
-        if epoch % args.save_every == 0:
+        if epoch % args.save_epoch_freq == 0:
             save_model(model, model_path)
 
-        if epoch % args.validate_every == 0 and not args.do_overfit:
+        if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
             val_loss = 0.0
             with torch.no_grad():
@@ -357,7 +379,7 @@ def main():
                     break
 
     if args.do_debug:
-        shutil.rmtree(preds_dir)
+        shutil.rmtree(logdir)
         return
 
     save_model(model, model_path)
