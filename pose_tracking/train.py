@@ -34,23 +34,17 @@ matplotlib.use("TKAgg")
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    pipe_args = parser.add_argument_group("Training arguments")
-
-    pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
-    pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
-    pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
-    pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
-    pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
-
     train_args = parser.add_argument_group("Training arguments")
-    train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
-    train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
-    train_args.add_argument("--save_epoch_freq", type=int, default=10, help="Save model every N epochs")
+    train_args.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
+    train_args.add_argument("--validate_every", type=int, default=5, help="Validate every N epochs")
+    train_args.add_argument("--save_every", type=int, default=10, help="Save model every N epochs")
     train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
     train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
+    train_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
+    train_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
 
     return parser.parse_args()
 
@@ -191,7 +185,6 @@ class SceneDataset(torch.utils.data.Dataset):
 
 
 def main():
-    logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
     args = parse_args()
     args = postprocess_args(args)
     print_args(args)
@@ -201,10 +194,22 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if args.ddp:
+        rank = int(os.environ.get("SLURM_PROCID", 0))
+        world_size = int(os.environ.get("SLURM_NTASKS", 1))
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
-        dist.init_process_group(backend="nccl")
-        torch.cuda.set_device(args.local_rank)
-        device = torch.device("cuda", args.local_rank)
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = "localhost"
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = str(np.random.randint(20000, 30000))
+
+        dist.init_process_group(backend="nccl", init_method="env://", world_size=world_size, rank=rank)
+        torch.cuda.set_device(local_rank)
+        device = torch.device("cuda", local_rank)
+
+        is_main_process = rank == 0
+    else:
+        is_main_process = True
 
     model = PoseCNN().to(device)
     logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
