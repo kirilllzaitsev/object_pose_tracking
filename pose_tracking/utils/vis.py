@@ -121,7 +121,9 @@ def draw_poses_on_video(
     num_frames = len(rgbs) if take_n is None else take_n
     for frame_idx in tqdm(range(num_frames), desc="Frame"):
         rgb = adjust_img_for_plt(rgbs[frame_idx])
-        intrinsic = cast_to_numpy(intrinsics[frame_idx] if len(intrinsics.shape) == 3 else intrinsics)
+        intrinsic = cast_to_numpy(
+            intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
+        )
         pose = cast_to_numpy(poses_pred[frame_idx])
         final_frame = draw_xyz_axis(rgb, scale=scale, K=intrinsic, rt=pose, is_input_rgb=True)
         if bbox is not None:

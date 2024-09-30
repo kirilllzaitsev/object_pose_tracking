@@ -28,9 +28,11 @@ def adjust_img_for_plt(img):
     return img
 
 
-def cast_to_numpy(arr):
+def cast_to_numpy(arr, dtype=None):
     if isinstance(arr, torch.Tensor):
         arr = arr.detach().cpu().numpy()
+    if dtype is not None:
+        arr = arr.astype(dtype)
     else:
         if isinstance(arr[0], torch.Tensor):
             arr = [cast_to_numpy(a) for a in arr]

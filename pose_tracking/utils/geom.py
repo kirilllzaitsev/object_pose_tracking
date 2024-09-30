@@ -218,3 +218,20 @@ def render_pts_to_image(cvImg, meshPts, K, openCV_obj_pose, color):
     cvImg[v, u] = color
 
     return cvImg
+
+
+def backproj_2d_pts(pts, K, depth):
+    """
+    Backproject 2D points to 3D points
+    Args:
+        pts: (N, 2) or (2, N)
+        K: 3x3 camera intrinsic matrix
+        depth: 1D depth values
+    """
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    if pts.shape[1] != 2:
+        pts = pts.T
+    pts = np.hstack((pts, np.ones((pts.shape[0], 1))))
+    pts = pts * depth.reshape(-1, 1)
+    pts = np.linalg.inv(K) @ pts.T
+    return pts.T
