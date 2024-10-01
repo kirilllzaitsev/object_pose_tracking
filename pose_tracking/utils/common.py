@@ -28,6 +28,13 @@ def adjust_img_for_plt(img):
     return img
 
 
+def adjust_depth_for_plt(img):
+    img = cast_to_numpy(img)
+    if img.shape[0] == 1:
+        img = img.transpose(1, 2, 0)
+    return img
+
+
 def cast_to_numpy(arr, dtype=None):
     if isinstance(arr, torch.Tensor):
         arr = arr.detach().cpu().numpy()

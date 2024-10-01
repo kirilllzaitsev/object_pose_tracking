@@ -3,6 +3,7 @@ https://github.com/nv-nguyen/gigapose/blob/main/src/libVis/numpy.py#L137
 https://github.com/NVlabs/FoundationPose/blob/main/Utils.py#L723
 """
 
+from base64 import b64encode
 import copy
 import os
 
@@ -13,7 +14,12 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image, ImageDraw
-from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, create_dir
+from pose_tracking.utils.common import (
+    adjust_depth_for_plt,
+    adjust_img_for_plt,
+    cast_to_numpy,
+    create_dir,
+)
 from pose_tracking.utils.geom import project_3d_to_2d, to_homo
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
@@ -121,9 +127,7 @@ def draw_poses_on_video(
     num_frames = len(rgbs) if take_n is None else take_n
     for frame_idx in tqdm(range(num_frames), desc="Frame"):
         rgb = adjust_img_for_plt(rgbs[frame_idx])
-        intrinsic = cast_to_numpy(
-            intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
-        )
+        intrinsic = cast_to_numpy(intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics)
         pose = cast_to_numpy(poses_pred[frame_idx])
         final_frame = draw_xyz_axis(rgb, scale=scale, K=intrinsic, rt=pose, is_input_rgb=True)
         if bbox is not None:
@@ -320,6 +324,8 @@ def get_cmap(np_img):
 def plot_rgb_depth(color, depth, axs=None):
     if axs is None:
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    color = adjust_img_for_plt(color)
+    depth = adjust_depth_for_plt(depth)
     axs[0].imshow(color)
     im = axs[1].imshow(depth, cmap="jet")
     plt.colorbar(im, ax=axs[1])
@@ -351,3 +357,10 @@ def fix_mp4_encoding(video_path):
     os.system(f"ffmpeg -i {video_path} -r 30 {tmp_path} >/dev/null 2>&1")
     os.system(f"mv {tmp_path} {video_path}")
     print("Changed video encoding to h264")
+
+
+def show_video(video_path):
+    from IPython.display import HTML
+    video_file = open(video_path, "r+b").read()
+    video_url = f"data:video/mp4;base64,{b64encode(video_file).decode()}"
+    return HTML(f"""<video width="640" height="480" autoplay loop controls><source src="{video_url}"></video>""")
