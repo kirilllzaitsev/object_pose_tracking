@@ -237,3 +237,21 @@ def geodesic_numpy(R1, R2):
     theta = (np.trace(R2.dot(R1.T)) - 1) / 2
     theta = np.clip(theta, -1, 1)
     return np.degrees(np.arccos(theta))
+
+
+def relative_pose_error(T_0to1, R, t, ignore_gt_t_thr=0.0):
+    # angle error between 2 vectors
+    t_gt = T_0to1[:3, 3]
+    n = np.linalg.norm(t) * np.linalg.norm(t_gt)
+    t_err = np.rad2deg(np.arccos(np.clip(np.dot(t, t_gt) / n, -1.0, 1.0)))
+    t_err = np.minimum(t_err, 180 - t_err)  # handle E ambiguity
+    if np.linalg.norm(t_gt) < ignore_gt_t_thr:  # pure rotation is challenging
+        t_err = 0
+
+    # angle error between 2 rotation matrices
+    R_gt = T_0to1[:3, :3]
+    cos = (np.trace(np.dot(R.T, R_gt)) - 1) / 2
+    cos = np.clip(cos, -1.0, 1.0)  # handle numercial errors
+    R_err = np.rad2deg(np.abs(np.arccos(cos)))
+
+    return t_err, R_err
