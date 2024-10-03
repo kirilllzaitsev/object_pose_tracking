@@ -56,7 +56,7 @@ def AABB_to_OBB(AABB):
     return corners
 
 
-def load_mesh(path, ORIGIN_GEOMETRY="BOUNDS", return_origin_bounds=False):
+def load_mesh_bounds(path, ORIGIN_GEOMETRY="BOUNDS", return_origin_bounds=False):
     mesh = as_mesh(trimesh.load(path))
     if ORIGIN_GEOMETRY == "BOUNDS":
         AABB = mesh.bounds
@@ -68,6 +68,17 @@ def load_mesh(path, ORIGIN_GEOMETRY="BOUNDS", return_origin_bounds=False):
         return mesh
 
 
+def load_mesh(mesh_path, ext=None):
+    if ext is None:
+        ext = mesh_path.split(".")[-1]
+    mesh = trimesh.load(open(mesh_path, "rb"), file_type=ext, force="mesh")
+    bbox = mesh.bounding_box.vertices
+    return {
+        "mesh": mesh,
+        "bbox": bbox,
+    }
+
+
 def get_bbox_from_mesh(mesh):
     AABB = mesh.bounds
     OBB = AABB_to_OBB(AABB)
@@ -75,7 +86,7 @@ def get_bbox_from_mesh(mesh):
 
 
 def get_obj_origin_and_diameter(mesh_path):
-    mesh, center = load_mesh(mesh_path, return_origin_bounds=True)
+    mesh, center = load_mesh_bounds(mesh_path, return_origin_bounds=True)
     extents = mesh.extents * 2
     return np.linalg.norm(extents), center
 
@@ -118,8 +129,6 @@ def compute_mesh_diameter(mesh):
     pts = u @ s
     diameter = np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))
     return float(diameter)
-
-
 
 
 def add_colored_texture_to_mesh(mesh, color=np.array([255, 255, 255]), resolution=5):
