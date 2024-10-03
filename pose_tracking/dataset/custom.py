@@ -27,6 +27,7 @@ import torch
 import trimesh
 from pose_tracking.config import logger
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
+from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 
 
@@ -46,7 +47,9 @@ class CustomDataset(Dataset):
         self.zfar = zfar
         self.mesh_path = mesh_path
         if mesh_path is not None:
-            self.mesh = self.load_mesh(mesh_path)
+            load_res = load_mesh(mesh_path)
+            self.mesh = load_res["mesh"]
+            self.mesh_bbox = load_res["bbox"]
 
     def __len__(self):
         return len(self.color_files)
@@ -85,16 +88,6 @@ class CustomDataset(Dataset):
     def get_depth(self, i):
         depth = load_depth(self.color_files[i].replace("rgb/", "depth/"), wh=(self.W, self.H), zfar=self.zfar) / 1e3
         return depth
-
-    def load_mesh(self, mesh_path, ext=None):
-        if ext is None:
-            ext = mesh_path.split(".")[-1]
-        mesh = trimesh.load(open(mesh_path, "rb"), file_type=ext, force="mesh")
-        bbox = mesh.bounding_box.vertices
-        return {
-            "mesh": mesh,
-            "bbox": bbox,
-        }
 
 
 class CustomDatasetEval(CustomDataset):

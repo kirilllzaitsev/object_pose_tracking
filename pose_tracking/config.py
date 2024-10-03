@@ -16,7 +16,7 @@ ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"
 YCBINEOAT_SCENE_DIR = DATA_DIR / "ycbineoat"
 
-YCB_MESHES_DIR = f"{DATA_DIR}/ycb/models_bt"
+YCB_MESHES_DIR = DATA_DIR / "ycb/models_bt"
 
 
 def prepare_logger(logpath=None, level="INFO"):

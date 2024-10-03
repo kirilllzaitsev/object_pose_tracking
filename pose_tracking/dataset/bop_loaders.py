@@ -8,7 +8,7 @@ import pandas as pd
 from pose_tracking.config import logger
 from pose_tracking.utils.io import load_json
 from pose_tracking.utils.pose import combine_R_and_T
-from pose_tracking.utils.trimesh_utils import load_mesh
+from pose_tracking.utils.trimesh_utils import load_mesh, load_mesh_bounds
 from tqdm import tqdm
 
 
@@ -188,7 +188,7 @@ def load_cad(cad_dir):
         cad_id = int(cad_name.split(".")[0].replace("obj_", ""))
         cad_path = osp.join(cad_dir, cad_name)
         if os.path.exists(cad_path):
-            mesh = load_mesh(cad_path)
+            mesh = load_mesh_bounds(cad_path)
         else:
             logger.warning("CAD model unavailable")
             mesh = None

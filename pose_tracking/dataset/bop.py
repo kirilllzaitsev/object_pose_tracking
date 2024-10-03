@@ -9,7 +9,7 @@ from PIL import Image
 from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
 from pose_tracking.utils.common import convert_arr_to_tensor
-from pose_tracking.utils.io import load_depth, load_mask, load_pose, load_rgb
+from pose_tracking.utils.io import load_depth, load_mask, load_pose, load_color
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -105,7 +105,7 @@ class BOPDataset(Dataset):
             sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
 
             if self.include_rgb:
-                rgb = load_rgb(sample["rgb_path"][0])
+                rgb = load_color(sample["rgb_path"][0])
                 rgb = rgb.astype(np.float32)
                 rgb /= 255.0
                 rgb = torch.from_numpy(rgb).permute(2, 0, 1)
