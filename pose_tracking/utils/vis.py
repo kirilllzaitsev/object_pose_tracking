@@ -3,9 +3,9 @@ https://github.com/nv-nguyen/gigapose/blob/main/src/libVis/numpy.py#L137
 https://github.com/NVlabs/FoundationPose/blob/main/Utils.py#L723
 """
 
-from base64 import b64encode
 import copy
 import os
+from base64 import b64encode
 
 import cv2
 import matplotlib
@@ -26,7 +26,7 @@ from skimage.morphology import binary_dilation
 from tqdm.auto import tqdm
 
 
-def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=3, transparency=0, is_input_rgb=False):
+def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_rgb=False):
     """
     @color: BGR
     """
@@ -160,7 +160,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     mkpts1 = cast_to_numpy(mkpts1)
     if color is None:
         color = np.random.rand(len(mkpts0), 3)
-    fig, axes = plt.subplots(1, 2, figsize=(10, 6), dpi=dpi)
+    fig, axes = plt.subplots(1, 2, figsize=(15, 10), dpi=dpi)
     axes[0].imshow(img0, cmap="gray")
     axes[1].imshow(img1, cmap="gray")
     for i in range(2):  # clear all frames
@@ -272,8 +272,9 @@ def overlay_mask_on_rgb_contour(rgb, mask, gray=False, color=(255, 255, 0), alph
     return img
 
 
-def overlay_mask_on_rgb(rgb, mask, alpha=0.5):
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+def overlay_mask_on_rgb(rgb, mask, alpha=0.5, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     ax.imshow(rgb)
     ax.imshow(mask, alpha=alpha)
     return ax
@@ -361,6 +362,27 @@ def fix_mp4_encoding(video_path):
 
 def show_video(video_path):
     from IPython.display import HTML
+
     video_file = open(video_path, "r+b").read()
     video_url = f"data:video/mp4;base64,{b64encode(video_file).decode()}"
     return HTML(f"""<video width="640" height="480" autoplay loop controls><source src="{video_url}"></video>""")
+
+
+def vis_optical_flow(flow):
+    h, w = flow.shape[:2]
+    flow_magnitude, flow_angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+    hsv = np.zeros((h, w, 3), dtype=np.uint8)
+    hsv[..., 0] = flow_angle * 180 / np.pi / 2  # Angle of flow
+    hsv[..., 1] = 255  # Full saturation
+    hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)  # Magnitude of flow
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    plt.imshow(rgb)
+    return rgb
+
+
+def plot_tracks(video, pred_tracks, pred_visibility, name="queries"):
+    from cotracker.utils.visualizer import Visualizer, read_video_from_path
+
+    vis = Visualizer(save_dir="/tmp/videos", linewidth=6, mode="cool", tracks_leave_trace=-1)
+    vis.visualize(video=video[None], tracks=pred_tracks, visibility=pred_visibility, filename=name)
+    show_video(f"/tmp/videos/{name}.mp4")
