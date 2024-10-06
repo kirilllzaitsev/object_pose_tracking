@@ -2,18 +2,22 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from pose_tracking.config import WORKSPACE_DIR
 import torch
+from pose_tracking.config import WORKSPACE_DIR
 from pose_tracking.utils.vis import adjust_img_for_plt
-from sam2.build_sam import build_sam2
+from sam2.build_sam import build_sam2, build_sam2_video_predictor
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from sam2.sam2_video_predictor import SAM2VideoPredictor
 
 
-def get_sam_predictor():
+def get_sam_predictor(use_video=False):
     sam_base = Path(f"{WORKSPACE_DIR}/related_work/segment-anything-2")
     checkpoint = sam_base / "./checkpoints/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"
-    predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
+    if use_video:
+        predictor = build_sam2_video_predictor(model_cfg, checkpoint)
+    else:
+        predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
     return predictor
 
 

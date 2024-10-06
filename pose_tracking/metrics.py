@@ -121,11 +121,28 @@ def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
     Can handle symmetries in Linemod objects.
     """
 
-    R1 = rt1[:3, :3] / np.cbrt(np.linalg.det(rt1[:3, :3]))
     T1 = rt1[:3, 3]
-
-    R2 = rt2[:3, :3] / np.cbrt(np.linalg.det(rt2[:3, :3]))
     T2 = rt2[:3, 3]
+    rot2 = rt2[:3, :3]
+    rot1 = rt1[:3, :3]
+
+    theta = calc_r_error(rot2, rot1, handle_visibility=handle_visibility, class_name=class_name)
+    shift = calc_t_error(T1, T2)
+    result = {"r_err": theta, "t_err": shift}
+
+    deg_cm_errors = calc_n_deg_m_cm_errors(rt1, rt2)
+    result.update(deg_cm_errors)
+
+    return result
+
+
+def calc_t_error(T1, T2):
+    return np.linalg.norm(T1 - T2)
+
+
+def calc_r_error(rot2, rot1, handle_visibility=False, class_name=""):
+    R2 = rot2 / np.cbrt(np.linalg.det(rot2))
+    R1 = rot1 / np.cbrt(np.linalg.det(rot1))
 
     if class_name in ["bottle", "can", "bowl"]:
         y = np.array([0, 1, 0])
@@ -148,16 +165,11 @@ def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
         theta = np.arccos((np.trace(R) - 1) / 2)
 
     theta *= 180 / np.pi
-    shift = np.linalg.norm(T1 - T2)
-    result = {"r_err": theta, "t_err": shift}
-
-    deg_cm_errors = calc_n_deg_m_cm_errors(rt1, rt2)
-    result.update(deg_cm_errors)
-
-    return result
+    return theta
 
 
 def calc_n_deg_m_cm_errors(rt1, rt2):
+    # input translations are expected to be in mm
     r1 = rt1[:3, :3]
     r2 = rt2[:3, :3]
     t1 = rt1[:3, 3]

@@ -120,5 +120,5 @@ def load_mask(path, wh=None):
                 break
     if wh is not None:
         mask = resize_img(mask, wh=wh)
-    mask = mask.astype(bool).astype(np.uint8)
+    mask = mask.astype(bool)
     return mask
