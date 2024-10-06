@@ -26,6 +26,7 @@ import numpy as np
 import torch
 import trimesh
 from pose_tracking.config import logger
+from pose_tracking.dataset.ds_common import get_ds_sample
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
@@ -43,7 +44,7 @@ class CustomDataset(Dataset):
             id_str = os.path.basename(color_file).replace(".png", "")
             self.id_strs.append(id_str)
         self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
-        self.init_mask = cv2.imread(self.color_files[0].replace("rgb/", "masks/"), -1)
+        self.init_mask = load_mask(self.color_files[0].replace("rgb/", "masks/"))
         self.zfar = zfar
         self.mesh_path = mesh_path
         if mesh_path is not None:
@@ -55,29 +56,18 @@ class CustomDataset(Dataset):
         return len(self.color_files)
 
     def __getitem__(self, idx):
-        path = self.color_files[idx]
-        color = self.get_color(idx)
+        rgb_path = self.color_files[idx]
+        rgb = self.get_color(idx)
         depth_raw = self.get_depth(idx)
-        if self.transforms is None:
-            rgb = torch.from_numpy(color)
-        else:
-            sample = self.transforms(image=color)
-            rgb = sample["image"]
-
-        rgb = rgb.float() / 255.0
-
-        depth = torch.from_numpy(depth_raw).float()
-
-        sample = {
-            "rgb": rgb,
-            "depth": depth,
-            "rgb_path": path,
-            "intrinsics": torch.from_numpy(self.K).float(),
-        }
 
         if self.include_masks:
-            mask = load_mask(path.replace("rgb/", "masks/"))
-            sample["mask"] = torch.from_numpy(mask).float()
+            mask = load_mask(rgb_path.replace("rgb/", "masks/"))
+        else:
+            mask = None
+
+        sample = get_ds_sample(
+            rgb, depth_raw, rgb_path=rgb_path, mask=mask, intrinsics=self.K, transforms=self.transforms
+        )
 
         return sample
 

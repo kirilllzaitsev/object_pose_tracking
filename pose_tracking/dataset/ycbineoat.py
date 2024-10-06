@@ -5,6 +5,8 @@ from pathlib import Path
 import cv2
 import imageio
 import numpy as np
+from pose_tracking.dataset.ds_common import process_raw_sample
+from pose_tracking.utils.trimesh_utils import load_mesh
 import trimesh
 from bop_toolkit_lib.inout import load_depth
 from pose_tracking.config import logger
@@ -29,6 +31,7 @@ class YCBineoatDataset(Dataset):
         include_xyz_map=False,
         include_occ_mask=False,
         include_gt_pose=True,
+        transforms=None,
     ):
         self.video_dir = video_dir
         self.downscale = downscale
@@ -40,6 +43,7 @@ class YCBineoatDataset(Dataset):
         self.include_occ_mask = include_occ_mask
         self.include_gt_pose = include_gt_pose
         self.zfar = zfar
+        self.transforms = transforms
         self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
         self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
@@ -57,6 +61,13 @@ class YCBineoatDataset(Dataset):
 
         self.gt_pose_files = sorted(glob.glob(f"{self.video_dir}/annotated_poses/*"))
 
+        if ycb_meshes_dir is not None:
+            ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
+            mesh_path = f"{ycb_meshes_dir}/{ob_name}/textured_simple.obj"
+            load_res = load_mesh(mesh_path)
+            self.mesh = load_res["mesh"]
+            self.mesh_bbox = load_res["bbox"]
+
     def __len__(self):
         return len(self.color_files)
 
@@ -73,7 +84,11 @@ class YCBineoatDataset(Dataset):
             sample["xyz_map"] = self.get_xyz_map(i)
         if self.include_gt_pose:
             sample["pose"] = self.get_gt_pose(i)
+        sample["rgb_path"] = self.color_files[i]
+
         sample["intrinsics"] = self.K
+
+        sample = process_raw_sample(sample, transforms=self.transforms)
 
         return sample
 
@@ -96,7 +111,7 @@ class YCBineoatDataset(Dataset):
         return xyz_map
 
     def get_occ_mask(self, i):
-        # these files are not present in the dataset
+        # NOTE. these files are not present in the dataset
         hand_mask_file = self.color_files[i].replace("rgb", "masks_hand")
         occ_mask = np.zeros((self.h, self.w), dtype=bool)
         if os.path.exists(hand_mask_file):
@@ -109,12 +124,6 @@ class YCBineoatDataset(Dataset):
         # occ_mask = cv2.resize(occ_mask.astype(np.uint8), (self.w, self.h), interpolation=cv2.INTER_NEAREST) > 0
 
         return occ_mask.astype(np.uint8)
-
-    def get_mesh(self):
-        assert self.ycb_meshes_dir is not None, "ycb_meshes_dir is not set"
-        ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
-        mesh = trimesh.load(f"{self.ycb_meshes_dir}/{ob_name}/textured_simple.obj")
-        return mesh
 
     def get_video_name(self):
         return self.video_dir.split("/")[-1]
