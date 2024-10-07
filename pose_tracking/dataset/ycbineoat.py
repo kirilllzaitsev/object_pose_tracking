@@ -5,14 +5,14 @@ from pathlib import Path
 import cv2
 import imageio
 import numpy as np
-from pose_tracking.dataset.ds_common import process_raw_sample
-from pose_tracking.utils.trimesh_utils import load_mesh
 import trimesh
 from bop_toolkit_lib.inout import load_depth
 from pose_tracking.config import logger
+from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
 from pose_tracking.utils.geom import backproj_depth
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
+from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 
 
@@ -32,6 +32,7 @@ class YCBineoatDataset(Dataset):
         include_occ_mask=False,
         include_gt_pose=True,
         transforms=None,
+        start_frame_idx=0,
     ):
         self.video_dir = video_dir
         self.downscale = downscale
@@ -44,7 +45,9 @@ class YCBineoatDataset(Dataset):
         self.include_gt_pose = include_gt_pose
         self.zfar = zfar
         self.transforms = transforms
+
         self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
+
         self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
         for color_file in self.color_files:
@@ -60,6 +63,10 @@ class YCBineoatDataset(Dataset):
         self.K[:2] *= self.downscale
 
         self.gt_pose_files = sorted(glob.glob(f"{self.video_dir}/annotated_poses/*"))
+
+        self.color_files = self.color_files[start_frame_idx:]  # to bypass still frames
+        self.id_strs = self.id_strs[start_frame_idx:]
+        self.gt_pose_files = self.gt_pose_files[start_frame_idx:]
 
         if ycb_meshes_dir is not None:
             ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
