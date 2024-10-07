@@ -206,7 +206,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
         plt.savefig(str(path), bbox_inches="tight", pad_inches=0)
         plt.close()
     else:
-        return axes
+        return fig
 
 
 def plot_kpts_pil(img_PIL, points_2d, color="blue"):
@@ -341,6 +341,7 @@ def save_video(
     video_writer = cv2.VideoWriter(save_path, fourcc, fps, (frame_width, frame_height))
 
     for image in images:
+        image = cv2.resize(image, (frame_width, frame_height))
         video_writer.write(image)
         if live_preview:
             cv2.imshow("Video", image)
@@ -351,6 +352,17 @@ def save_video(
     cv2.destroyAllWindows()
     fix_mp4_encoding(save_path)
     print(f"Video saved as {save_path}")
+
+
+def save_folder_imgs_as_video(folder_path, save_path=None, **kwargs):
+    images = []
+    for file in sorted(os.listdir(folder_path)):
+        if file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg"):
+            img = cv2.imread(os.path.join(folder_path, file))
+            images.append(img)
+    if save_path is None:
+        save_path = os.path.join(folder_path, "video.mp4")
+    save_video(images, save_path, **kwargs)
 
 
 def fix_mp4_encoding(video_path):
@@ -385,4 +397,4 @@ def plot_tracks(video, pred_tracks, pred_visibility, name="queries"):
 
     vis = Visualizer(save_dir="/tmp/videos", linewidth=6, mode="cool", tracks_leave_trace=-1)
     vis.visualize(video=video[None], tracks=pred_tracks, visibility=pred_visibility, filename=name)
-    show_video(f"/tmp/videos/{name}.mp4")
+    return show_video(f"{name}.mp4")

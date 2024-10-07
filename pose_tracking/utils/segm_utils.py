@@ -20,17 +20,6 @@ def show_mask(mask, ax, random_color=False, borders=True):
     ax.imshow(mask_image)
 
 
-def show_points(coords, labels, ax, marker_size=375):
-    pos_points = coords[labels == 1]
-    neg_points = coords[labels == 0]
-    ax.scatter(
-        pos_points[:, 0], pos_points[:, 1], color="green", marker="*", s=marker_size, edgecolor="white", linewidth=1.25
-    )
-    ax.scatter(
-        neg_points[:, 0], neg_points[:, 1], color="red", marker="*", s=marker_size, edgecolor="white", linewidth=1.25
-    )
-
-
 def show_2d_bbox(bbox, ax):
     x0, y0 = bbox[0], bbox[1]
     w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -52,3 +41,16 @@ def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_l
             plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
         plt.axis("off")
         plt.show()
+
+
+def convert_mask_to_xyxy_box(mask, offset=20):
+    h, w = mask.shape
+    y, x = np.where(mask)
+    x1, y1 = x.min(), y.min()
+    x2, y2 = x.max(), y.max()
+    x1 = max(0, x1 - offset)
+    y1 = max(0, y1 - offset)
+    x2 = min(w, x2 + offset)
+    y2 = min(h, y2 + offset)
+    crop_bbox = [int(x1), int(y1), int(x2), int(y2)]
+    return crop_bbox
