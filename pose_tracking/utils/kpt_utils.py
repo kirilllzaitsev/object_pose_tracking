@@ -1,13 +1,26 @@
+import time
+
 import cv2
 import numpy as np
+import torch
 from pose_tracking.utils.common import cast_to_numpy
 from skimage.measure import ransac
 from skimage.transform import FundamentalMatrixTransform
 
+try:
+    from lightglue.utils import load_image, rbd
+except ImportError:
+    print("lightglue not installed, some funcs not available")
+
+
+def is_torch(x):
+    return isinstance(x, torch.Tensor)
+
 
 def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=1000):
-    src_pts = mkpts0
-    dst_pts = mkpts1
+    use_torch = is_torch(mkpts0)
+    src_pts = cast_to_numpy(mkpts0)
+    dst_pts = cast_to_numpy(mkpts1)
     model, inliers = ransac(
         (src_pts, dst_pts),
         FundamentalMatrixTransform,
@@ -16,10 +29,15 @@ def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=
         max_trials=max_trials,
     )
     inliers = inliers.astype(bool)
+    if use_torch:
+        inliers = torch.from_numpy(inliers).to(mkpts0.device)
     return inliers
 
 
-def get_pose_from_matches(mkpts0, mkpts1, camera_matrix):
+def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0):
+    if len(mkpts0) < 5:
+        raise ValueError("Not enough matches to estimate pose")
+
     mkpts0_em = cast_to_numpy(mkpts0)
     mkpts1_em = cast_to_numpy(mkpts1)
     camera_matrix_em = cast_to_numpy(camera_matrix, dtype=np.float64)
@@ -30,7 +48,7 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix):
         cameraMatrix=camera_matrix_em,
         method=cv2.RANSAC,
         prob=0.999,
-        threshold=1.0,
+        threshold=ransac_thr,
     )
 
     inliers1 = mkpts0_em[mask.ravel() == 1]
@@ -38,6 +56,8 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix):
 
     _, R, t, _ = cv2.recoverPose(E, inliers1, inliers2, cameraMatrix=camera_matrix_em)
     return {"R": R, "t": t}
+
+
 def get_matches(image0_rgb, image1_rgb, extractor, matcher):
 
     # load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]

@@ -69,7 +69,7 @@ def calc_auc_bt(errors):
     mpre = [0, *list(prec), prec[-1]]
 
     for i in range(1, len(mpre)):
-        mpre[i] = max(mpre[i], mpre[i - 1])
+        mpre[i] = max(mpre[i], mpre[i - 1])  # make the curve non-decreasing
     mpre = np.array(mpre)
     mrec = np.array(mrec)
     i = np.where(mrec[1:] != mrec[0 : len(mrec) - 1])[0] + 1
