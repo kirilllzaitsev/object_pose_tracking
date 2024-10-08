@@ -51,3 +51,10 @@ def convert_arr_to_tensor(v):
         v = [torch.from_numpy(x) for x in v]
     v_tensor = torch.stack(v)
     return v_tensor
+
+
+def infer_lib(x):
+    if torch.is_tensor(x):
+        return torch
+    else:
+        return np

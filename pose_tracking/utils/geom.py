@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import torch
 from pose_tracking.config import logger
+from pose_tracking.utils.common import infer_lib
 
 
 def project_3d_to_2d(pt, K, rt):
@@ -21,6 +22,25 @@ def world_to_cam(pts, rt):
     new_pts = rt @ pts
     new_pts = new_pts[:3, :] / new_pts[3, :]
     return new_pts.T
+
+
+def get_inv_pose(pose=None, rot=None, t=None):
+    if pose is not None:
+        assert rot is None and t is None
+        rot = pose[:3, :3]
+        t = pose[:3, 3]
+    inv_pose = np.eye(4)
+    inv_pose[:3, :3] = rot.T
+    inv_pose[:3, 3] = -rot.T @ t
+    return inv_pose
+
+
+def get_pose(rot, t):
+    lib = infer_lib(rot)
+    pose = lib.eye(4)
+    pose[:3, :3] = rot
+    pose[:3, 3] = t
+    return pose
 
 
 def backproj_depth(depth, intrinsics, instance_mask=None, do_flip_xy=True):
