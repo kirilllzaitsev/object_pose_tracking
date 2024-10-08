@@ -11,12 +11,13 @@ PROJ_DIR = Path(__file__).resolve().parents[1]
 WORKSPACE_DIR = PROJ_DIR.parent
 
 DATA_DIR = PROJ_DIR / "data"
+RELATED_DIR = WORKSPACE_DIR / "related_work"
 
 ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"
 YCBINEOAT_SCENE_DIR = DATA_DIR / "ycbineoat"
 
-YCB_MESHES_DIR = DATA_DIR / "ycb/models_bt"
+YCB_MESHES_DIR = DATA_DIR / "ycb/models"
 
 
 def prepare_logger(logpath=None, level="INFO"):

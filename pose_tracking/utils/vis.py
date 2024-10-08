@@ -392,9 +392,9 @@ def vis_optical_flow(flow):
     return rgb
 
 
-def plot_tracks(video, pred_tracks, pred_visibility, name="queries"):
+def plot_tracks(video, pred_tracks, pred_visibility, name="queries", save_dir="/tmp/videos"):
     from cotracker.utils.visualizer import Visualizer, read_video_from_path
 
-    vis = Visualizer(save_dir="/tmp/videos", linewidth=6, mode="cool", tracks_leave_trace=-1)
+    vis = Visualizer(save_dir=save_dir, linewidth=6, mode="cool", tracks_leave_trace=-1)
     vis.visualize(video=video[None], tracks=pred_tracks, visibility=pred_visibility, filename=name)
-    return show_video(f"{name}.mp4")
+    return show_video(f"{save_dir}/{name}.mp4")

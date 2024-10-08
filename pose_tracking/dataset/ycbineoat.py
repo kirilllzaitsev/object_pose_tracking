@@ -1,3 +1,4 @@
+import copy
 import glob
 import os
 from pathlib import Path
@@ -73,7 +74,7 @@ class YCBineoatDataset(Dataset):
             mesh_path = f"{ycb_meshes_dir}/{ob_name}/textured_simple.obj"
             load_res = load_mesh(mesh_path)
             self.mesh = load_res["mesh"]
-            self.mesh_bbox = load_res["bbox"]
+            self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
 
     def __len__(self):
         return len(self.color_files)

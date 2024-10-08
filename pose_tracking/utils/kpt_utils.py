@@ -48,7 +48,7 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0):
         cameraMatrix=camera_matrix_em,
         method=cv2.RANSAC,
         prob=0.999,
-        threshold=ransac_thr,
+        threshold=ransac_thresh,
     )
 
     inliers1 = mkpts0_em[mask.ravel() == 1]
