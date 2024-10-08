@@ -9,7 +9,7 @@ from PIL import Image
 from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
 from pose_tracking.utils.common import convert_arr_to_tensor
-from pose_tracking.utils.io import load_depth, load_mask, load_pose, load_color
+from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -28,7 +28,7 @@ class BOPDataset(Dataset):
         use_keyframes=False,
         keyframe_path=None,
         include_rgb=True,
-        include_masks=False,
+        include_mask=False,
         include_depth=False,
         depth_scaler_to_mm=1.0,
     ):
@@ -42,7 +42,7 @@ class BOPDataset(Dataset):
         self.cad_dir = cad_dir
         self.include_rgb = include_rgb
         self.include_depth = include_depth
-        self.include_masks = include_masks
+        self.include_mask = include_mask
         self.depth_scaler_to_mm = depth_scaler_to_mm
         self.list_scenes = load_list_scene(root_dir, split)
         self.metadata = load_metadata(root_dir, split)
@@ -83,12 +83,9 @@ class BOPDataset(Dataset):
         return len(self.trajs)
 
     def __getitem__(self, idx):
-        seq_start = self.seq_start
-        scene_id, traj_objs = self.trajs[idx]
-
-        # discard frame_ids
-        traj = [to for (_, to) in traj_objs.groupby("frame_id")]
+        traj = self.load_traj(idx)
         timesteps = self.seq_length if self.seq_length is not None else len(traj)
+        seq_start = self.seq_start
         if seq_start is None:
             seq_start = torch.randint(
                 0,
@@ -100,27 +97,7 @@ class BOPDataset(Dataset):
 
         for ts in range(timesteps):
             frame_idx = seq_start + ts * self.step_skip
-            sample = traj[frame_idx].to_dict(orient="list")
-            sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
-            sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
-
-            if self.include_rgb:
-                rgb = load_color(sample["rgb_path"][0])
-                rgb = rgb.astype(np.float32)
-                rgb /= 255.0
-                rgb = torch.from_numpy(rgb).permute(2, 0, 1)
-                sample["rgb"] = rgb
-
-            if self.include_depth:
-                depth = load_depth(sample["depth_path"][0])
-                sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
-                sample_traj_seq["depth"].append(sample["depth"])
-
-            if self.include_masks:
-                masks = np.array([load_mask(p) for p in sample["mask_path"]])
-                masks_visib = np.array([load_mask(p) for p in sample["mask_visib_path"]])
-                sample["mask"] = masks.astype(float) / 255.0
-                sample["mask_visib"] = masks_visib.astype(float) / 255.0
+            sample = self.parse_sample(traj, frame_idx)
 
             keys_in_sample = [
                 "obj_id",
@@ -134,8 +111,10 @@ class BOPDataset(Dataset):
             ]
             if self.include_rgb:
                 keys_in_sample.append("rgb")
-            if self.include_masks:
+            if self.include_mask:
                 keys_in_sample.extend(["mask", "mask_visib"])
+            if self.include_depth:
+                keys_in_sample.append("depth")
 
             for k in keys_in_sample:
                 sample_traj_seq[k].append(sample[k])
@@ -152,7 +131,7 @@ class BOPDataset(Dataset):
         keys_to_convert = []
         if self.include_rgb:
             keys_to_convert.append("rgb")
-        if self.include_masks:
+        if self.include_mask:
             keys_to_convert.extend(["mask", "mask_visib"])
         if self.include_depth:
             keys_to_convert.append("depth")
@@ -161,6 +140,34 @@ class BOPDataset(Dataset):
             sample_traj_seq[k] = v_tensor
 
         return sample_traj_seq
+
+    def parse_sample(self, traj, frame_idx):
+        sample = traj[frame_idx].to_dict(orient="list")
+        sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
+        sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
+
+        if self.include_rgb:
+            rgb = load_color(sample["rgb_path"][0])
+            rgb = rgb.astype(np.float32)
+            rgb /= 255.0
+            rgb = torch.from_numpy(rgb).permute(2, 0, 1)
+            sample["rgb"] = rgb
+
+        if self.include_depth:
+            depth = load_depth(sample["depth_path"][0])
+            sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
+
+        if self.include_mask:
+            masks = np.array([load_mask(p) for p in sample["mask_path"]])
+            masks_visib = np.array([load_mask(p) for p in sample["mask_visib_path"]])
+            sample["mask"] = masks.astype(float) / 255.0
+            sample["mask_visib"] = masks_visib.astype(float) / 255.0
+        return sample
+
+    def load_traj(self, idx):
+        scene_id, traj_objs = self.trajs[idx]
+        traj = [to for (_, to) in traj_objs.groupby("frame_id")]
+        return traj
 
 
 class BOPDatasetBenchmark(BOPDataset):
@@ -171,7 +178,7 @@ class BOPDatasetBenchmark(BOPDataset):
     ):
         kwargs["include_rgb"] = False
         kwargs["include_depth"] = False
-        kwargs["include_masks"] = False
+        kwargs["include_mask"] = False
         super().__init__(*args, **kwargs)
 
 
@@ -179,7 +186,7 @@ class BOPDatasetEval(BOPDataset):
     def __init__(self, preds_path, *args, **kwargs):
         kwargs["include_rgb"] = True
         kwargs["include_depth"] = True
-        kwargs["include_masks"] = True
+        kwargs["include_mask"] = True
         super().__init__(*args, **kwargs)
         self.preds_path = Path(preds_path)
 
