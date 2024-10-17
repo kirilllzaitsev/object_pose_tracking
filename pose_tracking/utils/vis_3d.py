@@ -68,6 +68,12 @@ def vis_pcl_cam_o3d(geometries: list[dict]):
 
 
 def vis_pcl(x, color=[0.2, 0.2, 0.2]):
+    pcd = convert_pts_to_pcd(x, color)
+    o3d.visualization.draw_plotly([pcd])
+    return pcd
+
+
+def convert_pts_to_pcd(x, color=[0.2, 0.2, 0.2]):
     if isinstance(x, o3d.geometry.PointCloud):
         x = x.points
     if isinstance(x, list):
@@ -79,5 +85,16 @@ def vis_pcl(x, color=[0.2, 0.2, 0.2]):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(x)
     pcd.paint_uniform_color(color)
-    o3d.visualization.draw_plotly([pcd])
     return pcd
+
+
+def vis_pcls(xs, colors=None):
+    if colors is None:
+        colors = [np.array([0.2, 0.2, 0.2]) + i * 0.1 for i in range(len(xs))]
+    assert len(xs) == len(colors), "Number of point clouds and colors should be the same"
+    pcds = []
+    for x, color in zip(xs, colors):
+        pcd = convert_pts_to_pcd(x, color)
+        pcds.append(pcd)
+    o3d.visualization.draw_plotly(pcds)
+    return pcds

@@ -38,28 +38,33 @@ def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_
     xx[:3] = xx[:3] * scale
     yy[:3] = yy[:3] * scale
     zz[:3] = zz[:3] * scale
-    origin = tuple(project_3d_to_2d(np.array([0, 0, 0, 1]), K, rt))
+    origin = tuple(project_3d_to_2d(np.array([0.0, 0.0, 0.0, 1]), K, rt))
     xx = tuple(project_3d_to_2d(xx, K, rt))
     yy = tuple(project_3d_to_2d(yy, K, rt))
     zz = tuple(project_3d_to_2d(zz, K, rt))
     line_type = cv2.LINE_AA
+    
+    color_x = (0, 0, 255)
+    color_y = (255, 255, 0)
+    color_z = (255, 0, 0)
+
     arrow_len = 0
     tmp = rgb.copy()
     tmp1 = tmp.copy()
     tmp1 = cv2.arrowedLine(
-        tmp1, origin, xx, color=(0, 0, 255), thickness=thickness, line_type=line_type, tipLength=arrow_len
+        tmp1, origin, xx, color=color_x, thickness=thickness, line_type=line_type, tipLength=arrow_len
     )
     mask = np.linalg.norm(tmp1 - tmp, axis=-1) > 0
     tmp[mask] = tmp[mask] * transparency + tmp1[mask] * (1 - transparency)
     tmp1 = tmp.copy()
     tmp1 = cv2.arrowedLine(
-        tmp1, origin, yy, color=(0, 255, 0), thickness=thickness, line_type=line_type, tipLength=arrow_len
+        tmp1, origin, yy, color=color_y, thickness=thickness, line_type=line_type, tipLength=arrow_len
     )
     mask = np.linalg.norm(tmp1 - tmp, axis=-1) > 0
     tmp[mask] = tmp[mask] * transparency + tmp1[mask] * (1 - transparency)
     tmp1 = tmp.copy()
     tmp1 = cv2.arrowedLine(
-        tmp1, origin, zz, color=(255, 0, 0), thickness=thickness, line_type=line_type, tipLength=arrow_len
+        tmp1, origin, zz, color=color_z, thickness=thickness, line_type=line_type, tipLength=arrow_len
     )
     mask = np.linalg.norm(tmp1 - tmp, axis=-1) > 0
     tmp[mask] = tmp[mask] * transparency + tmp1[mask] * (1 - transparency)
@@ -197,6 +202,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
 
     # put txts
     txt_color = "k" if img0[:100, :200].mean() > 200 else "w"
+    text = text or [f"{len(mkpts0)} matches"]
     fig.text(
         0.01, 0.99, "\n".join(text), transform=fig.axes[0].transAxes, fontsize=15, va="top", ha="left", color=txt_color
     )
