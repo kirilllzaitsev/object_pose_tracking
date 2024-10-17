@@ -38,7 +38,7 @@ def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=
     return inliers
 
 
-def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0):
+def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=0.5, ransac_conf=0.99999):
     if len(mkpts0) < 5:
         raise ValueError("Not enough matches to estimate pose")
 
@@ -46,20 +46,34 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0):
     mkpts1_em = cast_to_numpy(mkpts1)
     camera_matrix_em = cast_to_numpy(camera_matrix, dtype=np.float64)
 
+    mkpts0_em = (mkpts0_em - camera_matrix_em[[0, 1], [2, 2]][None]) / camera_matrix_em[[0, 1], [0, 1]][None]
+    mkpts1_em = (mkpts1_em - camera_matrix_em[[0, 1], [2, 2]][None]) / camera_matrix_em[[0, 1], [0, 1]][None]
+    ransac_thr = ransac_thresh / np.mean([camera_matrix[0, 0], camera_matrix[1, 1]])
+
     E, mask = cv2.findEssentialMat(
         mkpts0_em,
         mkpts1_em,
-        cameraMatrix=camera_matrix_em,
+        cameraMatrix=np.eye(3),
         method=cv2.RANSAC,
-        prob=0.999,
-        threshold=ransac_thresh,
+        prob=ransac_conf,
+        threshold=ransac_thr,
     )
 
-    inliers1 = mkpts0_em[mask.ravel() == 1]
-    inliers2 = mkpts1_em[mask.ravel() == 1]
+    # inliers1 = mkpts0_em[mask.ravel() == 1]
+    # inliers2 = mkpts1_em[mask.ravel() == 1]
+    # _, R, t, _ = cv2.recoverPose(E, inliers1, inliers2, cameraMatrix=camera_matrix_em)
 
-    _, R, t, _ = cv2.recoverPose(E, inliers1, inliers2, cameraMatrix=camera_matrix_em)
-    return {"R": R, "t": t}
+    # recover pose from E
+    best_num_inliers = 0
+    res = {}
+    for _E in np.split(E, len(E) / 3):
+        n, R, t, _ = cv2.recoverPose(_E, mkpts0_em, mkpts1_em, np.eye(3), 1e9, mask=mask)
+        if n > best_num_inliers:
+            res["R"] = R
+            res["t"] = t[:, 0]
+            best_num_inliers = n
+    res["num_inliers"] = best_num_inliers
+    return res
 
 
 def get_matches(image0_rgb, image1_rgb, extractor, matcher):
