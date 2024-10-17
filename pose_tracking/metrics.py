@@ -16,6 +16,7 @@ def calc_metrics(
     use_miou=False,
     use_symmetry=True,
     diameter=None,
+    is_meters=False,
 ):
     """
     Calculate required metrics for pose estimation.
@@ -31,6 +32,11 @@ def calc_metrics(
         diameter: diameter of the object for ADD/ADDS-10 calculation
 
     """
+    if is_meters:
+        pred_rt = copy.deepcopy(pred_rt)
+        pred_rt[:3, 3] *= 1000
+        gt_rt = copy.deepcopy(gt_rt)
+        gt_rt[:3, 3] *= 1000
     add = calc_add(pred_rt, gt_rt, model)
     adds = calc_adds(pred_rt, gt_rt, model)
     res = {
