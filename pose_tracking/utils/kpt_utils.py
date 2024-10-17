@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from pose_tracking.utils.common import cast_to_numpy
 from skimage.measure import ransac
-from skimage.transform import FundamentalMatrixTransform
+from skimage.transform import AffineTransform, FundamentalMatrixTransform
 
 try:
     from lightglue.utils import load_image, rbd
@@ -17,13 +17,17 @@ def is_torch(x):
     return isinstance(x, torch.Tensor)
 
 
-def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=1000):
+def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=1000, transform_name="fundamental"):
     use_torch = is_torch(mkpts0)
     src_pts = cast_to_numpy(mkpts0)
     dst_pts = cast_to_numpy(mkpts1)
+    if transform_name == "fundamental":
+        model = FundamentalMatrixTransform
+    else:
+        model = AffineTransform
     model, inliers = ransac(
         (src_pts, dst_pts),
-        FundamentalMatrixTransform,
+        model,
         min_samples=min_samples,
         residual_threshold=thresh,
         max_trials=max_trials,
