@@ -1,7 +1,9 @@
 import torch
 
 
-def get_ds_sample(color, depth_m, rgb_path, pose=None, mask=None, intrinsics=None, transforms=None):
+def get_ds_sample(
+    color, rgb_path, depth_m=None, pose=None, mask=None, mask_visib=None, intrinsics=None, transforms=None
+):
     if transforms is None:
         rgb = torch.from_numpy(color).permute(2, 0, 1)
     else:
@@ -10,30 +12,44 @@ def get_ds_sample(color, depth_m, rgb_path, pose=None, mask=None, intrinsics=Non
 
     rgb = rgb.float() / 255.0
 
-    depth = torch.from_numpy(depth_m).float()
-
     sample = {
         "rgb": rgb,
-        "depth": depth,
         "rgb_path": rgb_path,
     }
+    if depth_m is not None:
+        depth = from_numpy(depth_m)
+        sample["depth"] = depth
     if intrinsics is not None:
-        sample["intrinsics"] = torch.from_numpy(intrinsics).float()
+        sample["intrinsics"] = from_numpy(intrinsics)
     if mask is not None:
-        sample["mask"] = torch.from_numpy(mask).float()
+        if mask.max() > 1:
+            mask = mask / 255.0
+        sample["mask"] = from_numpy(mask)
     if pose is not None:
-        sample["pose"] = torch.from_numpy(pose).float()
+        sample["pose"] = from_numpy(pose)
 
     return sample
 
 
+def from_numpy(x):
+    if isinstance(x, list):
+        return torch.stack([from_numpy(xx) for xx in x])
+    elif isinstance(x, torch.Tensor):
+        return x
+    return torch.from_numpy(x).float()
+
+
 def process_raw_sample(sample, transforms=None):
-    return get_ds_sample(
+    ds_sample = get_ds_sample(
         sample["rgb"],
-        sample["depth"],
         rgb_path=sample["rgb_path"],
+        depth_m=sample.get("depth"),
         pose=sample.get("pose"),
         mask=sample.get("mask"),
         intrinsics=sample.get("intrinsics"),
         transforms=transforms,
     )
+    for k, v in sample.items():
+        if k not in ds_sample:
+            ds_sample[k] = v
+    return ds_sample
