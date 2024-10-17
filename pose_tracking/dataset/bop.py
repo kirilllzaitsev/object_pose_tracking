@@ -1,3 +1,4 @@
+import copy
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -8,6 +9,7 @@ import torch
 from PIL import Image
 from pose_tracking.config import DATA_DIR
 from pose_tracking.dataset.bop_loaders import load_cad, load_list_scene, load_metadata
+from pose_tracking.dataset.ds_common import get_ds_sample, process_raw_sample
 from pose_tracking.utils.common import convert_arr_to_tensor
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from torch.utils.data import Dataset
@@ -31,6 +33,7 @@ class BOPDataset(Dataset):
         include_mask=False,
         include_depth=False,
         depth_scaler_to_mm=1.0,
+        transforms=None,
     ):
         """
         Read a dataset in the BOP format.
@@ -46,6 +49,7 @@ class BOPDataset(Dataset):
         self.depth_scaler_to_mm = depth_scaler_to_mm
         self.list_scenes = load_list_scene(root_dir, split)
         self.metadata = load_metadata(root_dir, split)
+        self.transforms = transforms
         if do_load_cad:
             if cad_dir is None:
                 possible_cad_subdir_names = ["models_cad", "models"]
@@ -55,6 +59,9 @@ class BOPDataset(Dataset):
                         break
                 assert cad_dir is not None, "CAD dir must be provided"
             self.cads = load_cad(cad_dir)
+            self.cad_bboxs = {
+                k: copy.deepcopy(np.asarray(v["mesh"].bounding_box.vertices)) for k, v in self.cads.items()
+            }
             self.cad_dir = cad_dir
         else:
             self.cads = None
@@ -95,7 +102,7 @@ class BOPDataset(Dataset):
         assert self.step_skip > 0, f"{self.step_skip=}"
         sample_traj_seq = defaultdict(list)
 
-        for ts in range(timesteps):
+        for ts in tqdm(range(timesteps)):
             frame_idx = seq_start + ts * self.step_skip
             sample = self.parse_sample(traj, frame_idx)
 
@@ -127,6 +134,8 @@ class BOPDataset(Dataset):
 
             sample_traj_seq["scene_id"].append(format_scene_id(sample["scene_id"][0]))
             sample_traj_seq["frame_id"].append(format_frame_id(sample["frame_id"][0]))
+            sample_traj_seq["obj_id"].append(sample["obj_id"])
+            sample_traj_seq["idx_obj"].append(sample["idx_obj"])
 
         keys_to_convert = []
         if self.include_rgb:
@@ -142,26 +151,26 @@ class BOPDataset(Dataset):
         return sample_traj_seq
 
     def parse_sample(self, traj, frame_idx):
-        sample = traj[frame_idx].to_dict(orient="list")
-        sample["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample["pose"]]
-        sample["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample["intrinsic"]]
+        sample_raw = traj[frame_idx].to_dict(orient="list")
+        sample_raw["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample_raw["pose"]]
+        sample_raw["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample_raw["intrinsic"]]
 
         if self.include_rgb:
-            rgb = load_color(sample["rgb_path"][0])
-            rgb = rgb.astype(np.float32)
-            rgb /= 255.0
-            rgb = torch.from_numpy(rgb).permute(2, 0, 1)
-            sample["rgb"] = rgb
+            rgb = load_color(sample_raw["rgb_path"][0])
+            sample_raw["rgb"] = rgb
 
         if self.include_depth:
-            depth = load_depth(sample["depth_path"][0])
-            sample["depth"] = (depth * self.depth_scaler_to_mm) / 1000
+            depth = load_depth(sample_raw["depth_path"][0])
+            sample_raw["depth"] = (depth * self.depth_scaler_to_mm) / 1000
 
         if self.include_mask:
-            masks = np.array([load_mask(p) for p in sample["mask_path"]])
-            masks_visib = np.array([load_mask(p) for p in sample["mask_visib_path"]])
-            sample["mask"] = masks.astype(float) / 255.0
-            sample["mask_visib"] = masks_visib.astype(float) / 255.0
+            masks = np.array([load_mask(p) for p in sample_raw["mask_path"]])
+            masks_visib = np.array([load_mask(p) for p in sample_raw["mask_visib_path"]])
+            sample_raw["mask"] = masks
+            sample_raw["mask_visib"] = masks_visib
+
+        sample = process_raw_sample(sample_raw, transforms=self.transforms)
+
         return sample
 
     def load_traj(self, idx):

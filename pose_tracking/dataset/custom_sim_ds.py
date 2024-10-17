@@ -19,10 +19,10 @@ from pathlib import Path
 import cv2
 import imageio
 import numpy as np
-from pose_tracking.dataset.ds_common import get_ds_sample
 import torch
 import trimesh
 from pose_tracking.config import logger
+from pose_tracking.dataset.ds_common import get_ds_sample
 from pose_tracking.utils.io import load_color, load_depth, load_pose
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
@@ -66,14 +66,14 @@ class CustomSimDataset(Dataset):
         path = self.color_files[idx]
         color = self.get_color(idx)
         depth_raw = self.get_depth(idx)
-        
+
         if self.include_masks:
             bin_mask = self.load_mask(path)
         else:
             bin_mask = None
 
         sample = get_ds_sample(
-            color, depth_raw, rgb_path=path, mask=bin_mask, intrinsics=self.K, transforms=self.transforms
+            color, depth_m=depth_raw, rgb_path=path, mask=bin_mask, intrinsics=self.K, transforms=self.transforms
         )
 
         return sample

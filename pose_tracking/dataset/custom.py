@@ -33,10 +33,11 @@ from torch.utils.data import Dataset
 
 
 class CustomDataset(Dataset):
-    def __init__(self, root_dir, include_masks=False, zfar=np.inf, transforms=None, mesh_path=None):
+    def __init__(self, root_dir, include_masks=False, poses_dir=None, zfar=np.inf, transforms=None, mesh_path=None):
         self.root_dir = root_dir
         self.transforms = transforms
         self.include_masks = include_masks
+        self.poses_dir = Path(poses_dir) if poses_dir else None
         self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
         self.K = np.loadtxt(f"{self.root_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
@@ -65,8 +66,19 @@ class CustomDataset(Dataset):
         else:
             mask = None
 
+        if self.poses_dir is not None:
+            pose = load_pose(self.poses_dir / f"{self.id_strs[idx]}.txt")
+        else:
+            pose = None
+
         sample = get_ds_sample(
-            rgb, depth_raw, rgb_path=rgb_path, mask=mask, intrinsics=self.K, transforms=self.transforms
+            rgb,
+            depth_m=depth_raw,
+            rgb_path=rgb_path,
+            mask=mask,
+            pose=pose,
+            intrinsics=self.K,
+            transforms=self.transforms,
         )
 
         return sample
@@ -76,7 +88,9 @@ class CustomDataset(Dataset):
         return color
 
     def get_depth(self, i):
-        depth = load_depth(self.color_files[i].replace("rgb/", "depth/"), wh=(self.W, self.H), zfar=self.zfar) / 1e3
+        depth = load_depth(
+            self.color_files[i].replace("rgb/", "depth/"), wh=(self.W, self.H), zfar=self.zfar, do_convert_to_m=True
+        )
         return depth
 
 
