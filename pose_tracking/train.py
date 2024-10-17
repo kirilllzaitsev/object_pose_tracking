@@ -368,15 +368,19 @@ def main():
                     loss_rot = criterion_rot(rot_output, rot_labels)
                     loss = loss_trans + loss_rot
 
-                    val_loss += loss.item() * images.size(0)
+                    val_loss += loss.item()
             val_loss /= len(val_loader)
             logger.info(f"Validation Loss after Epoch {epoch}: {val_loss:.4f}")
 
             if args.use_early_stopping:
                 early_stopping(loss=val_loss)
-                if early_stopping.do_stop:
-                    logger.warning(f"Early stopping on epoch {epoch}")
-                    break
+
+        if args.do_overfit and args.use_early_stopping:
+            early_stopping(loss=running_losses["loss"])
+
+        if early_stopping.do_stop:
+            logger.warning(f"Early stopping on epoch {epoch}")
+            break
 
     if args.do_debug:
         shutil.rmtree(logdir)
