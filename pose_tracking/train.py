@@ -61,6 +61,11 @@ def parse_args():
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
 
+    data_args = parser.add_argument_group("Data arguments")
+    data_args.add_argument("--scene_idx", type=int, default=7, help="Scene index")
+    data_args.add_argument("--seq_length", type=int, default=200, help="Number of frames to take")
+    data_args.add_argument("--ds_name", type=str, default="lm", help="Dataset name", choices=["lm", "ycbv"])
+
     return parser.parse_args()
 
 
@@ -257,21 +262,22 @@ def main():
     early_stopping = EarlyStopping(patience=5, delta=0.1, verbose=True)
 
     split = "test"
-    ds_name = "ycbv"
-    ds_name = "lm"
+    ds_name = args.ds_name
     ds_dir = DATA_DIR / ds_name
+    seq_length = args.seq_length
     full_ds = BOPDataset(
         ds_dir,
         split,
         cad_dir=ds_dir / "models",
-        seq_length=None,
+        seq_length=seq_length,
         use_keyframes=False,
         do_load_cad=False,
         include_depth=False,
         include_rgb=True,
-        include_masks=True,
+        include_mask=True,
     )
-    scene = full_ds[0]
+    scene_idx = args.scene_idx
+    scene = full_ds[scene_idx]
     scene_len = len(scene["frame_id"])
     logger.info(f"Scene length: {scene_len}")
     train_share = 0.8
@@ -283,7 +289,7 @@ def main():
     val_dataset = SceneDataset(scene=scene_val, transform=transform)
 
     if args.do_overfit:
-        train_dataset = train_dataset.clone([0])
+        train_dataset = train_dataset.clone()
         val_dataset = train_dataset
 
     logger.info(f"{len(train_dataset)=}")
@@ -339,7 +345,9 @@ def main():
 
         logger.info(f"#### Epoch {epoch} ####")
         for k, v in running_losses.items():
-            v /= len(train_loader)
+            running_losses[k] = v / len(train_loader)
+
+        for k, v in running_losses.items():
             running_loss = v.item()
             logger.info(f"{k}: {running_loss:.4f}")
             history["train"][k].append(running_loss)
@@ -368,15 +376,19 @@ def main():
                     loss_rot = criterion_rot(rot_output, rot_labels)
                     loss = loss_trans + loss_rot
 
-                    val_loss += loss.item() * images.size(0)
+                    val_loss += loss.item()
             val_loss /= len(val_loader)
             logger.info(f"Validation Loss after Epoch {epoch}: {val_loss:.4f}")
 
             if args.use_early_stopping:
                 early_stopping(loss=val_loss)
-                if early_stopping.do_stop:
-                    logger.warning(f"Early stopping on epoch {epoch}")
-                    break
+
+        if args.do_overfit and args.use_early_stopping:
+            early_stopping(loss=running_losses["loss"])
+
+        if early_stopping.do_stop:
+            logger.warning(f"Early stopping on epoch {epoch}")
+            break
 
     if args.do_debug:
         shutil.rmtree(logdir)
