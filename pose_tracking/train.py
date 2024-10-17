@@ -368,19 +368,15 @@ def main():
                     loss_rot = criterion_rot(rot_output, rot_labels)
                     loss = loss_trans + loss_rot
 
-                    val_loss += loss.item()
+                    val_loss += loss.item() * images.size(0)
             val_loss /= len(val_loader)
             logger.info(f"Validation Loss after Epoch {epoch}: {val_loss:.4f}")
 
             if args.use_early_stopping:
                 early_stopping(loss=val_loss)
-
-        if args.do_overfit and args.use_early_stopping:
-            early_stopping(loss=running_losses["loss"])
-
-        if early_stopping.do_stop:
-            logger.warning(f"Early stopping on epoch {epoch}")
-            break
+                if early_stopping.do_stop:
+                    logger.warning(f"Early stopping on epoch {epoch}")
+                    break
 
     if args.do_debug:
         shutil.rmtree(logdir)
@@ -403,18 +399,27 @@ def main():
         trans_output, rot_output = model(images, seg_masks)
         for i in range(len(images)):
             rgb = images[i].cpu().numpy()
-            name = rgb_paths[i].split("/")[-1]
+            name = Path(rgb_paths[i]).stem
             pose = torch.eye(4)
             r_quat = rot_output[i]
             pose[:3, :3] = quaternion_to_matrix(r_quat)
             pose[:3, 3] = trans_output[i] * 1e3
+            gt_pose = torch.eye(4)
+            gt_pose[:3, :3] = quaternion_to_matrix(batch["r"][i].squeeze())
+            gt_pose[:3, 3] = batch["t"][i].squeeze() * 1e3
             pose = pose.cpu().numpy()
+            gt_pose = gt_pose.cpu().numpy()
             pose_path = preds_dir / "poses" / f"{name}.txt"
-            rgb_path = preds_dir / "rgb" / name
+            gt_path = preds_dir / "poses_gt" / f"{name}.txt"
+            rgb_path = preds_dir / "rgb" / f"{name}.png"
             pose_path.parent.mkdir(parents=True, exist_ok=True)
             rgb_path.parent.mkdir(parents=True, exist_ok=True)
+            gt_path.parent.mkdir(parents=True, exist_ok=True)
             with open(pose_path, "w") as f:
                 for row in pose:
+                    f.write(" ".join(map(str, row)) + "\n")
+            with open(gt_path, "w") as f:
+                for row in gt_pose:
                     f.write(" ".join(map(str, row)) + "\n")
             rgb = (rgb * 255).astype(np.uint8)
             rgb = rgb.transpose(1, 2, 0)
