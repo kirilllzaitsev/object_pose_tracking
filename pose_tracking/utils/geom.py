@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from pose_tracking.config import logger
 from pose_tracking.utils.common import infer_lib
+from scipy.spatial.transform import Rotation as R
 
 
 def project_3d_to_2d(pt, K, rt):
@@ -21,6 +22,20 @@ def world_to_cam(pts, rt):
     pts = np.vstack([pts, np.ones((1, pts.shape[1]), dtype=np.float32)])
     new_pts = rt @ pts
     new_pts = new_pts[:3, :] / new_pts[3, :]
+    return new_pts.T
+
+
+def get_34_intrinsics(K):
+    return np.hstack([K, np.zeros((3, 1))])
+
+
+def world_to_2d(pts, K, rt):
+    # returns N x 2 pts in image frame
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    if pts.shape[1] == 3:
+        pts = pts.T
+    new_pts = K @ (rt[:3, :3] @ pts + rt[:3, 3].reshape(3, 1))
+    new_pts = new_pts[:2, :] / new_pts[2, :]
     return new_pts.T
 
 
@@ -59,7 +74,7 @@ def backproj_depth(depth, intrinsics, instance_mask=None, do_flip_xy=True):
     ones = np.ones([1, length])
     uv_grid = np.concatenate((grid, ones), axis=0)  # [3, n]
     xyz = intrinsics_inv @ uv_grid
-    xyz = np.transpose(xyz)
+    xyz = np.transpose(xyz).squeeze()
 
     # rescale
     z = depth[idxs[0], idxs[1]]
@@ -255,3 +270,15 @@ def backproj_2d_pts(pts, K, depth):
     pts = pts * depth.reshape(-1, 1)
     pts = np.linalg.inv(K) @ pts.T
     return pts.T
+
+
+def look_at_rotation(point):
+    """
+    @param point: point in normalized image coordinates not in pixels
+    @return: R
+    R @ x_raw -> x_lookat
+    """
+    x, y = point
+    R1 = R.from_euler("xyz", [-np.arctan2(x, 1), 0, 0], degrees=False).as_matrix()
+    R2 = R.from_euler("xyz", [np.arctan2(y, 1), 0, 0], degrees=False).as_matrix()
+    return R2 @ R1
