@@ -3,11 +3,8 @@ https://github.com/nv-nguyen/gigapose/blob/main/src/libVis/numpy.py#L137
 https://github.com/NVlabs/FoundationPose/blob/main/Utils.py#L723
 """
 
-import copy
-import os
-from base64 import b64encode
-
 import cv2
+from cycler import K
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,9 +15,9 @@ from pose_tracking.utils.common import (
     adjust_depth_for_plt,
     adjust_img_for_plt,
     cast_to_numpy,
-    create_dir,
 )
 from pose_tracking.utils.geom import project_3d_to_2d, to_homo
+from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
 from tqdm.auto import tqdm
@@ -43,7 +40,7 @@ def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_
     yy = tuple(project_3d_to_2d(yy, K, rt))
     zz = tuple(project_3d_to_2d(zz, K, rt))
     line_type = cv2.LINE_AA
-    
+
     color_x = (0, 0, 255)
     color_y = (255, 255, 0)
     color_z = (255, 0, 0)
@@ -209,10 +206,8 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
 
     # save or return figure
     if path:
-        plt.savefig(str(path), bbox_inches="tight", pad_inches=0)
-        plt.close()
-    else:
-        return fig
+        fig.savefig(str(path), bbox_inches="tight", pad_inches=0)
+    return fig
 
 
 def plot_kpts_pil(img_PIL, points_2d, color="blue"):
@@ -339,53 +334,6 @@ def plot_rgb_depth(color, depth, axs=None):
     return axs
 
 
-def save_video(
-    images, save_path, frame_height=480, frame_width=640, fps=10, live_preview=False, live_preview_delay=1000
-):
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    create_dir(save_path)
-    video_writer = cv2.VideoWriter(save_path, fourcc, fps, (frame_width, frame_height))
-
-    for image in images:
-        image = cv2.resize(image, (frame_width, frame_height))
-        video_writer.write(image)
-        if live_preview:
-            cv2.imshow("Video", image)
-            if cv2.waitKey(live_preview_delay) & 0xFF == ord("q"):
-                break
-
-    video_writer.release()
-    cv2.destroyAllWindows()
-    fix_mp4_encoding(save_path)
-    print(f"Video saved as {save_path}")
-
-
-def save_folder_imgs_as_video(folder_path, save_path=None, **kwargs):
-    images = []
-    for file in sorted(os.listdir(folder_path)):
-        if file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg"):
-            img = cv2.imread(os.path.join(folder_path, file))
-            images.append(img)
-    if save_path is None:
-        save_path = os.path.join(folder_path, "video.mp4")
-    save_video(images, save_path, **kwargs)
-
-
-def fix_mp4_encoding(video_path):
-    tmp_path = str(video_path).replace(".mp4", "_tmp.mp4")
-    os.system(f"ffmpeg -i {video_path} -r 30 {tmp_path} >/dev/null 2>&1")
-    os.system(f"mv {tmp_path} {video_path}")
-    print("Changed video encoding to h264")
-
-
-def show_video(video_path):
-    from IPython.display import HTML
-
-    video_file = open(video_path, "r+b").read()
-    video_url = f"data:video/mp4;base64,{b64encode(video_file).decode()}"
-    return HTML(f"""<video width="640" height="480" autoplay loop controls><source src="{video_url}"></video>""")
-
-
 def vis_optical_flow(flow):
     h, w = flow.shape[:2]
     flow_magnitude, flow_angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
@@ -404,3 +352,26 @@ def plot_tracks(video, pred_tracks, pred_visibility, name="queries", save_dir="/
     vis = Visualizer(save_dir=save_dir, linewidth=6, mode="cool", tracks_leave_trace=-1)
     vis.visualize(video=video[None], tracks=pred_tracks, visibility=pred_visibility, filename=name)
     return show_video(f"{save_dir}/{name}.mp4")
+
+
+def plot_imgs(imgs, n_samples=15, return_fig=False):
+    ncols = min(5, len(imgs))
+    n_samples = min(n_samples, len(imgs))
+    nrows = n_samples // ncols
+    fig, axs = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+    for i in range(nrows):
+        for j in range(ncols):
+            if nrows > 1:
+                ax = axs[i, j]
+            elif ncols > 1:
+                ax = axs[j]
+            else:
+                ax = axs
+            # overlay_mask_on_rgb(rgb, mask, ax=ax)
+            input_ = adjust_img_for_plt(imgs[i * ncols + j])
+            ax.imshow(adjust_img_for_plt(input_))
+            ax.axis("off")
+            ax.set_title(f"Frame {i*ncols+j+1}")
+    plt.tight_layout()
+    if return_fig:
+        return fig
