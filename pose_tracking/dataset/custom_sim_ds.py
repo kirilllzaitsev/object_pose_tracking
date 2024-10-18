@@ -42,6 +42,8 @@ class CustomSimDataset(Dataset):
         self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = self.load_mask(self.color_files[0])
         self.zfar = zfar
+        self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
+        self.do_erode_mask = do_erode_mask
 
         if cam_pose_path is None:
             if os.path.exists(f"{self.root_dir}/cam_pose.txt"):
@@ -50,6 +52,10 @@ class CustomSimDataset(Dataset):
         if cam_pose_path is not None:
             cam_pose_path = Path(cam_pose_path)
             self.cam_pose = load_pose(cam_pose_path)
+            cam_init_rot = quaternion_to_matrix(torch.tensor((0.5, -0.5, 0.5, -0.5))).numpy()
+            self.cam_pose[:3, :3] = cam_init_rot
+            self.w2c = get_inv_pose(pose=self.cam_pose)
+
         else:
             self.cam_pose = None
 
