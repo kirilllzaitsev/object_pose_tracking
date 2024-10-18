@@ -1,5 +1,8 @@
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+from pose_tracking.utils.common import cast_to_numpy
 
 
 def show_mask(mask, ax, random_color=False, borders=True):
@@ -54,3 +57,13 @@ def convert_mask_to_xyxy_box(mask, offset=20):
     y2 = min(h, y2 + offset)
     crop_bbox = [int(x1), int(y1), int(x2), int(y2)]
     return crop_bbox
+
+
+def mask_erode(prev_mask, kernel_size=11):
+    is_tensor = isinstance(prev_mask, torch.Tensor)
+    device = prev_mask.device if is_tensor else None
+    prev_mask = cast_to_numpy(prev_mask, dtype=np.uint8)
+    res = cv2.erode(prev_mask, np.ones((kernel_size, kernel_size), np.uint8))
+    if is_tensor:
+        res = torch.from_numpy(res).to(device)
+    return res

@@ -89,6 +89,27 @@ def metrics_all_per_obj_to_df(metrics_all_per_obj, id_to_name):
     return df
 
 
+def format_metrics_df(df):
+    cols_rename = {
+        "add": "ADD",
+        "adds": "ADDS",
+        "miou": "mIoU",
+        "r_err": "Rot error, deg",
+        "t_err": "T error, mm",
+        "5deg5cm": "5deg5cm",
+        "2deg2cm": "2deg2cm",
+        "add10": "ADD10",
+        "adds10": "ADDS10",
+        "valid_miou_frac": "mIoU > 25% frac",
+        "num_samples": "#samples",
+        "add_auc": "ADD AUC",
+        "adds_auc": "ADDS AUC",
+        "t_err_auc": "T error AUC",
+    }
+    df = df.rename(columns=cols_rename)
+    return df
+
+
 def save_df(df, path):
     create_dir(path)
     df.to_csv(path, index=True)
