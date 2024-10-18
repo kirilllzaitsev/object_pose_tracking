@@ -23,13 +23,27 @@ import torch
 import trimesh
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import get_ds_sample
+from pose_tracking.utils.common import cast_to_numpy
+from pose_tracking.utils.geom import get_inv_pose
 from pose_tracking.utils.io import load_color, load_depth, load_pose
+from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
+from pose_tracking.utils.segm_utils import mask_erode
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 
 
 class CustomSimDataset(Dataset):
-    def __init__(self, root_dir, include_masks=False, zfar=np.inf, transforms=None, mesh_path=None, cam_pose_path=None):
+    def __init__(
+        self,
+        root_dir,
+        include_masks=False,
+        zfar=np.inf,
+        transforms=None,
+        mesh_path=None,
+        cam_pose_path=None,
+        do_remap_pose_from_isaac=False,
+        do_erode_mask=False,
+    ):
         self.root_dir = root_dir
         self.transforms = transforms
         self.include_masks = include_masks
@@ -75,6 +89,8 @@ class CustomSimDataset(Dataset):
 
         if self.include_masks:
             bin_mask = self.load_mask(path)
+            if self.do_erode_mask:
+                bin_mask = mask_erode(bin_mask, kernel_size=11)
         else:
             bin_mask = None
 
@@ -100,6 +116,10 @@ class CustomSimDataset(Dataset):
         depth = load_depth(self.color_files[i].replace("rgb/", "depth/"), wh=(self.W, self.H), zfar=self.zfar)
         return depth
 
+    def pose_remap_from_isaac(self, pose):
+        rt = self.w2c @ pose
+        return rt
+
 
 class CustomSimDatasetEval(CustomSimDataset):
     def __init__(self, preds_path, *args, **kwargs):
@@ -121,4 +141,6 @@ class CustomSimDatasetEval(CustomSimDataset):
     def __getitem__(self, i):
         sample = super().__getitem__(i)
         sample["pose_pred"] = self.get_pred_pose(i)
+        if self.do_remap_pose_from_isaac:
+            sample["pose_pred"] = self.pose_remap_from_isaac(sample["pose_pred"])
         return sample
