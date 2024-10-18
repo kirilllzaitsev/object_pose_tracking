@@ -106,61 +106,45 @@ def get_matches(image0_rgb, image1_rgb, extractor, matcher):
     }
 
 
-def get_matches_loftr(image0_rgb, image1_rgb, matcher, mask0=None, mask1=None, use_native_masking=False):
-
-    to_gray = A.ToGray(num_output_channels=1, p=1.0)
-    image0 = torch.from_numpy(
-        to_gray(image=image0_rgb.permute(1, 2, 0).numpy())["image"].transpose(2, 0, 1)[None]
-    ).cuda()
-    image1 = torch.from_numpy(
-        to_gray(image=image1_rgb.permute(1, 2, 0).numpy())["image"].transpose(2, 0, 1)[None]
-    ).cuda()
-
-    batch = {
-        "image0": image0,
-        "image1": image1,
-    }
-    if use_native_masking:
-        assert mask0 is not None and mask1 is not None
-        batch_masks = {
-            "mask0": torch.from_numpy(mask0[None]).cuda(),
-            "mask1": torch.from_numpy(mask1[None]).cuda(),
-        }
-        batch.update(batch_masks)
-    times = []
-    with torch.no_grad():
-        for _ in range(1):
-            start = time.time()
-            matcher(batch)  # batch = {'image0': img0, 'image1': img1}
-            times.append(time.time() - start)
-        mkpts0 = batch["mkpts0_f"].cpu()
-        mkpts1 = batch["mkpts1_f"].cpu()
-    return {
-        "mkpts0": mkpts0,
-        "mkpts1": mkpts1,
-        "scores": batch["mconf"].cpu(),
-        "times": times,
-    }
-
-
-def load_kpt_det_and_match_loftr(ckpt_filename="indoor_ds_new", use_quadattn=False):
-    ckpt_filename = Path(ckpt_filename).stem
-    if use_quadattn:
-        from quadattn.src.loftr import LoFTR
-
-        cfg = yaml.load(
-            open(f"{RELATED_DIR}/kpt_det_match/QuadTreeAttention/FeatureMatching/quadattn/loftr_indoor.yaml"),
-            Loader=yaml.FullLoader,
-        )
-        matcher = LoFTR(cfg)
-        ckpt_path = f"{RELATED_DIR}/kpt_det_match/QuadTreeAttention/FeatureMatching/quadattn/{ckpt_filename}.ckpt"
+def load_kpt_det_and_match(features):
+    # TODO: provide configs for extractor/matcher
+    if features == "superpoint":
+        extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
+    elif features == "disk":
+        # or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
+        extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
+    elif features == "sift":
+        extractor = SIFT(max_num_keypoints=2048).eval().cuda()  # load the extractor
+    elif features == "aliked":
+        extractor = ALIKED(max_num_keypoints=2048).eval().cuda()
+    elif features == "doghardnet":
+        extractor = DoGHardNet(max_num_keypoints=2048).eval().cuda()
     else:
-        from loftr.src.loftr import LoFTR, default_cfg
+        raise ValueError(features)
 
-        matcher = LoFTR(config=default_cfg)
-        ckpt_path = f"{RELATED_DIR}/kpt_det_match/LoFTR/weights/{ckpt_filename}.ckpt"
-    matcher.load_state_dict(torch.load(ckpt_path)["state_dict"])
-    matcher = matcher.eval().cuda()
+    matcher = LightGlue(features=features).eval().cuda()  # load the matcher
+
+    for p in extractor.parameters():
+        p.requires_grad = False
     for p in matcher.parameters():
         p.requires_grad = False
-    return matcher
+
+    return extractor, matcher
+
+
+def load_tracker(use_online_tracker):
+    if use_online_tracker:
+        cotracker = CoTrackerOnlinePredictor(
+            checkpoint=os.path.join(
+                f"{RELATED_DIR}/kpt_tracking/co-tracker",
+                "./checkpoints/cotracker2.pth",
+            )
+        ).cuda()
+    else:
+        cotracker = CoTrackerPredictor(
+            checkpoint=os.path.join(
+                f"{RELATED_DIR}/kpt_tracking/co-tracker",
+                "./checkpoints/cotracker2.pth",
+            )
+        ).cuda()
+    return cotracker
