@@ -1,5 +1,6 @@
 import json
 from glob import glob
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -57,15 +58,25 @@ def cast_formats_for_json(data):
 def read_preds(pred_dir):
     rgb_paths = sorted(glob(f"{pred_dir}/rgb/*"))
     poses_paths = sorted(glob(f"{pred_dir}/poses/*"))
+    poses_gt_paths = sorted(glob(f"{pred_dir}/poses_gt/*"))
     rgbs = []
     poses = []
-    for rgb_path, pose_path in zip(rgb_paths, poses_paths):
+    poses_gt = []
+    frame_ids = []
+    for i in range(len(rgb_paths)):
+        rgb_path = rgb_paths[i]
+        pose_path = poses_paths[i]
+        pose_gt_path = poses_gt_paths[i]
         rgb = cv2.imread(rgb_path)
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
         pose = load_pose(pose_path)
+        pose_gt = load_pose(pose_gt_path)
+        frame_id = Path(rgb_path).stem
         rgbs.append(rgb)
         poses.append(pose)
-    return {"rgbs": rgbs, "poses": poses}
+        poses_gt.append(pose_gt)
+        frame_ids.append(frame_id)
+    return {"rgbs": rgbs, "poses": poses, "frame_ids": frame_ids, "poses_gt": poses_gt}
 
 
 def load_pose(path):
