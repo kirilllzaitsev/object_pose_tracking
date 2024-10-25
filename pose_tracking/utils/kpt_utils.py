@@ -146,6 +146,32 @@ def get_matches_loftr(image0_rgb, image1_rgb, matcher, mask0=None, mask1=None, u
         "scores": batch["mconf"].cpu(),
         "times": times,
     }
+
+
+def load_kpt_det_and_match_loftr(ckpt_filename="indoor_ds_new", use_quadattn=False):
+    ckpt_filename = Path(ckpt_filename).stem
+    if use_quadattn:
+        from quadattn.src.loftr import LoFTR
+
+        cfg = yaml.load(
+            open(f"{RELATED_DIR}/kpt_det_match/QuadTreeAttention/FeatureMatching/quadattn/loftr_indoor.yaml"),
+            Loader=yaml.FullLoader,
+        )
+        matcher = LoFTR(cfg)
+        ckpt_path = f"{RELATED_DIR}/kpt_det_match/QuadTreeAttention/FeatureMatching/quadattn/{ckpt_filename}.ckpt"
+    else:
+        from loftr.src.loftr import LoFTR, default_cfg
+
+        matcher = LoFTR(config=default_cfg)
+        ckpt_path = f"{RELATED_DIR}/kpt_det_match/LoFTR/weights/{ckpt_filename}.ckpt"
+    matcher.load_state_dict(torch.load(ckpt_path)["state_dict"])
+    matcher = matcher.eval().cuda()
+    for p in matcher.parameters():
+        p.requires_grad = False
+    return matcher
+
+
+def load_kpt_det_and_match(features, filter_threshold=0.1):
     # TODO: provide configs for extractor/matcher
     if features == "superpoint":
         extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
