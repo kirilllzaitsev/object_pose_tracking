@@ -43,7 +43,7 @@ def get_good_matches_mask(mkpts0, mkpts1, thresh=0.1, min_samples=8, max_trials=
     return inliers
 
 
-def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=0.5, ransac_conf=0.99999):
+def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0, ransac_conf=0.99999):
     if len(mkpts0) < 5:
         raise ValueError("Not enough matches to estimate pose")
 
@@ -51,28 +51,22 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=0.5, rans
     mkpts1_em = cast_to_numpy(mkpts1)
     camera_matrix_em = cast_to_numpy(camera_matrix, dtype=np.float64)
 
-    mkpts0_em = (mkpts0_em - camera_matrix_em[[0, 1], [2, 2]][None]) / camera_matrix_em[[0, 1], [0, 1]][None]
-    mkpts1_em = (mkpts1_em - camera_matrix_em[[0, 1], [2, 2]][None]) / camera_matrix_em[[0, 1], [0, 1]][None]
-    ransac_thr = ransac_thresh / np.mean([camera_matrix[0, 0], camera_matrix[1, 1]])
-
     E, mask = cv2.findEssentialMat(
         mkpts0_em,
         mkpts1_em,
-        cameraMatrix=np.eye(3),
+        cameraMatrix=camera_matrix_em,
         method=cv2.RANSAC,
         prob=ransac_conf,
-        threshold=ransac_thr,
+        threshold=ransac_thresh,
     )
 
-    # inliers1 = mkpts0_em[mask.ravel() == 1]
-    # inliers2 = mkpts1_em[mask.ravel() == 1]
-    # _, R, t, _ = cv2.recoverPose(E, inliers1, inliers2, cameraMatrix=camera_matrix_em)
-
-    # recover pose from E
-    best_num_inliers = 0
+    inliers1 = mkpts0_em[mask.ravel() == 1]
+    inliers2 = mkpts1_em[mask.ravel() == 1]
+    
+    best_num_inliers = -1
     res = {}
     for _E in np.split(E, len(E) / 3):
-        n, R, t, _ = cv2.recoverPose(_E, mkpts0_em, mkpts1_em, np.eye(3), 1e9, mask=mask)
+        n, R, t, _ = cv2.recoverPose(_E, inliers1, inliers2, cameraMatrix=camera_matrix_em)
         if n > best_num_inliers:
             res["R"] = R
             res["t"] = t[:, 0]
