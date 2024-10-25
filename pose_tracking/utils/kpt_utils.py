@@ -111,7 +111,41 @@ def get_matches(image0_rgb, image1_rgb, extractor, matcher):
     }
 
 
-def load_kpt_det_and_match(features):
+def get_matches_loftr(image0_rgb, image1_rgb, matcher, mask0=None, mask1=None, use_native_masking=False):
+
+    to_gray = A.ToGray(num_output_channels=1, p=1.0)
+    image0 = torch.from_numpy(
+        to_gray(image=image0_rgb.permute(1, 2, 0).numpy())["image"].transpose(2, 0, 1)[None]
+    ).cuda()
+    image1 = torch.from_numpy(
+        to_gray(image=image1_rgb.permute(1, 2, 0).numpy())["image"].transpose(2, 0, 1)[None]
+    ).cuda()
+
+    batch = {
+        "image0": image0,
+        "image1": image1,
+    }
+    if use_native_masking:
+        assert mask0 is not None and mask1 is not None
+        batch_masks = {
+            "mask0": torch.from_numpy(mask0[None]).cuda(),
+            "mask1": torch.from_numpy(mask1[None]).cuda(),
+        }
+        batch.update(batch_masks)
+    times = []
+    with torch.no_grad():
+        for _ in range(1):
+            start = time.time()
+            matcher(batch)  # batch = {'image0': img0, 'image1': img1}
+            times.append(time.time() - start)
+        mkpts0 = batch["mkpts0_f"].cpu()
+        mkpts1 = batch["mkpts1_f"].cpu()
+    return {
+        "mkpts0": mkpts0,
+        "mkpts1": mkpts1,
+        "scores": batch["mconf"].cpu(),
+        "times": times,
+    }
     # TODO: provide configs for extractor/matcher
     if features == "superpoint":
         extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
