@@ -12,6 +12,11 @@ try:
 except ImportError:
     print("lightglue not installed, some funcs not available")
 
+try:
+    from cotracker.predictor import CoTrackerOnlinePredictor, CoTrackerPredictor
+except ImportError:
+    print("cotracker not installed, some funcs not available")
+
 
 def is_torch(x):
     return isinstance(x, torch.Tensor)
