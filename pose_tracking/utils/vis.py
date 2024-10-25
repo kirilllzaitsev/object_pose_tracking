@@ -400,3 +400,47 @@ def plot_sample_pose(sample, scale=50.0, bbox=None):
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
     axs.imshow(color_with_pose)
     return fig, axs
+
+
+def render_offscreen(mesh, obj_pose, intrinsic, w, h, headless=False):
+    # https://github.com/nv-nguyen/bop_viz_kit
+    if headless:
+        os.environ["DISPLAY"] = ":1"
+        os.environ["PYOPENGL_PLATFORM"] = "egl"
+    fx = intrinsic[0][0]
+    fy = intrinsic[1][1]
+    cx = intrinsic[0][2]
+    cy = intrinsic[1][2]
+    cam_pose = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+
+    scene = pyrender.Scene(
+        bg_color=np.array([1.0, 1.0, 1.0, 0.0]),
+        ambient_light=np.array([0.2, 0.2, 0.2, 1.0]),
+    )
+    light = pyrender.SpotLight(
+        color=np.ones(3),
+        intensity=4.0,
+        innerConeAngle=np.pi / 16.0,
+        outerConeAngle=np.pi / 6.0,
+    )
+    camera = pyrender.IntrinsicsCamera(fx=fx, fy=fy, cx=cx, cy=cy, znear=0.05, zfar=100000)
+    scene.add(light, pose=cam_pose)
+    # set camera pose from openGL to openCV pose
+    scene.add(camera, pose=cam_pose)
+    mesh = pyrender.Mesh.from_trimesh(mesh)
+    scene.add(mesh, pose=obj_pose)
+    r = pyrender.OffscreenRenderer(w, h)
+    # flags = pyrender.RenderFlags.OFFSCREEN | pyrender.RenderFlags.DEPTH_ONLY
+    # flags = pyrender.RenderFlags.OFFSCREEN | pyrender.RenderFlags.RGBA
+    flags = pyrender.RenderFlags.OFFSCREEN
+    color, depth = r.render(scene, flags=flags)
+    # color = cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA)  # RGBA to BGRA (for OpenCV)
+    return color, depth
+
+
+def draw_pose_contour(cvImg, mesh, intrinsic, obj_openCV_pose, color, thickness=3, headless=False):
+    rendered_color, depth = render_offscreen(mesh, obj_openCV_pose, intrinsic, w=640, h=480, headless=headless)
+    validMap = (depth > 0).astype(np.uint8)
+    contours, _ = cv2.findContours(validMap, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
+    cvImg = cv2.drawContours(cvImg, contours, -1, color, thickness)
+    return rendered_color, cvImg
