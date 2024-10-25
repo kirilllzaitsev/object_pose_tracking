@@ -375,3 +375,28 @@ def plot_imgs(imgs, n_samples=15, return_fig=False):
     plt.tight_layout()
     if return_fig:
         return fig
+
+
+def plot_sample(sample):
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+    color = adjust_img_for_plt(sample["rgb"])
+    depth = sample["depth"]
+    mask = sample["mask"]
+    axs[0, 0].imshow(color)
+    im = axs[0, 1].imshow(depth, cmap="jet")
+    fig.colorbar(im, ax=axs[0, 1])
+    axs[1, 0].imshow(mask)
+    color_masked = copy.deepcopy(color)
+    color_masked[mask == 0] = 0
+    axs[1, 1].imshow(color_masked)
+    return fig, axs
+
+
+def plot_sample_pose(sample, scale=50.0, bbox=None):
+    fig, axs = plt.subplots(1, 1, figsize=(10, 5))
+    color = adjust_img_for_plt(sample["rgb"])
+    pose = sample["pose"]
+    K = sample["intrinsics"]
+    color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
+    axs.imshow(color_with_pose)
+    return fig, axs
