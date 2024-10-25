@@ -1,13 +1,19 @@
+import os
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
+import yaml
+from albumentations import transforms as A
+from pose_tracking.config import RELATED_DIR
 from pose_tracking.utils.common import cast_to_numpy
 from skimage.measure import ransac
 from skimage.transform import AffineTransform, FundamentalMatrixTransform
 
 try:
+    from lightglue import ALIKED, DISK, SIFT, DoGHardNet, LightGlue, SuperPoint
     from lightglue.utils import load_image, rbd
 except ImportError:
     print("lightglue not installed, some funcs not available")
@@ -181,7 +187,7 @@ def load_kpt_det_and_match(features, filter_threshold=0.1):
     else:
         raise ValueError(features)
 
-    matcher = LightGlue(features=features).eval().cuda()  # load the matcher
+    matcher = LightGlue(features=features, filter_threshold=filter_threshold).eval().cuda()  # load the matcher
 
     for p in extractor.parameters():
         p.requires_grad = False
@@ -191,19 +197,26 @@ def load_kpt_det_and_match(features, filter_threshold=0.1):
     return extractor, matcher
 
 
-def load_tracker(use_online_tracker):
-    if use_online_tracker:
+def load_tracker(use_stream_tracker=True, use_online_tracker=True, use_v2=False, stream_window_len=16):
+    if use_stream_tracker:
         cotracker = CoTrackerOnlinePredictor(
             checkpoint=os.path.join(
                 f"{RELATED_DIR}/kpt_tracking/co-tracker",
-                "./checkpoints/cotracker2.pth",
-            )
-        ).cuda()
+                "./checkpoints/scaled_online.pth",
+            ),
+            window_len=stream_window_len,
+            v2=use_v2,
+        )
     else:
+        ckpt_filename = "scaled_online" if use_online_tracker else "scaled_offline"
+        window_len = 16 if use_online_tracker else 60
         cotracker = CoTrackerPredictor(
             checkpoint=os.path.join(
                 f"{RELATED_DIR}/kpt_tracking/co-tracker",
-                "./checkpoints/cotracker2.pth",
-            )
-        ).cuda()
+                f"./checkpoints/{ckpt_filename}.pth",
+            ),
+            v2=use_v2,
+            offline=not use_online_tracker,
+            window_len=window_len,
+        )
     return cotracker
