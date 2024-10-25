@@ -3,11 +3,14 @@ https://github.com/nv-nguyen/gigapose/blob/main/src/libVis/numpy.py#L137
 https://github.com/NVlabs/FoundationPose/blob/main/Utils.py#L723
 """
 
+import copy
+import os
+
 import cv2
-from cycler import K
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pyrender
 import torch
 import torchvision
 from PIL import Image, ImageDraw
@@ -128,18 +131,32 @@ def draw_poses_on_video(
     images = []
     num_frames = len(rgbs) if take_n is None else take_n
     for frame_idx in tqdm(range(num_frames), desc="Frame"):
-        rgb = adjust_img_for_plt(rgbs[frame_idx])
-        intrinsic = cast_to_numpy(intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics)
-        pose = cast_to_numpy(poses_pred[frame_idx])
-        final_frame = draw_xyz_axis(rgb, scale=scale, K=intrinsic, rt=pose, is_input_rgb=True)
-        if bbox is not None:
-            final_frame = draw_posed_3d_box(final_frame, rt=pose, K=intrinsic, bbox=bbox, line_color=bbox_color)
+        rgb = rgbs[frame_idx]
+        K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
+        pose_pred = poses_pred[frame_idx]
         if poses_gt is not None:
-            pose_gt = cast_to_numpy(poses_gt[frame_idx])
-            final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=intrinsic, bbox=bbox, line_color=(0, 255, 0))
-        images.append(final_frame)
+            pose_gt = poses_gt[frame_idx]
+        else:
+            pose_gt = None
+        rgb_with_pose = draw_pose_on_img(
+            rgb, K, pose_pred, bbox=bbox, bbox_color=bbox_color, scale=scale, pose_gt=pose_gt
+        )
+        images.append(rgb_with_pose)
     images = np.array(images)
     return images
+
+
+def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), scale=50.0, pose_gt=None):
+    rgb = adjust_img_for_plt(rgb)
+    K = cast_to_numpy(K)
+    pose_pred = cast_to_numpy(pose_pred)
+    final_frame = draw_xyz_axis(rgb, scale=scale, K=K, rt=pose_pred, is_input_rgb=True)
+    if bbox is not None:
+        final_frame = draw_posed_3d_box(final_frame, rt=pose_pred, K=K, bbox=bbox, line_color=bbox_color)
+        if pose_gt is not None:
+            pose_gt = cast_to_numpy(pose_gt)
+            final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=K, bbox=bbox, line_color=(0, 255, 0))
+    return final_frame
 
 
 def draw_2d_bbox_pil(img_PIL, bbox, color="red", width=3):
