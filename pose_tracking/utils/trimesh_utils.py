@@ -72,7 +72,7 @@ def load_mesh(mesh_path, ext=None):
     if ext is None:
         ext = mesh_path.split(".")[-1]
     mesh = trimesh.load(open(mesh_path, "rb"), file_type=ext, force="mesh")
-    bbox = mesh.bounding_box.vertices
+    bbox = np.asarray(mesh.bounding_box.vertices).copy()
     return {
         "mesh": mesh,
         "bbox": bbox,

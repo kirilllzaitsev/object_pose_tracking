@@ -16,6 +16,7 @@ def save_video(
     for image in images:
         image = adjust_img_for_plt(image)
         image = cv2.resize(image, (frame_width, frame_height))
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         video_writer.write(image)
         if live_preview:
             cv2.imshow("Video", image)

@@ -63,7 +63,7 @@ def mask_erode(prev_mask, kernel_size=11):
     is_tensor = isinstance(prev_mask, torch.Tensor)
     device = prev_mask.device if is_tensor else None
     prev_mask = cast_to_numpy(prev_mask, dtype=np.uint8)
-    res = cv2.erode(prev_mask, np.ones((kernel_size, kernel_size), np.uint8))
+    res = cv2.erode(prev_mask, np.ones((kernel_size, kernel_size), np.uint8), iterations=1)
     if is_tensor:
         res = torch.from_numpy(res).to(device)
     return res
