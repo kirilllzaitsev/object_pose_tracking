@@ -33,6 +33,9 @@ from torch.utils.data import Dataset
 
 
 class CustomDataset(Dataset):
+
+    ds_name = "custom"
+
     def __init__(self, root_dir, include_masks=False, poses_dir=None, zfar=np.inf, transforms=None, mesh_path=None):
         self.root_dir = root_dir
         self.transforms = transforms

@@ -5,13 +5,16 @@ import re
 import cv2
 import imageio
 import numpy as np
-from pose_tracking.utils.io import load_rgb_
 import torch
 from pose_tracking.config import logger
+from pose_tracking.utils.io import load_rgb_
 from torch.utils.data import Dataset
 
 
 class BCOTDataset(Dataset):
+
+    ds_name = "bcot"
+
     def __init__(self, root_dir, obj_name):
         self.root_dir = root_dir
         self.color_files = sorted(glob.glob(f"{self.root_dir}/{obj_name}/*.png"))

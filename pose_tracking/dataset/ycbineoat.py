@@ -18,6 +18,9 @@ from torch.utils.data import Dataset
 
 
 class YCBineoatDataset(Dataset):
+
+    ds_name = "ycbi"
+
     # https://github.com/NVlabs/FoundationPose/blob/main/datareader.py#L57
     def __init__(
         self,

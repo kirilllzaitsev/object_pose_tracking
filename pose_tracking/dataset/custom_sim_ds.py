@@ -33,6 +33,9 @@ from torch.utils.data import Dataset
 
 
 class CustomSimDataset(Dataset):
+
+    ds_name = "custom_sim"
+
     def __init__(
         self,
         root_dir,

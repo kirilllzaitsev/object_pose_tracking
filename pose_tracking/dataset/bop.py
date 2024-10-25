@@ -17,6 +17,9 @@ from tqdm import tqdm
 
 
 class BOPDataset(Dataset):
+
+    ds_name = "bop"
+
     def __init__(
         self,
         root_dir,

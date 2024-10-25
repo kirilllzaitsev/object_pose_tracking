@@ -243,6 +243,13 @@ YCBV_OBJ_NAME_TO_COLOR = {
     "foam_brick": COLOR_MAP["LightPink"],
 }
 
+HO3D_VIDEONAME_TO_OBJ = {
+    "AP": "019_pitcher_base",
+    "MPM": "010_potted_meat_can",
+    "SB": "021_bleach_cleanser",
+    "SM": "006_mustard_bottle",
+}
+
 
 def get_obj_info(dataset_name):
     if dataset_name not in ["lm", "ycbv", "tless", "tudl", "hb", "icbin", "itodd"]:
