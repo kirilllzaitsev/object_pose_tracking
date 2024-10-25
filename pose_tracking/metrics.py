@@ -126,6 +126,8 @@ def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
     """Calculate rotation and translation errors between two poses.
     Can handle symmetries in Linemod objects.
     """
+    rt1 = cast_to_numpy(rt1)
+    rt2 = cast_to_numpy(rt2)
 
     T1 = rt1[:3, 3]
     T2 = rt2[:3, 3]
@@ -136,7 +138,7 @@ def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
     shift = calc_t_error(T1, T2)
     result = {"r_err": theta, "t_err": shift}
 
-    deg_cm_errors = calc_n_deg_m_cm_errors(rt1, rt2)
+    deg_cm_errors = calc_n_deg_m_cm_errors((theta, shift))
     result.update(deg_cm_errors)
 
     return result
@@ -163,27 +165,21 @@ def calc_r_error(rot2, rot1, handle_visibility=False, class_name=""):
         theta = np.arccos(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)))
     elif class_name in ["phone", "eggbox", "glue"]:
         y_180_RT = np.diag([-1.0, 1.0, -1.0])
-        R = R1 @ R2.transpose()
-        R_rot = R1 @ y_180_RT @ R2.transpose()
+        R = R1 @ R2.T
+        R_rot = R1 @ y_180_RT @ R2.T
         theta = min(np.arccos((np.trace(R) - 1) / 2), np.arccos((np.trace(R_rot) - 1) / 2))
     else:
-        R = R1 @ R2.transpose()
+        R = np.dot(R1, R2.T)
         theta = np.arccos((np.trace(R) - 1) / 2)
 
     theta *= 180 / np.pi
     return theta
 
 
-def calc_n_deg_m_cm_errors(rt1, rt2):
-    # input translations are expected to be in mm
-    r1 = rt1[:3, :3]
-    r2 = rt2[:3, :3]
-    t1 = rt1[:3, 3]
-    t2 = rt2[:3, 3]
-
-    r_geodesic = geodesic_numpy(r1, r2)
-    t_dist = np.linalg.norm(t1 - t2)
-    t_dist_cm = t_dist * 0.1
+def calc_n_deg_m_cm_errors(rt_error):
+    # translation error is expected to be in mm
+    r_geodesic, t_dist_mm = rt_error
+    t_dist_cm = t_dist_mm * 0.1
     res = {}
     for r_t, t_t in [
         (5, 5),
