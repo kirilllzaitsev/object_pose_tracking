@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from pose_tracking.models.rnn_cells import GRUCell
 from torch import jit
 from torch.nn import Parameter
 
@@ -51,16 +52,33 @@ class StateMLP(nn.Module):
 
 
 class BeliefEncoder(nn.Module):
-    def __init__(self, rnn_cell, rnn_hidden_dim, depth_latent_dim, belief_prior_dim, belief_posterior_dim):
+    def __init__(
+        self,
+        rnn_cell,
+        rnn_hidden_dim,
+        depth_latent_dim,
+        belief_posterior_dim,
+        belief_enc_hidden_dim,
+        belief_depth_enc_hidden_dim,
+        belief_enc_num_layers=2,
+        belief_depth_enc_num_layers=2,
+    ):
         super().__init__()
         self.rnn_cell = rnn_cell
         self.depth_latent_dim = depth_latent_dim
-        self.belief_prior_dim = belief_prior_dim
         self.belief_posterior_dim = belief_posterior_dim
 
-        self.belief_prior_mlp = StateMLP(in_dim=rnn_hidden_dim, out_dim=belief_prior_dim, hidden_dim=100, num_layers=2)
+        self.belief_prior_mlp = StateMLP(
+            in_dim=rnn_hidden_dim,
+            out_dim=belief_posterior_dim,
+            hidden_dim=belief_enc_hidden_dim,
+            num_layers=belief_enc_num_layers,
+        )
         self.belief_depth_mlp = StateMLP(
-            in_dim=rnn_hidden_dim, out_dim=belief_posterior_dim, hidden_dim=100, num_layers=2
+            in_dim=rnn_hidden_dim,
+            out_dim=depth_latent_dim,
+            hidden_dim=belief_depth_enc_hidden_dim,
+            num_layers=belief_depth_enc_num_layers,
         )
 
     def forward(self, latent_rgb, latent_depth, hx, cx=None):
@@ -97,9 +115,10 @@ class BeliefDecoder(nn.Module):
         depth_decoder_hidden_dim,
         priv_decoder_hidden_dim,
         depth_decoder_out_dim,
-        hidden_dim,
+        hidden_attn_hidden_dim,
         priv_decoder_num_layers=1,
         depth_decoder_num_layers=1,
+        hidden_attn_num_layers=1,
     ):
         super().__init__()
         self.priv_decoder = StateMLP(
@@ -108,7 +127,15 @@ class BeliefDecoder(nn.Module):
             priv_decoder_hidden_dim,
             num_layers=priv_decoder_num_layers,
         )
-        self.hidden_encoder = nn.Sequential(nn.Linear(hidden_dim, depth_decoder_out_dim), nn.Sigmoid())
+        self.hidden_attn = nn.Sequential(
+            StateMLP(
+                in_dim=priv_decoder_in_dim,
+                out_dim=depth_decoder_out_dim,
+                hidden_dim=hidden_attn_hidden_dim,
+                num_layers=hidden_attn_num_layers,
+            ),
+            nn.Sigmoid(),
+        )
         self.depth_decoder = StateMLP(
             depth_decoder_in_dim,
             depth_decoder_out_dim,
@@ -117,7 +144,7 @@ class BeliefDecoder(nn.Module):
         )
 
     def forward(self, ht, depth_latent):
-        attn = self.hidden_encoder(ht)
+        attn = self.hidden_attn(ht)
         depth_latent_attn = depth_latent * attn
         depth_decoded = self.depth_decoder(ht)
         depth_final = depth_latent_attn + depth_decoded
@@ -145,6 +172,7 @@ class RecurrentCNN(nn.Module):
         bdec_priv_decoder_hidden_dim,
         bdec_depth_decoder_out_dim,
         bdec_depth_decoder_hidden_dim,
+        bdec_hidden_attn_hidden_dim,
         benc_belief_enc_num_layers=2,
         benc_belief_depth_enc_num_layers=2,
         rnn_type="gru",
@@ -182,7 +210,7 @@ class RecurrentCNN(nn.Module):
             depth_decoder_in_dim=hidden_dim,
             depth_decoder_out_dim=bdec_depth_decoder_out_dim,
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-            hidden_attn_hidden_dim=hidden_dim,
+            hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
 
     def forward(self, inputs, hx_0, cx_0=None):
@@ -228,13 +256,15 @@ if __name__ == "__main__":
     for k, v in outputs.items():
         print(k, v.shape)
 
-    hidden_dim=20
-    batch_size=3
-    net = CustomLSTM(input_dim=10+50, hidden_dim=hidden_dim, rnn_type="gru")
+    hidden_dim = 20
+    batch_size = 3
+    rgb_dim = 10
+    depth_dim = 50
+    input_dim = rgb_dim + depth_dim
+    net = RecurrentCNN(input_dim=input_dim, hidden_dim=hidden_dim, rnn_type="gru")
     seq_len = 6
     inputs = [
-        {"rgb": torch.randn(batch_size, 10), "depth": torch.randn(batch_size, 50)}
-        for _ in range(seq_len)
+        {"rgb": torch.randn(batch_size, rgb_dim), "depth": torch.randn(batch_size, depth_dim)} for _ in range(seq_len)
     ]
     hx = torch.zeros(batch_size, hidden_dim)
     cx = torch.zeros(batch_size, hidden_dim)
