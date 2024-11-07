@@ -57,7 +57,6 @@ class BeliefEncoder(nn.Module):
         rnn_cell,
         rnn_hidden_dim,
         depth_latent_dim,
-        belief_posterior_dim,
         belief_enc_hidden_dim,
         belief_depth_enc_hidden_dim,
         belief_enc_num_layers=2,
@@ -66,11 +65,10 @@ class BeliefEncoder(nn.Module):
         super().__init__()
         self.rnn_cell = rnn_cell
         self.depth_latent_dim = depth_latent_dim
-        self.belief_posterior_dim = belief_posterior_dim
 
         self.belief_prior_mlp = StateMLP(
             in_dim=rnn_hidden_dim,
-            out_dim=belief_posterior_dim,
+            out_dim=depth_latent_dim,
             hidden_dim=belief_enc_hidden_dim,
             num_layers=belief_enc_num_layers,
         )
@@ -163,13 +161,10 @@ class RecurrentCNN(nn.Module):
         depth_dim,
         rgb_dim,
         hidden_dim,
-        benc_depth_latent_dim,
-        benc_belief_posterior_dim,
         benc_belief_enc_hidden_dim,
         benc_belief_depth_enc_hidden_dim,
         bdec_priv_decoder_out_dim,
         bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_out_dim,
         bdec_depth_decoder_hidden_dim,
         bdec_hidden_attn_hidden_dim,
         benc_belief_enc_num_layers=2,
@@ -195,8 +190,7 @@ class RecurrentCNN(nn.Module):
         self.belief_encoder = BeliefEncoder(
             self.lstm_cell,
             rnn_hidden_dim=hidden_dim,
-            depth_latent_dim=benc_depth_latent_dim,
-            belief_posterior_dim=benc_belief_posterior_dim,
+            depth_latent_dim=depth_dim,
             belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
             belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
             belief_enc_num_layers=benc_belief_enc_num_layers,
@@ -206,7 +200,7 @@ class RecurrentCNN(nn.Module):
             state_dim=hidden_dim,
             priv_decoder_out_dim=bdec_priv_decoder_out_dim,
             priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-            depth_decoder_out_dim=bdec_depth_decoder_out_dim,
+            depth_decoder_out_dim=depth_dim,
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
