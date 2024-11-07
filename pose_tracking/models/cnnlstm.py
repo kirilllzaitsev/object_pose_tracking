@@ -131,6 +131,80 @@ class BeliefDecoder(nn.Module):
         }
 
 
+class RecurrentCNN(nn.Module):
+    def __init__(
+        self,
+        depth_dim,
+        rgb_dim,
+        hidden_dim,
+        benc_depth_latent_dim,
+        benc_belief_posterior_dim,
+        benc_belief_enc_hidden_dim,
+        benc_belief_depth_enc_hidden_dim,
+        bdec_priv_decoder_out_dim,
+        bdec_priv_decoder_hidden_dim,
+        bdec_depth_decoder_out_dim,
+        bdec_depth_decoder_hidden_dim,
+        benc_belief_enc_num_layers=2,
+        benc_belief_depth_enc_num_layers=2,
+        rnn_type="gru",
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.rnn_type = rnn_type
+        self.input_dim = rgb_dim + depth_dim
+        self.rgb_dim = rgb_dim
+        self.depth_dim = depth_dim
+
+        if rnn_type == "lstm":
+            self.lstm_cell = LSTMCell(self.input_dim, hidden_dim)
+        elif rnn_type == "gru":
+            self.lstm_cell = nn.GRUCell(self.input_dim, hidden_dim)
+        elif rnn_type == "gru_custom":
+            self.lstm_cell = GRUCell(self.input_dim, hidden_dim)
+        else:
+            raise ValueError("rnn_type must be 'lstm' or 'gru'")
+
+        self.belief_encoder = BeliefEncoder(
+            self.lstm_cell,
+            rnn_hidden_dim=hidden_dim,
+            depth_latent_dim=benc_depth_latent_dim,
+            belief_posterior_dim=benc_belief_posterior_dim,
+            belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
+            belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
+            belief_enc_num_layers=benc_belief_enc_num_layers,
+            belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
+        )
+        self.belief_decoder = BeliefDecoder(
+            priv_decoder_in_dim=hidden_dim,
+            priv_decoder_out_dim=bdec_priv_decoder_out_dim,
+            priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
+            depth_decoder_in_dim=hidden_dim,
+            depth_decoder_out_dim=bdec_depth_decoder_out_dim,
+            depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
+            hidden_attn_hidden_dim=hidden_dim,
+        )
+
+    def forward(self, inputs, hx_0, cx_0=None):
+        # inputs: seq of dicts with keys "rgb" and "depth"
+        decoder_outputs = []
+        encoder_outputs = []
+        hx, cx = hx_0, cx_0
+
+        for input_t in inputs:
+            rgb_latent, depth_latent = input_t["rgb"], input_t["depth"]
+            encoder_out = self.belief_encoder(rgb_latent, depth_latent, hx=hx, cx=cx)
+            hx, cx = (encoder_out["hidden_state"], encoder_out["cx"])
+            decoder_out = self.belief_decoder(encoder_out["hidden_state"], depth_latent)
+            decoder_outputs.append(decoder_out)
+            encoder_outputs.append(encoder_out)
+
+        return {
+            "encoder_outputs": encoder_outputs,
+            "decoder_outputs": decoder_outputs,
+        }
+
+
 if __name__ == "__main__":
     model = LSTMCell(10, 20)
     input = torch.randn(6, 10)
