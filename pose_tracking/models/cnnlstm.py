@@ -109,8 +109,7 @@ class BeliefEncoder(nn.Module):
 class BeliefDecoder(nn.Module):
     def __init__(
         self,
-        priv_decoder_in_dim,
-        depth_decoder_in_dim,
+        state_dim,
         priv_decoder_out_dim,
         depth_decoder_hidden_dim,
         priv_decoder_hidden_dim,
@@ -122,14 +121,14 @@ class BeliefDecoder(nn.Module):
     ):
         super().__init__()
         self.priv_decoder = StateMLP(
-            priv_decoder_in_dim,
-            priv_decoder_out_dim,
-            priv_decoder_hidden_dim,
+            in_dim=state_dim,
+            out_dim=priv_decoder_out_dim,
+            hidden_dim=priv_decoder_hidden_dim,
             num_layers=priv_decoder_num_layers,
         )
         self.hidden_attn = nn.Sequential(
             StateMLP(
-                in_dim=priv_decoder_in_dim,
+                in_dim=state_dim,
                 out_dim=depth_decoder_out_dim,
                 hidden_dim=hidden_attn_hidden_dim,
                 num_layers=hidden_attn_num_layers,
@@ -137,9 +136,9 @@ class BeliefDecoder(nn.Module):
             nn.Sigmoid(),
         )
         self.depth_decoder = StateMLP(
-            depth_decoder_in_dim,
-            depth_decoder_out_dim,
-            depth_decoder_hidden_dim,
+            in_dim=state_dim,
+            out_dim=depth_decoder_out_dim,
+            hidden_dim=depth_decoder_hidden_dim,
             num_layers=depth_decoder_num_layers,
         )
 
@@ -204,10 +203,9 @@ class RecurrentCNN(nn.Module):
             belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
         )
         self.belief_decoder = BeliefDecoder(
-            priv_decoder_in_dim=hidden_dim,
+            state_dim=hidden_dim,
             priv_decoder_out_dim=bdec_priv_decoder_out_dim,
             priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-            depth_decoder_in_dim=hidden_dim,
             depth_decoder_out_dim=bdec_depth_decoder_out_dim,
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
@@ -245,12 +243,12 @@ if __name__ == "__main__":
     inputs = torch.randn(batch_size, hidden_dim)
     depth_latent = torch.randn(batch_size, 50)
     belief_decoder = BeliefDecoder(
-        hidden_dim,
+        state_dim=hidden_dim,
         priv_decoder_out_dim=20,
         priv_decoder_hidden_dim=10,
         depth_decoder_hidden_dim=10,
         depth_decoder_out_dim=50,
-        hidden_dim=20,
+        hidden_attn_hidden_dim=20,
     )
     outputs = belief_decoder(inputs, depth_latent)
     for k, v in outputs.items():
@@ -260,8 +258,22 @@ if __name__ == "__main__":
     batch_size = 3
     rgb_dim = 10
     depth_dim = 50
-    input_dim = rgb_dim + depth_dim
-    net = RecurrentCNN(input_dim=input_dim, hidden_dim=hidden_dim, rnn_type="gru")
+    priv_dim = 20
+    net = RecurrentCNN(
+        depth_dim=depth_dim,
+        rgb_dim=rgb_dim,
+        hidden_dim=hidden_dim,
+        rnn_type="gru",
+        benc_depth_latent_dim=50,
+        benc_belief_posterior_dim=50,
+        bdec_priv_decoder_out_dim=priv_dim,
+        bdec_priv_decoder_hidden_dim=40,
+        bdec_depth_decoder_out_dim=50,
+        bdec_depth_decoder_hidden_dim=80,
+        benc_belief_enc_hidden_dim=110,
+        benc_belief_depth_enc_hidden_dim=200,
+        bdec_hidden_attn_hidden_dim=128,
+    )
     seq_len = 6
     inputs = [
         {"rgb": torch.randn(batch_size, rgb_dim), "depth": torch.randn(batch_size, depth_dim)} for _ in range(seq_len)
