@@ -4,7 +4,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import png
 import yaml
+from pose_tracking.utils.common import cast_to_numpy
 from pycocotools import mask as cocomask
 
 
@@ -133,3 +135,26 @@ def load_mask(path, wh=None):
         mask = resize_img(mask, wh=wh)
     mask = mask.astype(bool)
     return mask
+
+
+def save_depth(path, im):
+    im_mm = im * 1e3
+    save_depth_16bit(path, im_mm)
+
+
+def save_depth_16bit(path, im):
+    """Saves a depth image (16-bit) to a PNG file.
+
+    :param path: Path to the output depth image file.
+    :param im: ndarray with the depth image to save.
+    """
+    if path.split(".")[-1].lower() != "png":
+        raise ValueError("Only PNG format is currently supported.")
+
+    im = cast_to_numpy(im)
+    im_uint16 = np.round(im).astype(np.uint16)
+
+    # PyPNG library can save 16-bit PNG and is faster than imageio.imwrite().
+    w_depth = png.Writer(im.shape[1], im.shape[0], greyscale=True, bitdepth=16)
+    with open(path, "wb") as f:
+        w_depth.write(f, np.reshape(im_uint16, (-1, im.shape[1])))
