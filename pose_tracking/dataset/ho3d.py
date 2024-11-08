@@ -13,6 +13,9 @@ from pose_tracking.utils.trimesh_utils import load_mesh
 
 
 class HO3DDataset(torch.utils.data.Dataset):
+
+    ds_name = "ho3d"
+
     def __init__(self, video_dir, transforms=None, include_masks=True, include_occ_masks=False, do_load_mesh=True):
         super().__init__()
         self.video_dir = video_dir

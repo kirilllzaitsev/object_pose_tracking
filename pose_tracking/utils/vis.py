@@ -129,7 +129,7 @@ def draw_poses_on_video(
         scale: scale of the object axes (50 if in mm, 0.05 if in m)
     """
     images = []
-    num_frames = len(rgbs) if take_n is None else take_n
+    num_frames = min(len(rgbs), len(poses_pred)) if take_n is None else take_n
     for frame_idx in tqdm(range(num_frames), desc="Frame"):
         rgb = rgbs[frame_idx]
         K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
@@ -227,7 +227,9 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def plot_kpts_pil(img_PIL, points_2d, color="blue"):
+def plot_kpts(img_PIL, points_2d, color="blue"):
+    img_PIL = Image.fromarray(adjust_img_for_plt(img_PIL))
+    points_2d = cast_to_numpy(points_2d)
     draw = ImageDraw.Draw(img_PIL)
     for point in points_2d:
         draw.rectangle(

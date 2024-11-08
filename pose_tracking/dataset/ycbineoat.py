@@ -118,7 +118,7 @@ class YCBineoatDataset(Dataset):
 
     def get_xyz_map(self, i):
         depth = self.get_depth(i)
-        xyz_map = backproj_depth(depth, self.K, do_flip_xy=True)
+        xyz_map, _ = backproj_depth(depth, self.K, do_flip_xy=True)
         return xyz_map
 
     def get_occ_mask(self, i):
