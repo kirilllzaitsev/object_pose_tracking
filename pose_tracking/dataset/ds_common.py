@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch
 
 
@@ -53,3 +54,13 @@ def process_raw_sample(sample, transforms=None):
         if k not in ds_sample:
             ds_sample[k] = v
     return ds_sample
+
+
+def dict_collate_fn(batch):
+    new_b = defaultdict(list)
+    for k in batch[0].keys():
+        new_b[k] = [d[k] for d in batch]
+    for k, v in new_b.items():
+        if isinstance(v[0], torch.Tensor):
+            new_b[k] = torch.stack(v)
+    return new_b

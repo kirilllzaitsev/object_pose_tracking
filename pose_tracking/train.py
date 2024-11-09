@@ -8,7 +8,8 @@ from pathlib import Path
 import cv2
 import matplotlib
 import numpy as np
-from pose_tracking.models.direct_regr_cnn import DirectRegrCNN
+from pose_tracking.dataset.bop_scene_ds import SceneDataset
+from pose_tracking.dataset.ds_common import dict_collate_fn
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -23,6 +24,7 @@ from pose_tracking.config import (
 )
 from pose_tracking.dataset.bop import BOPDataset
 from pose_tracking.losses import geodesic_loss
+from pose_tracking.models.direct_regr_cnn import DirectRegrCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import print_args
 from pose_tracking.utils.misc import set_seed
@@ -37,53 +39,6 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 matplotlib.use("TKAgg")
-
-
-def custom_collate_fn(batch):
-    new_b = defaultdict(list)
-    for k in batch[0].keys():
-        new_b[k] = [d[k] for d in batch]
-    for k, v in new_b.items():
-        if isinstance(v[0], torch.Tensor):
-            new_b[k] = torch.stack(v)
-    return new_b
-
-
-class SceneDataset(torch.utils.data.Dataset):
-    def __init__(self, scene, transform=None):
-        self.transform = transform
-        self.num_samples = len(scene["frame_id"])
-        self.scene = scene
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        obj_idx = 0
-        frame_id = self.scene["frame_id"][idx]
-        rgb = self.scene["rgb"][idx]
-        mask = self.scene["mask"][idx][obj_idx]
-        rgb_path = self.scene["rgb_path"][idx]
-
-        if self.transform:
-            rgb = self.transform(rgb)
-            mask = self.transform(mask)
-
-        if len(mask.shape) == 2:
-            mask = mask.unsqueeze(0)
-
-        pose = self.scene["pose"][idx][obj_idx]
-        r = pose[:3, :3]
-        r_quat = matrix_to_quaternion(r)
-        t = pose[:3, 3] / 1e3
-
-        return {"frame_id": frame_id, "rgb": rgb, "mask": mask, "r": r_quat, "t": t, "rgb_path": rgb_path}
-
-    def clone(self, idxs=None):
-        scene = self.scene
-        if idxs is not None:
-            scene = {k: [v[i] for i in idxs] for k, v in scene.items()}
-        return SceneDataset(scene, self.transform)
 
 
 def main():
@@ -177,7 +132,7 @@ def main():
 
     logger.info(f"{len(train_dataset)=}")
 
-    collate_fn = custom_collate_fn
+    collate_fn = dict_collate_fn
     if args.ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(
