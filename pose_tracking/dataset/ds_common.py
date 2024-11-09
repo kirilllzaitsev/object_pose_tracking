@@ -44,7 +44,7 @@ def get_ds_sample(
             if pose.shape[-1] != 7:
                 rot = torch.from_numpy(pose[:3, :3])
                 quat = convert_rotation_representation(rot, rot_representation="quaternion")
-                pose = np.concatenate([quat, pose[:3, 3]])
+                pose = np.concatenate([pose[:3, 3], quat])
         sample["pose"] = from_numpy(pose)
 
     return sample

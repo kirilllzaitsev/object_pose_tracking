@@ -411,14 +411,19 @@ def plot_sample(sample):
     return fig, axs
 
 
-def plot_sample_pose(sample, scale=50.0, bbox=None):
-    fig, axs = plt.subplots(1, 1, figsize=(10, 5))
+def plot_sample_pose(sample, scale=50.0, bbox=None, axs=None):
     color = adjust_img_for_plt(sample["rgb"])
     pose = sample["pose"]
     K = sample["intrinsics"]
+    return plot_pose(color, pose, K, bbox=bbox, axs=axs, scale=scale)
+
+
+def plot_pose(color, pose, K, bbox=None, axs=None, scale=50.0):
+    if axs is None:
+        fig, axs = plt.subplots(1, 1, figsize=(10, 5))
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
     axs.imshow(color_with_pose)
-    return fig, axs
+    return axs
 
 
 def render_offscreen(mesh, obj_pose, intrinsic, w, h, headless=False):
