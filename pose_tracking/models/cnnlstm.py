@@ -205,81 +205,14 @@ class RecurrentCNN(nn.Module):
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
 
-    def forward(self, inputs, hx_0, cx_0=None):
-        # inputs: seq of dicts with keys "rgb" and "depth"
-        decoder_outputs = []
-        encoder_outputs = []
-        hx, cx = hx_0, cx_0
-
-        for input_t in inputs:
-            rgb_latent, depth_latent = input_t["rgb"], input_t["depth"]
-            encoder_out = self.belief_encoder(rgb_latent, depth_latent, hx=hx, cx=cx)
-            hx, cx = (encoder_out["hidden_state"], encoder_out["cx"])
-            decoder_out = self.belief_decoder(encoder_out["hidden_state"], depth_latent)
-            decoder_outputs.append(decoder_out)
-            encoder_outputs.append(encoder_out)
+    def forward(self, latent_rgb, latent_depth, hx, cx=None):
+        encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
+        hx, cx = (encoder_out["hidden_state"], encoder_out["cx"])
+        decoder_out = self.belief_decoder(hx, latent_depth)
 
         return {
-            "encoder_outputs": encoder_outputs,
-            "decoder_outputs": decoder_outputs,
+            "encoder_out": encoder_out,
+            "decoder_out": decoder_out,
+            "hx": hx,
+            "cx": cx,
         }
-
-
-if __name__ == "__main__":
-    model = LSTMCell(10, 20)
-    input = torch.randn(6, 10)
-    hx = torch.randn(6, 20)
-    cx = torch.randn(6, 20)
-    output = model(input, hx, cx)
-    print(output[0].shape)
-    batch_size = 6
-    hidden_dim = 20
-    inputs = torch.randn(batch_size, hidden_dim)
-    depth_latent = torch.randn(batch_size, 50)
-    belief_decoder = BeliefDecoder(
-        state_dim=hidden_dim,
-        priv_decoder_out_dim=20,
-        priv_decoder_hidden_dim=10,
-        depth_decoder_hidden_dim=10,
-        depth_decoder_out_dim=50,
-        hidden_attn_hidden_dim=20,
-    )
-    outputs = belief_decoder(inputs, depth_latent)
-    for k, v in outputs.items():
-        print(k, v.shape)
-
-    hidden_dim = 20
-    batch_size = 3
-    rgb_dim = 10
-    depth_dim = 50
-    priv_dim = 20
-    net = RecurrentCNN(
-        depth_dim=depth_dim,
-        rgb_dim=rgb_dim,
-        hidden_dim=hidden_dim,
-        rnn_type="gru",
-        benc_depth_latent_dim=50,
-        benc_belief_posterior_dim=50,
-        bdec_priv_decoder_out_dim=priv_dim,
-        bdec_priv_decoder_hidden_dim=40,
-        bdec_depth_decoder_out_dim=50,
-        bdec_depth_decoder_hidden_dim=80,
-        benc_belief_enc_hidden_dim=110,
-        benc_belief_depth_enc_hidden_dim=200,
-        bdec_hidden_attn_hidden_dim=128,
-    )
-    seq_len = 6
-    inputs = [
-        {"rgb": torch.randn(batch_size, rgb_dim), "depth": torch.randn(batch_size, depth_dim)} for _ in range(seq_len)
-    ]
-    hx = torch.zeros(batch_size, hidden_dim)
-    cx = torch.zeros(batch_size, hidden_dim)
-    outputs = net(inputs, hx)
-    for k, v in outputs.items():
-        print(k, len(v), v[0].keys())
-        for out_t in v:
-            for k2, v2 in out_t.items():
-                if v2 is None:
-                    continue
-                print(k2, v2.shape)
-            break
