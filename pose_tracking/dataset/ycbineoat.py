@@ -37,6 +37,7 @@ class YCBineoatDataset(Dataset):
         include_gt_pose=True,
         transforms=None,
         start_frame_idx=0,
+        convert_pose_to_quat=False,
     ):
         self.video_dir = video_dir
         self.downscale = downscale
@@ -49,6 +50,7 @@ class YCBineoatDataset(Dataset):
         self.include_gt_pose = include_gt_pose
         self.zfar = zfar
         self.transforms = transforms
+        self.convert_pose_to_quat = convert_pose_to_quat
 
         self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
 
@@ -99,7 +101,7 @@ class YCBineoatDataset(Dataset):
 
         sample["intrinsics"] = self.K
 
-        sample = process_raw_sample(sample, transforms=self.transforms)
+        sample = process_raw_sample(sample, transforms=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat)
 
         return sample
 

@@ -1,10 +1,20 @@
 from collections import defaultdict
 
+import numpy as np
 import torch
+from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 
 
 def get_ds_sample(
-    color, rgb_path, depth_m=None, pose=None, mask=None, mask_visib=None, intrinsics=None, transforms=None
+    color,
+    rgb_path,
+    depth_m=None,
+    pose=None,
+    mask=None,
+    mask_visib=None,
+    intrinsics=None,
+    transforms=None,
+    convert_pose_to_quat=False,
 ):
     if transforms is None:
         rgb = torch.from_numpy(color).permute(2, 0, 1)
@@ -20,6 +30,8 @@ def get_ds_sample(
     }
     if depth_m is not None:
         depth = from_numpy(depth_m)
+        if depth.ndim == 2:
+            depth = depth.unsqueeze(0)
         sample["depth"] = depth
     if intrinsics is not None:
         sample["intrinsics"] = from_numpy(intrinsics)
@@ -28,6 +40,11 @@ def get_ds_sample(
             mask = mask / 255.0
         sample["mask"] = from_numpy(mask)
     if pose is not None:
+        if convert_pose_to_quat:
+            if pose.shape[-1] != 7:
+                rot = torch.from_numpy(pose[:3, :3])
+                quat = convert_rotation_representation(rot, rot_representation="quaternion")
+                pose = np.concatenate([quat, pose[:3, 3]])
         sample["pose"] = from_numpy(pose)
 
     return sample
@@ -41,7 +58,7 @@ def from_numpy(x):
     return torch.from_numpy(x).float()
 
 
-def process_raw_sample(sample, transforms=None):
+def process_raw_sample(sample, transforms=None, convert_pose_to_quat=False):
     ds_sample = get_ds_sample(
         sample["rgb"],
         rgb_path=sample["rgb_path"],
@@ -50,6 +67,7 @@ def process_raw_sample(sample, transforms=None):
         mask=sample.get("mask"),
         intrinsics=sample.get("intrinsics"),
         transforms=transforms,
+        convert_pose_to_quat=convert_pose_to_quat,
     )
     for k, v in sample.items():
         if k not in ds_sample:
