@@ -1,6 +1,4 @@
-import argparse
 import os
-import pickle
 import shutil
 import sys
 from collections import defaultdict
@@ -10,6 +8,7 @@ from pathlib import Path
 import cv2
 import matplotlib
 import numpy as np
+from pose_tracking.models.direct_regr_cnn import DirectRegrCNN
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -19,12 +18,12 @@ from pose_tracking.config import (
     ARTIFACTS_DIR,
     DATA_DIR,
     PROJ_DIR,
-    WORKSPACE_DIR,
     log_exception,
     prepare_logger,
 )
 from pose_tracking.dataset.bop import BOPDataset
 from pose_tracking.losses import geodesic_loss
+from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import print_args
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.rotation_conversions import (
@@ -34,125 +33,10 @@ from pose_tracking.utils.rotation_conversions import (
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import datasets, models, transforms
+from torchvision import transforms
 from tqdm.auto import tqdm
 
 matplotlib.use("TKAgg")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    pipe_args = parser.add_argument_group("Training arguments")
-
-    pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
-    pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
-    pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
-    pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
-    pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
-
-    train_args = parser.add_argument_group("Training arguments")
-    train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
-    train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
-    train_args.add_argument("--save_epoch_freq", type=int, default=10, help="Save model every N epochs")
-    train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
-    train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
-    train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
-    train_args.add_argument("--seed", type=int, default=10, help="Random seed")
-    train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
-
-    data_args = parser.add_argument_group("Data arguments")
-    data_args.add_argument("--scene_idx", type=int, default=7, help="Scene index")
-    data_args.add_argument("--seq_length", type=int, default=200, help="Number of frames to take")
-    data_args.add_argument("--ds_name", type=str, default="lm", help="Dataset name", choices=["lm", "ycbv"])
-
-    return parser.parse_args()
-
-
-def postprocess_args(args):
-    if args.do_overfit:
-        args.dropout_prob = 0.0
-
-    return args
-
-
-class PoseCNN(nn.Module):
-    def __init__(self, dropout_prob=0.3, backbone_name="mobilenet_v3_large"):
-        super().__init__()
-
-        if backbone_name == "resnet50":
-            backbone = models.resnet50(pretrained=True)
-            last_backbone_ch = 2048
-        elif backbone_name == "mobilenet_v3_large":
-            backbone = models.mobilenet_v3_large(pretrained=True)
-            last_backbone_ch = 960
-        else:
-            raise ValueError(f"Unknown backbone: {backbone_name}")
-        self.backbone_name = backbone_name
-
-        self.do_modify_first_conv = True
-        self.do_modify_first_conv = False
-        if self.do_modify_first_conv:
-            self.modify_first_conv(backbone)
-
-        modules = list(backbone.children())[:-2]
-        self.features = nn.Sequential(*modules)
-
-        self.translation_head = nn.Sequential(
-            nn.Conv2d(last_backbone_ch, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Dropout(dropout_prob),
-            nn.Linear(256, 3),
-        )
-
-        self.rotation_head = nn.Sequential(
-            nn.Conv2d(last_backbone_ch, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Dropout(dropout_prob),
-            nn.Linear(256, 4),
-            nn.Tanh(),
-        )
-
-    def modify_first_conv(self, backbone):
-        if self.backbone_name == "mobilenet_v3_large":
-            original_conv = backbone.features[0][0]
-        else:
-            original_conv = backbone.conv1
-
-        new_conv = nn.Conv2d(
-            in_channels=4,
-            out_channels=original_conv.out_channels,
-            kernel_size=original_conv.kernel_size,
-            stride=original_conv.stride,
-            padding=original_conv.padding,
-            bias=original_conv.bias is not None,
-        )
-
-        with torch.no_grad():
-            new_conv.weight[:, :3, :, :] = original_conv.weight
-            new_conv.weight[:, 3:, :, :] = original_conv.weight.mean(dim=1, keepdim=True)
-
-        if self.backbone_name == "mobilenet_v3_large":
-            backbone.features[0][0] = new_conv
-        else:
-            backbone.conv1 = new_conv
-
-    def forward(self, x, segm_mask):
-        if self.do_modify_first_conv:
-            x = torch.cat([x, segm_mask], dim=1)
-        features = self.features(x)
-
-        trans_output = self.translation_head(features)
-
-        rot_output = self.rotation_head(features)
-
-        rot_output = rot_output / rot_output.norm(dim=1, keepdim=True)
-
-        return trans_output, rot_output
 
 
 def custom_collate_fn(batch):
@@ -204,7 +88,6 @@ class SceneDataset(torch.utils.data.Dataset):
 
 def main():
     args = parse_args()
-    args = postprocess_args(args)
     print_args(args)
 
     set_seed(args.seed)
@@ -245,7 +128,7 @@ def main():
         logger.remove()
     logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
 
-    model = PoseCNN().to(device)
+    model = DirectRegrCNN().to(device)
     logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
     if args.ddp:
