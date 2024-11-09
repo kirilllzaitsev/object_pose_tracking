@@ -1,6 +1,8 @@
 import numpy as np
+import torch
 import trimesh
 from bop_toolkit_lib.transform import euler_matrix
+from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 
 
 def combine_R_and_T(R, T, scale_translation=1.0):
@@ -8,6 +10,15 @@ def combine_R_and_T(R, T, scale_translation=1.0):
     matrix4x4[:3, :3] = np.array(R).reshape(3, 3)
     matrix4x4[:3, 3] = np.array(T).reshape(-1) * scale_translation
     return matrix4x4
+
+
+def convert_pose_quaternion_to_matrix(pose):
+    t = pose[:3].detach().cpu()
+    q = pose[3:].detach().cpu()
+    pose_matrix = torch.eye(4)
+    pose_matrix[:3, :3] = quaternion_to_matrix(q)
+    pose_matrix[:3, 3] = t
+    return pose_matrix
 
 
 def sample_views_icosphere(n_views, subdivisions=None, radius=1):
