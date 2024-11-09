@@ -1,4 +1,5 @@
 from collections import defaultdict
+
 import torch
 
 
@@ -57,10 +58,19 @@ def process_raw_sample(sample, transforms=None):
 
 
 def dict_collate_fn(batch):
+    # result is a dict with values of size batch_size x ...
     new_b = defaultdict(list)
     for k in batch[0].keys():
         new_b[k] = [d[k] for d in batch]
     for k, v in new_b.items():
         if isinstance(v[0], torch.Tensor):
             new_b[k] = torch.stack(v)
+    return new_b
+
+
+def seq_collate_fn(batch):
+    # result is a list of size seq_len with dicts having values of size batch_size x ...
+    new_b = []
+    for i in range(len(batch[0])):
+        new_b.append(dict_collate_fn([d[i] for d in batch]))
     return new_b
