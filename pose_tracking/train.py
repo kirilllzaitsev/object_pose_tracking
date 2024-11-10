@@ -157,28 +157,29 @@ def main():
 
     history = defaultdict(lambda: defaultdict(list))
 
-    hidden_dim = 256
-    latent_dim = 256
+    hidden_dim = args.hidden_dim
     priv_dim = 256
+    latent_dim = 256
     depth_dim = latent_dim
     rgb_dim = latent_dim
     model = RecurrentCNN(
         depth_dim=depth_dim,
         rgb_dim=rgb_dim,
         hidden_dim=hidden_dim,
-        rnn_type="gru",
+        rnn_type=args.rnn_type,
         bdec_priv_decoder_out_dim=priv_dim,
-        bdec_priv_decoder_hidden_dim=40,
-        bdec_depth_decoder_hidden_dim=80,
-        benc_belief_enc_hidden_dim=110,
-        benc_belief_depth_enc_hidden_dim=200,
-        bdec_hidden_attn_hidden_dim=128,
+        bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
+        bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
+        benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
+        benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
+        bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
+        encoder_name=args.encoder_name,
     ).to(device)
 
     logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):

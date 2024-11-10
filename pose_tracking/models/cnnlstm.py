@@ -171,6 +171,7 @@ class RecurrentCNN(nn.Module):
         benc_belief_enc_num_layers=2,
         benc_belief_depth_enc_num_layers=2,
         rnn_type="gru",
+        encoder_name="regnet_y_800mf",
     ):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -207,7 +208,8 @@ class RecurrentCNN(nn.Module):
         )
         self.t_mlp = nn.Linear(depth_dim + rgb_dim, 3)
         self.rot_mlp = nn.Linear(depth_dim + rgb_dim, 4)
-        self.encoder_img, self.encoder_depth = get_encoders("regnet_y_800mf")
+        self.encoder_name = encoder_name
+        self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
 
     def forward(self, rgb, depth, hx, cx=None):
 
