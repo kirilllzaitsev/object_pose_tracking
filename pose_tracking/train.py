@@ -28,7 +28,7 @@ from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
-from pose_tracking.losses import geodesic_loss
+from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, print_args
@@ -39,6 +39,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
+import trimesh
 
 matplotlib.use("TKAgg")
 
@@ -77,15 +78,19 @@ def main():
     preds_dir.mkdir(parents=True, exist_ok=True)
     model_path = preds_dir / "model.pth"
 
-    logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
+    logpath = f"{logdir}/log.log"
+    logger = prepare_logger(logpath=logpath, level="INFO")
     if is_main_process:
         sys.excepthook = log_exception
     else:
         logger.remove()
-    logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
+    logger.info(f"{PROJ_DIR=}")
+    logger.info(f"{logdir=}")
+    logger.info(f"{logpath=}")
 
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
+    criterion_pose = compute_add_loss if args.pose_loss_name in ["add"] else None
 
     transform = get_transforms()
 
@@ -180,7 +185,7 @@ def main():
 
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
     
     # downsample mesh pts
