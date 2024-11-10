@@ -180,7 +180,7 @@ def main():
 
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
