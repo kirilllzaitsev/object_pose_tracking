@@ -24,3 +24,7 @@
 ## Installation
 
 TBD
+
+## Acknowledgements
+
+- https://github.com/S-JingTao/Categorical_Pose_Tracking

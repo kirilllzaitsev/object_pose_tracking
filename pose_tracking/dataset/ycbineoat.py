@@ -139,7 +139,7 @@ class YCBineoatDataset(Dataset):
         return occ_mask.astype(np.uint8)
 
     def get_video_name(self):
-        return self.video_dir.split("/")[-1]
+        return str(self.video_dir).split("/")[-1]
 
 
 class YCBineoatDatasetBenchmark(YCBineoatDataset):

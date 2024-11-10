@@ -1,6 +1,7 @@
 import copy
 
 import numpy as np
+from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.geom import world_to_cam
 from scipy.spatial import cKDTree
 from sklearn import metrics
