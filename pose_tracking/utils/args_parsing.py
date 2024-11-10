@@ -35,19 +35,19 @@ def parse_args():
     )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
     model_args.add_argument(
-        "--bdec_priv_decoder_hidden_dim", type=int, default=40, help="Hidden dimension for privilaged info decoder"
+        "--bdec_priv_decoder_hidden_dim", type=int, default=32, help="Hidden dimension for privileged info decoder"
     )
     model_args.add_argument(
-        "--bdec_depth_decoder_hidden_dim", type=int, default=80, help="Hidden dimension for depth decoder"
+        "--bdec_depth_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for depth decoder"
     )
     model_args.add_argument(
-        "--benc_belief_enc_hidden_dim", type=int, default=110, help="Hidden dimension for belief encoder"
+        "--benc_belief_enc_hidden_dim", type=int, default=512, help="Hidden dimension for belief encoder"
     )
     model_args.add_argument(
-        "--benc_belief_depth_enc_hidden_dim", type=int, default=200, help="Hidden dimension for belief depth encoder"
+        "--benc_belief_depth_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief depth encoder"
     )
     model_args.add_argument(
-        "--bdec_hidden_attn_hidden_dim", type=int, default=128, help="Hidden dimension for hidden attention"
+        "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
 
     data_args = parser.add_argument_group("Data arguments")
