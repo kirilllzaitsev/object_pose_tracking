@@ -186,47 +186,16 @@ def main():
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
-        running_losses = defaultdict(float)
-        for seq_idx, batched_seq in enumerate(tqdm(train_loader, desc="Seq", leave=False)):
-            batched_seq = transfer_batch_to_device(batched_seq, device)
-
-            hx = torch.zeros(args.batch_size, hidden_dim).to(device)
-            cx = torch.zeros(args.batch_size, hidden_dim).to(device)
-            ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
-            for t, batch_t in ts_pbar:
-                optimizer.zero_grad()
-                images = batch_t["rgb"]
-                seg_masks = batch_t["mask"].float()
-                pose_gt = batch_t["pose"]
-                trans_labels = pose_gt[:, :3]
-                rot_labels = pose_gt[:, 3:]
-                rgb = images
-                depth = batch_t["depth"]
-
-                outputs = model(rgb, depth, hx=hx, cx=cx)
-
-                loss_trans = criterion_trans(outputs["t"], trans_labels)
-                loss_rot = criterion_rot(outputs["rot"], rot_labels)
-                loss = loss_trans + loss_rot
-
-                loss.backward()
-                optimizer.step()
-
-                running_losses["loss"] += loss
-                running_losses["loss_rot"] += loss_rot
-                running_losses["loss_trans"] += loss_trans
-
-                ts_pbar.set_postfix(
-                    {
-                        "loss": running_losses["loss"] / (t + 1),
-                        "loss_rot": running_losses["loss_rot"] / (t + 1),
-                    }
-                )
+        running_losses = loader_forward(
+            train_loader,
+            model,
+            device,
+            criterion_trans=criterion_trans,
+            criterion_rot=criterion_rot,
+            optimizer=optimizer,
+        )
 
         logger.info(f"#### Epoch {epoch} ####")
-        for k, v in running_losses.items():
-            running_losses[k] = v / len(train_loader)
-
         for k, v in running_losses.items():
             running_loss = v.item()
             logger.info(f"{k}: {running_loss:.4f}")
@@ -319,6 +288,78 @@ def main():
 
     if args.ddp:
         dist.destroy_process_group()
+
+
+def loader_forward(train_loader, model, device, criterion_trans, criterion_rot, optimizer=None):
+    running_losses = defaultdict(float)
+    seq_pbar = tqdm(train_loader, desc="Seq", leave=False)
+    for seq_idx, batched_seq in enumerate(seq_pbar):
+        seq_losses = batched_seq_forward(
+            batched_seq=batched_seq,
+            model=model,
+            device=device,
+            criterion_trans=criterion_trans,
+            criterion_rot=criterion_rot,
+            optimizer=optimizer,
+        )
+
+        running_losses["loss"] += seq_losses["loss"]
+        running_losses["loss_rot"] += seq_losses["loss_rot"]
+        running_losses["loss_trans"] += seq_losses["loss_trans"]
+
+        seq_pbar.set_postfix(
+            {
+                "loss": running_losses["loss"] / (seq_idx + 1),
+                "loss_rot": running_losses["loss_rot"] / (seq_idx + 1),
+            }
+        )
+
+    for k, v in running_losses.items():
+        running_losses[k] = v / len(train_loader)
+    return running_losses
+
+
+def batched_seq_forward(batched_seq, model, device, criterion_trans, criterion_rot, optimizer=None):
+    batched_seq = transfer_batch_to_device(batched_seq, device)
+    batch_size = len(batched_seq[0]["rgb"])
+    hidden_dim = model.hidden_dim
+    hx = torch.zeros(batch_size, hidden_dim).to(device)
+    cx = None if "gru" in model.rnn_type else torch.zeros(batch_size, hidden_dim).to(device)
+    ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
+    is_train = optimizer is not None
+    seq_losses = defaultdict(float)
+    for t, batch_t in ts_pbar:
+        if is_train:
+            optimizer.zero_grad()
+        rgb = batch_t["rgb"]
+        seg_masks = batch_t["mask"]
+        pose_gt = batch_t["pose"]
+        depth = batch_t["depth"]
+
+        outputs = model(rgb, depth, hx=hx, cx=cx)
+
+        trans_labels = pose_gt[:, :3]
+        rot_labels = pose_gt[:, 3:]
+        loss_trans = criterion_trans(outputs["t"], trans_labels)
+        loss_rot = criterion_rot(outputs["rot"], rot_labels)
+        loss = loss_trans + loss_rot
+
+        if is_train:
+            loss.backward()
+            optimizer.step()
+
+        seq_losses["loss"] += loss
+        seq_losses["loss_rot"] += loss_rot
+        seq_losses["loss_trans"] += loss_trans
+
+        ts_pbar.set_postfix(
+            {
+                "loss": seq_losses["loss"] / (t + 1),
+                "loss_rot": seq_losses["loss_rot"] / (t + 1),
+            }
+        )
+
+    return seq_losses
 
 
 def save_model(model, model_path):

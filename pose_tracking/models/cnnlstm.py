@@ -222,7 +222,7 @@ class RecurrentCNN(nn.Module):
 
         # pose estimation
         belief_state = encoder_out["belief_state"]
-        extracted_obs = torch.cat([rgb, belief_state], dim=1)
+        extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
         t = self.t_mlp(extracted_obs)
         rot = self.rot_mlp(extracted_obs)
 
