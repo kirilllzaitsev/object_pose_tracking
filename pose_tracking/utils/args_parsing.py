@@ -21,6 +21,31 @@ def parse_args():
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
+    train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+
+    model_args = parser.add_argument_group("Model arguments")
+    model_args.add_argument(
+        "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
+    )
+    model_args.add_argument(
+        "--encoder_name", type=str, default="regnet_y_800mf", help="Encoder name for both RGB and depth"
+    )
+    model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
+    model_args.add_argument(
+        "--bdec_priv_decoder_hidden_dim", type=int, default=40, help="Hidden dimension for privilaged info decoder"
+    )
+    model_args.add_argument(
+        "--bdec_depth_decoder_hidden_dim", type=int, default=80, help="Hidden dimension for depth decoder"
+    )
+    model_args.add_argument(
+        "--benc_belief_enc_hidden_dim", type=int, default=110, help="Hidden dimension for belief encoder"
+    )
+    model_args.add_argument(
+        "--benc_belief_depth_enc_hidden_dim", type=int, default=200, help="Hidden dimension for belief depth encoder"
+    )
+    model_args.add_argument(
+        "--bdec_hidden_attn_hidden_dim", type=int, default=128, help="Hidden dimension for hidden attention"
+    )
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--scene_idx", type=int, default=7, help="Scene index")
