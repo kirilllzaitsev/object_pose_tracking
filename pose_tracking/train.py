@@ -286,10 +286,12 @@ def main():
         dist.destroy_process_group()
 
 
-def loader_forward(train_loader, model, device, criterion_trans, criterion_rot, optimizer=None):
+def loader_forward(
+    train_loader, model, device, criterion_trans, criterion_rot, optimizer=None, save_preds=False, preds_dir=None
+):
     running_losses = defaultdict(float)
     seq_pbar = tqdm(train_loader, desc="Seq", leave=False)
-    for seq_idx, batched_seq in enumerate(seq_pbar):
+    for seq_pack_idx, batched_seq in enumerate(seq_pbar):
         seq_losses = batched_seq_forward(
             batched_seq=batched_seq,
             model=model,
@@ -297,6 +299,8 @@ def loader_forward(train_loader, model, device, criterion_trans, criterion_rot, 
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
             optimizer=optimizer,
+            save_preds=save_preds,
+            preds_dir=preds_dir,
         )
 
         running_losses["loss"] += seq_losses["loss"]
@@ -305,8 +309,8 @@ def loader_forward(train_loader, model, device, criterion_trans, criterion_rot, 
 
         seq_pbar.set_postfix(
             {
-                "loss": running_losses["loss"] / (seq_idx + 1),
-                "loss_rot": running_losses["loss_rot"] / (seq_idx + 1),
+                "loss": running_losses["loss"] / (seq_pack_idx + 1),
+                "loss_rot": running_losses["loss_rot"] / (seq_pack_idx + 1),
             }
         )
 
@@ -315,7 +319,9 @@ def loader_forward(train_loader, model, device, criterion_trans, criterion_rot, 
     return running_losses
 
 
-def batched_seq_forward(batched_seq, model, device, criterion_trans, criterion_rot, optimizer=None):
+def batched_seq_forward(
+    batched_seq, model, device, criterion_trans, criterion_rot, optimizer=None, save_preds=False, preds_dir=None
+):
     batched_seq = transfer_batch_to_device(batched_seq, device)
     batch_size = len(batched_seq[0]["rgb"])
     hidden_dim = model.hidden_dim
@@ -347,6 +353,10 @@ def batched_seq_forward(batched_seq, model, device, criterion_trans, criterion_r
         seq_losses["loss"] += loss
         seq_losses["loss_rot"] += loss_rot
         seq_losses["loss_trans"] += loss_trans
+
+        if save_preds:
+            assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+            save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
 
         ts_pbar.set_postfix(
             {
