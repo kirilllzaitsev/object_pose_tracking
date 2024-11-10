@@ -10,7 +10,7 @@ class VideoDataset(Dataset):
         seq_len: Number of frames to take for a single sample
         seq_start: Start frame index in the video
         seq_step: Step between frames in a sequence
-        num_samples: Number of times to sample a sequence from the video
+        num_samples: Number of times to sample a sequence from the video (length of the dataset)
     """
 
     def __init__(self, ds, seq_len=10, seq_start=0, seq_step=1, num_samples=None):

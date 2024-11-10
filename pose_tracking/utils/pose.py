@@ -13,9 +13,9 @@ def combine_R_and_T(R, T, scale_translation=1.0):
 
 
 def convert_pose_quaternion_to_matrix(pose):
-    t = pose[:3].detach().cpu()
-    q = pose[3:].detach().cpu()
-    pose_matrix = torch.eye(4)
+    t = pose[:3]
+    q = pose[3:]
+    pose_matrix = torch.eye(4).to(pose.device)
     pose_matrix[:3, :3] = quaternion_to_matrix(q)
     pose_matrix[:3, 3] = t
     return pose_matrix
