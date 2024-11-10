@@ -22,28 +22,23 @@ from pose_tracking.config import (
     log_exception,
     prepare_logger,
 )
-from pose_tracking.dataset.bop import BOPDataset
-from pose_tracking.dataset.bop_scene_ds import SceneDataset
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
-from pose_tracking.dataset.ds_common import dict_collate_fn, seq_collate_fn
+from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import geodesic_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN
-from pose_tracking.models.direct_regr_cnn import DirectRegrCNN
-from pose_tracking.models.encoders import get_encoders
 from pose_tracking.utils.args_parsing import parse_args
-from pose_tracking.utils.common import print_args
-from pose_tracking.utils.misc import set_seed
+from pose_tracking.utils.common import adjust_img_for_plt, print_args
+from pose_tracking.utils.misc import set_seed, to_numpy
+from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import (
-    matrix_to_quaternion,
     quaternion_to_matrix,
 )
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
 from tqdm.auto import tqdm
 
 matplotlib.use("TKAgg")
@@ -242,48 +237,68 @@ def main():
         p.requires_grad = False
     model.eval()
 
-    test_loader = train_loader if args.do_overfit else val_loader
-    for batched_seq in tqdm(test_loader):
-        images = batched_seq["rgb"]
-        seg_masks = batched_seq["mask"]
-        rgb_paths = batched_seq["rgb_path"]
-        images = images.to(device)
-        seg_masks = seg_masks.to(device).float()
-
-        trans_output, rot_output = model(images, seg_masks)
-        for i in range(len(images)):
-            rgb = images[i].cpu().numpy()
-            name = Path(rgb_paths[i]).stem
-            pose = torch.eye(4)
-            r_quat = rot_output[i]
-            pose[:3, :3] = quaternion_to_matrix(r_quat)
-            pose[:3, 3] = trans_output[i] * 1e3
-            gt_pose = torch.eye(4)
-            gt_pose[:3, :3] = quaternion_to_matrix(batched_seq["r"][i].squeeze())
-            gt_pose[:3, 3] = batched_seq["t"][i].squeeze() * 1e3
-            pose = pose.cpu().numpy()
-            gt_pose = gt_pose.cpu().numpy()
-            pose_path = preds_dir / "poses" / f"{name}.txt"
-            gt_path = preds_dir / "poses_gt" / f"{name}.txt"
-            rgb_path = preds_dir / "rgb" / f"{name}.png"
-            pose_path.parent.mkdir(parents=True, exist_ok=True)
-            rgb_path.parent.mkdir(parents=True, exist_ok=True)
-            gt_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(pose_path, "w") as f:
-                for row in pose:
-                    f.write(" ".join(map(str, row)) + "\n")
-            with open(gt_path, "w") as f:
-                for row in gt_pose:
-                    f.write(" ".join(map(str, row)) + "\n")
-            rgb = (rgb * 255).astype(np.uint8)
-            rgb = rgb.transpose(1, 2, 0)
-            rgb_path = str(rgb_path)
-            cv2.imwrite(rgb_path, rgb)
+    test_dataset = VideoDataset(
+        ds=YCBineoatDataset(**ycbi_kwargs),
+        seq_len=100,
+        # seq_len=None,
+        seq_step=1,
+        seq_start=0,
+        num_samples=1,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=collate_fn,
+    )
+    loader_forward(
+        test_loader,
+        model,
+        device,
+        criterion_trans=criterion_trans,
+        criterion_rot=criterion_rot,
+        save_preds=True,
+        preds_dir=preds_dir,
+    )
 
     logger.info(f"saved to {preds_dir=} {preds_dir.name}")
 
     if args.ddp:
         dist.destroy_process_group()
+
+
+def save_results(batch_t, t_pred, rot_pred, preds_dir):
+    # batch_t contains data for the t-th timestep in N sequences
+    batch_size = len(batch_t["rgb"])
+    for seq_idx in range(batch_size):
+        rgb = batch_t["rgb"][seq_idx].cpu().numpy()
+        name = Path(batch_t["rgb_path"][seq_idx]).stem
+        pose = torch.eye(4)
+        r_quat = rot_pred[seq_idx]
+        pose[:3, :3] = quaternion_to_matrix(r_quat)
+        pose[:3, 3] = t_pred[seq_idx] * 1e3
+        pose = to_numpy(pose)
+        gt_pose = batch_t["pose"][seq_idx]
+        gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
+        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze() * 1e3
+        gt_pose_formatted = to_numpy(gt_pose_formatted)
+        seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
+        pose_path = seq_dir / "poses" / f"{name}.txt"
+        gt_path = seq_dir / "poses_gt" / f"{name}.txt"
+        rgb_path = seq_dir / "rgb" / f"{name}.png"
+        pose_path.parent.mkdir(parents=True, exist_ok=True)
+        rgb_path.parent.mkdir(parents=True, exist_ok=True)
+        gt_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pose_path, "w") as f:
+            for row in pose:
+                f.write(" ".join(map(str, row)) + "\n")
+        with open(gt_path, "w") as f:
+            for row in gt_pose_formatted:
+                f.write(" ".join(map(str, row)) + "\n")
+        rgb = adjust_img_for_plt(rgb)
+        rgb = rgb[..., ::-1]
+        rgb_path = str(rgb_path)
+        cv2.imwrite(rgb_path, rgb)
 
 
 def loader_forward(
