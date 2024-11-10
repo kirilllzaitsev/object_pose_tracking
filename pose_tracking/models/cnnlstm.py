@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from pose_tracking.models.encoders import get_encoders
 from pose_tracking.models.rnn_cells import GRUCell
 from torch import jit
 from torch.nn import Parameter
@@ -204,15 +205,30 @@ class RecurrentCNN(nn.Module):
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
+        self.t_mlp = nn.Linear(depth_dim + rgb_dim, 3)
+        self.rot_mlp = nn.Linear(depth_dim + rgb_dim, 4)
+        self.encoder_img, self.encoder_depth = get_encoders("regnet_y_800mf")
 
-    def forward(self, latent_rgb, latent_depth, hx, cx=None):
+    def forward(self, rgb, depth, hx, cx=None):
+
+        latent_rgb = self.encoder_img(rgb)
+        latent_depth = self.encoder_depth(depth)
+
         encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
         hx, cx = (encoder_out["hidden_state"], encoder_out["cx"])
         decoder_out = self.belief_decoder(hx, latent_depth)
+
+        # pose estimation
+        belief_state = encoder_out["belief_state"]
+        extracted_obs = torch.cat([rgb, belief_state], dim=1)
+        t = self.t_mlp(extracted_obs)
+        rot = self.rot_mlp(extracted_obs)
 
         return {
             "encoder_out": encoder_out,
             "decoder_out": decoder_out,
             "hx": hx,
             "cx": cx,
+            "t": t,
+            "rot": rot,
         }

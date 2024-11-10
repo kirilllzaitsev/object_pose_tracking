@@ -157,7 +157,6 @@ def main():
 
     history = defaultdict(lambda: defaultdict(list))
 
-    encoder_img, encoder_depth = get_encoders("regnet_y_800mf", device)
     hidden_dim = 256
     latent_dim = 256
     priv_dim = 256
@@ -175,14 +174,10 @@ def main():
         benc_belief_depth_enc_hidden_dim=200,
         bdec_hidden_attn_hidden_dim=128,
     ).to(device)
-    t_mlp = nn.Linear(depth_dim + rgb_dim, 3).to(device)
-    rot_mlp = nn.Linear(depth_dim + rgb_dim, 4).to(device)
 
     logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-        t_mlp = DDP(t_mlp, device_ids=[args.local_rank], output_device=args.local_rank)
-        rot_mlp = DDP(rot_mlp, device_ids=[args.local_rank], output_device=args.local_rank)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
@@ -206,19 +201,11 @@ def main():
                 rot_labels = pose_gt[:, 3:]
                 rgb = images
                 depth = batch_t["depth"]
-                rgb_latent = encoder_img(rgb)
-                depth_latent = encoder_depth(depth)
 
-                outputs = model(rgb_latent, depth_latent, hx=hx)
+                outputs = model(rgb, depth, hx=hx, cx=cx)
 
-                # pose estimation
-                belief_state = outputs["encoder_out"]["belief_state"]
-                extracted_obs = torch.cat([rgb_latent, belief_state], dim=1)
-                trans_output = t_mlp(extracted_obs)
-                rot_output = rot_mlp(extracted_obs)
-
-                loss_trans = criterion_trans(trans_output, trans_labels)
-                loss_rot = criterion_rot(rot_output, rot_labels)
+                loss_trans = criterion_trans(outputs["t"], trans_labels)
+                loss_rot = criterion_rot(outputs["rot"], rot_labels)
                 loss = loss_trans + loss_rot
 
                 loss.backward()
