@@ -180,8 +180,16 @@ def main():
 
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
+    
+    # downsample mesh pts
+    pts = (
+        torch.tensor(trimesh.sample.sample_surface(ds_ycbi.mesh, 1000)[0])
+        .float()
+        .repeat(args.batch_size, 1, 1)
+        .to(device)
+    )
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
@@ -193,15 +201,16 @@ def main():
             device,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
+            criterion_pose=criterion_pose,
+            pts=pts,
             optimizer=optimizer,
         )
 
         logger.info(f"# Epoch {epoch} #")
         logger.info("## TRAIN ##")
         for k, v in train_losses.items():
-            running_loss = v.item()
-            logger.info(f"{k}: {running_loss:.4f}")
-            history["train"][k].append(running_loss)
+            logger.info(f"{k}: {v:.4f}")
+            history["train"][k].append(v)
 
         lr_scheduler.step()
         if epoch % args.save_epoch_freq == 0:
@@ -216,12 +225,13 @@ def main():
                     device,
                     criterion_trans=criterion_trans,
                     criterion_rot=criterion_rot,
+                    criterion_pose=criterion_pose,
+                    pts=pts,
                 )
             logger.info("## VAL ##")
             for k, v in val_losses.items():
-                running_loss = v.item()
-                logger.info(f"{k}: {running_loss:.4f}")
-                history["val"][k].append(running_loss)
+                logger.info(f"{k}: {v:.4f}")
+                history["val"][k].append(v)
 
             if args.use_es_val:
                 early_stopping(loss=history["val"]["loss"][-1])
@@ -238,6 +248,9 @@ def main():
         return
 
     save_model(model, model_path)
+
+    logger.info(f"{logdir=}")
+    logger.info(f"{logpath=}")
 
     if args.use_test_set and is_main_process:
         for p in model.parameters():
@@ -264,6 +277,8 @@ def main():
             device,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
+            criterion_pose=criterion_pose,
+            pts=pts,
             save_preds=True,
             preds_dir=preds_dir,
         )
@@ -309,8 +324,20 @@ def save_results(batch_t, t_pred, rot_pred, preds_dir):
 
 
 def loader_forward(
-    train_loader, model, device, criterion_trans, criterion_rot, optimizer=None, save_preds=False, preds_dir=None
+    train_loader,
+    model,
+    device,
+    criterion_trans=None,
+    criterion_rot=None,
+    criterion_pose=None,
+    pts=None,
+    optimizer=None,
+    save_preds=False,
+    preds_dir=None,
 ):
+    assert criterion_pose is not None or (
+        criterion_rot is not None and criterion_trans is not None
+    ), "Either pose or rot & trans criteria must be provided"
     running_losses = defaultdict(float)
     seq_pbar = tqdm(train_loader, desc="Seq", leave=False)
     for seq_pack_idx, batched_seq in enumerate(seq_pbar):
@@ -320,13 +347,15 @@ def loader_forward(
             device=device,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
+            criterion_pose=criterion_pose,
+            pts=pts,
             optimizer=optimizer,
             save_preds=save_preds,
             preds_dir=preds_dir,
         )
 
         for k, v in seq_losses.items():
-            running_losses[k] += v
+            running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
 
         seq_pbar.set_postfix(
             {k: v / (seq_pack_idx + 1) for k, v in running_losses.items()},
@@ -338,7 +367,16 @@ def loader_forward(
 
 
 def batched_seq_forward(
-    batched_seq, model, device, criterion_trans, criterion_rot, optimizer=None, save_preds=False, preds_dir=None
+    batched_seq,
+    model,
+    device,
+    criterion_trans=None,
+    criterion_rot=None,
+    criterion_pose=None,
+    pts=None,
+    optimizer=None,
+    save_preds=False,
+    preds_dir=None,
 ):
     batched_seq = transfer_batch_to_device(batched_seq, device)
     batch_size = len(batched_seq[0]["rgb"])
@@ -348,6 +386,7 @@ def batched_seq_forward(
     ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
     is_train = optimizer is not None
     seq_losses = defaultdict(float)
+    use_pose_loss = criterion_pose is not None
     for t, batch_t in ts_pbar:
         if is_train:
             optimizer.zero_grad()
@@ -358,11 +397,22 @@ def batched_seq_forward(
 
         outputs = model(rgb, depth, hx=hx, cx=cx)
 
-        trans_labels = pose_gt[:, :3]
-        rot_labels = pose_gt[:, 3:]
-        loss_trans = criterion_trans(outputs["t"], trans_labels)
-        loss_rot = criterion_rot(outputs["rot"], rot_labels)
-        loss = loss_trans + loss_rot
+        if use_pose_loss:
+            rot_pred, t_pred = outputs["rot"], outputs["t"]
+            pose_pred = torch.stack(
+                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
+            )
+            pose_gt_mat = torch.stack(
+                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
+            )
+            loss_pose = criterion_pose(pose_pred, pose_gt_mat, pts)
+            loss = loss_pose.clone()
+        else:
+            trans_labels = pose_gt[:, :3]
+            rot_labels = pose_gt[:, 3:]
+            loss_trans = criterion_trans(outputs["t"], trans_labels)
+            loss_rot = criterion_rot(outputs["rot"], rot_labels)
+            loss = loss_trans + loss_rot
 
         loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
         loss += loss_depth
@@ -374,15 +424,16 @@ def batched_seq_forward(
             optimizer.step()
 
         seq_losses["loss"] += loss
-        seq_losses["loss_rot"] += loss_rot
-        seq_losses["loss_trans"] += loss_trans
+        if use_pose_loss:
+            seq_losses["loss_pose"] += loss_pose
+        else:
+            seq_losses["loss_rot"] += loss_rot
+            seq_losses["loss_trans"] += loss_trans
         seq_losses["loss_depth"] += loss_depth
 
         if save_preds:
             assert preds_dir is not None, "preds_dir must be provided for saving predictions"
             save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
-
-        ts_pbar.set_postfix({k: v / (t + 1) for k, v in seq_losses.items()})
 
     return seq_losses
 
