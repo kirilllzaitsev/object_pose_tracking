@@ -33,9 +33,7 @@ from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, print_args
 from pose_tracking.utils.misc import set_seed, to_numpy
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
-from pose_tracking.utils.rotation_conversions import (
-    quaternion_to_matrix,
-)
+from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -78,11 +76,10 @@ def main():
     preds_dir.mkdir(parents=True, exist_ok=True)
     model_path = preds_dir / "model.pth"
 
+    logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
     if is_main_process:
-        logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
         sys.excepthook = log_exception
     else:
-        logger = prepare_logger(logpath=f"{logdir}/log.log", level="INFO")
         logger.remove()
     logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
 
@@ -91,7 +88,7 @@ def main():
 
     transform = get_transforms()
 
-    early_stopping = EarlyStopping(patience=5, delta=0.1, verbose=True)
+    early_stopping = EarlyStopping(patience=args.es_patience, delta=args.es_delta, verbose=True)
 
     split = "test"
     ds_name = args.ds_name
@@ -233,35 +230,36 @@ def main():
 
     save_model(model, model_path)
 
-    for p in model.parameters():
-        p.requires_grad = False
-    model.eval()
+    if args.use_test_set and is_main_process:
+        for p in model.parameters():
+            p.requires_grad = False
+        model.eval()
 
-    test_dataset = VideoDataset(
-        ds=YCBineoatDataset(**ycbi_kwargs),
-        seq_len=100,
-        # seq_len=None,
-        seq_step=1,
-        seq_start=0,
-        num_samples=1,
-    )
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=1,
-        shuffle=False,
-        collate_fn=collate_fn,
-    )
-    loader_forward(
-        test_loader,
-        model,
-        device,
-        criterion_trans=criterion_trans,
-        criterion_rot=criterion_rot,
-        save_preds=True,
-        preds_dir=preds_dir,
-    )
+        test_dataset = VideoDataset(
+            ds=YCBineoatDataset(**ycbi_kwargs),
+            seq_len=100,
+            # seq_len=None,
+            seq_step=1,
+            seq_start=0,
+            num_samples=1,
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=1,
+            shuffle=False,
+            collate_fn=collate_fn,
+        )
+        loader_forward(
+            test_loader,
+            model,
+            device,
+            criterion_trans=criterion_trans,
+            criterion_rot=criterion_rot,
+            save_preds=True,
+            preds_dir=preds_dir,
+        )
 
-    logger.info(f"saved to {preds_dir=} {preds_dir.name}")
+        logger.info(f"saved to {preds_dir=} {preds_dir.name}")
 
     if args.ddp:
         dist.destroy_process_group()

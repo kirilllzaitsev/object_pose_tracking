@@ -11,6 +11,7 @@ def parse_args():
     pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
     pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
+    pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
@@ -21,6 +22,8 @@ def parse_args():
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
+    train_args.add_argument("--es_patience", type=int, default=10, help="Early stopping patience")
+    train_args.add_argument("--es_delta", type=float, default=1e-2, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
 
     model_args = parser.add_argument_group("Model arguments")
