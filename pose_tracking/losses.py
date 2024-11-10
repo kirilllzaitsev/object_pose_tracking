@@ -1,4 +1,5 @@
 import torch
+from pose_tracking.utils.geom import transform_pts_batch
 
 
 def normalize_quaternion(quat):
@@ -15,3 +16,40 @@ def geodesic_loss(pred_quat, true_quat):
 
     angles = 2 * torch.acos(torch.abs(dot_product))
     return torch.mean(angles)
+
+
+def quat_loss(pred_quat, true_quat, eps=1e-7):
+    gt = true_quat
+
+    est = normalize_quaternion(pred_quat)
+    inn_prod = torch.mm(est, gt.t())
+    inn_prod = inn_prod.diag()
+
+    quat_loss = 1 - (inn_prod).abs().mean()
+    quat_reg_loss = (1 - pred_quat.norm(dim=1).mean()).abs()
+
+    return quat_loss, quat_reg_loss
+
+
+def compute_adds_loss(pose_pred, pose_gt, points):
+    assert pose_gt.dim() == 3 and pose_gt.shape[-2:] == (4, 4)
+    assert pose_pred.shape[-2:] == (4, 4)
+    assert points.dim() == 3 and points.shape[-1] == 3
+    TXO_gt_points = transform_pts_batch(pose_gt, points)
+    TXO_pred_points = transform_pts_batch(pose_pred, points)
+    dists_squared = (TXO_gt_points.unsqueeze(1) - TXO_pred_points.unsqueeze(2)) ** 2
+    dists = dists_squared
+    dists_norm_squared = dists_squared.sum(dim=-1)
+    assign = dists_norm_squared.argmin(dim=1)
+    ids_row = torch.arange(dists.shape[0]).unsqueeze(1).repeat(1, dists.shape[1])
+    ids_col = torch.arange(dists.shape[1]).unsqueeze(0).repeat(dists.shape[0], 1)
+    losses = dists_squared[ids_row, assign, ids_col].mean(dim=(-1, -2))
+    return losses
+
+
+def compute_add_loss(pose_pred, pose_gt, points):
+    bsz = len(pose_gt)
+    assert pose_pred.shape == (bsz, 4, 4) and pose_gt.shape == (bsz, 4, 4)
+    assert points.dim() == 3 and points.shape[-1] == 3
+    dists = (transform_pts_batch(pose_gt, points) - transform_pts_batch(pose_pred, points)).abs().mean()
+    return dists
