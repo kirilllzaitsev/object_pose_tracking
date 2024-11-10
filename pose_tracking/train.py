@@ -8,8 +8,6 @@ from pathlib import Path
 import cv2
 import matplotlib
 import numpy as np
-from pose_tracking.dataset.bop_scene_ds import SceneDataset
-from pose_tracking.dataset.ds_common import dict_collate_fn
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -19,12 +17,22 @@ from pose_tracking.config import (
     ARTIFACTS_DIR,
     DATA_DIR,
     PROJ_DIR,
+    YCB_MESHES_DIR,
+    YCBINEOAT_SCENE_DIR,
     log_exception,
     prepare_logger,
 )
 from pose_tracking.dataset.bop import BOPDataset
+from pose_tracking.dataset.bop_scene_ds import SceneDataset
+from pose_tracking.dataset.dataloading import transfer_batch_to_device
+from pose_tracking.dataset.ds_common import dict_collate_fn, seq_collate_fn
+from pose_tracking.dataset.transforms import get_transforms
+from pose_tracking.dataset.video_ds import VideoDataset
+from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import geodesic_loss
+from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.models.direct_regr_cnn import DirectRegrCNN
+from pose_tracking.models.encoders import get_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import print_args
 from pose_tracking.utils.misc import set_seed
@@ -83,19 +91,10 @@ def main():
         logger.remove()
     logger.info(f"PROJ_ROOT path is: {PROJ_DIR}")
 
-    model = DirectRegrCNN().to(device)
-    logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-
-    if args.ddp:
-        model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
-
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
-
-    transform = transforms.Compose([])
+    transform = get_transforms()
 
     early_stopping = EarlyStopping(patience=5, delta=0.1, verbose=True)
 
@@ -103,36 +102,42 @@ def main():
     ds_name = args.ds_name
     ds_dir = DATA_DIR / ds_name
     seq_length = args.seq_length
-    full_ds = BOPDataset(
-        ds_dir,
-        split,
-        cad_dir=ds_dir / "models",
-        seq_length=seq_length,
-        use_keyframes=False,
-        do_load_cad=False,
-        include_depth=False,
+    ycbi_kwargs = dict(
+        video_dir=YCBINEOAT_SCENE_DIR / args.obj_name,
+        shorter_side=None,
+        zfar=np.inf,
         include_rgb=True,
+        include_depth=True,
+        include_gt_pose=True,
         include_mask=True,
+        ycb_meshes_dir=YCB_MESHES_DIR,
+        transforms=transform,
+        start_frame_idx=70,
+        convert_pose_to_quat=True,
     )
-    scene_idx = args.scene_idx
-    scene = full_ds[scene_idx]
-    scene_len = len(scene["frame_id"])
+    ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
+    video_ds = VideoDataset(
+        ds=ds_ycbi,
+        seq_len=args.seq_length,
+        seq_step=args.seq_step,
+        seq_start=args.seq_start,
+        num_samples=args.num_samples,
+    )
+    full_ds = video_ds
+    scene_len = len(full_ds)
     logger.info(f"Scene length: {scene_len}")
     train_share = 0.8
     train_len = int(train_share * scene_len)
-    scene_train = {k: v[:train_len] for k, v in scene.items()}
-    scene_val = {k: v[train_len:] for k, v in scene.items()}
 
-    train_dataset = SceneDataset(scene=scene_train, transform=transform)
-    val_dataset = SceneDataset(scene=scene_val, transform=transform)
+    train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
+    val_dataset = torch.utils.data.Subset(full_ds, range(train_len, scene_len))
 
     if args.do_overfit:
-        train_dataset = train_dataset.clone()
         val_dataset = train_dataset
 
     logger.info(f"{len(train_dataset)=}")
 
-    collate_fn = dict_collate_fn
+    collate_fn = seq_collate_fn
     if args.ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(
@@ -152,34 +157,83 @@ def main():
 
     history = defaultdict(lambda: defaultdict(list))
 
+    encoder_img, encoder_depth = get_encoders("regnet_y_800mf", device)
+    hidden_dim = 256
+    latent_dim = 256
+    priv_dim = 256
+    depth_dim = latent_dim
+    rgb_dim = latent_dim
+    model = RecurrentCNN(
+        depth_dim=depth_dim,
+        rgb_dim=rgb_dim,
+        hidden_dim=hidden_dim,
+        rnn_type="gru",
+        bdec_priv_decoder_out_dim=priv_dim,
+        bdec_priv_decoder_hidden_dim=40,
+        bdec_depth_decoder_hidden_dim=80,
+        benc_belief_enc_hidden_dim=110,
+        benc_belief_depth_enc_hidden_dim=200,
+        bdec_hidden_attn_hidden_dim=128,
+    ).to(device)
+    t_mlp = nn.Linear(depth_dim + rgb_dim, 3).to(device)
+    rot_mlp = nn.Linear(depth_dim + rgb_dim, 4).to(device)
+
+    logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    if args.ddp:
+        model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
+        t_mlp = DDP(t_mlp, device_ids=[args.local_rank], output_device=args.local_rank)
+        rot_mlp = DDP(rot_mlp, device_ids=[args.local_rank], output_device=args.local_rank)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
+
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
         running_losses = defaultdict(float)
-        for batch_idx, batch in enumerate(tqdm(train_loader, desc="Batches", leave=False)):
-            images = batch["rgb"]
-            seg_masks = batch["mask"].float()
-            trans_labels = batch["t"]
-            rot_labels = batch["r"]
-            images = images.to(device)
-            seg_masks = seg_masks.to(device)
-            trans_labels = trans_labels.to(device)
-            rot_labels = rot_labels.to(device)
+        for seq_idx, batched_seq in enumerate(tqdm(train_loader, desc="Seq", leave=False)):
+            batched_seq = transfer_batch_to_device(batched_seq, device)
 
-            optimizer.zero_grad()
-            trans_output, rot_output = model(images, seg_masks)
+            hx = torch.zeros(args.batch_size, hidden_dim).to(device)
+            cx = torch.zeros(args.batch_size, hidden_dim).to(device)
+            ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
+            for t, batch_t in ts_pbar:
+                optimizer.zero_grad()
+                images = batch_t["rgb"]
+                seg_masks = batch_t["mask"].float()
+                pose_gt = batch_t["pose"]
+                trans_labels = pose_gt[:, :3]
+                rot_labels = pose_gt[:, 3:]
+                rgb = images
+                depth = batch_t["depth"]
+                rgb_latent = encoder_img(rgb)
+                depth_latent = encoder_depth(depth)
 
-            loss_trans = criterion_trans(trans_output, trans_labels)
-            loss_rot = criterion_rot(rot_output, rot_labels)
-            loss = loss_trans + loss_rot
+                outputs = model(rgb_latent, depth_latent, hx=hx)
 
-            loss.backward()
-            optimizer.step()
+                # pose estimation
+                belief_state = outputs["encoder_out"]["belief_state"]
+                extracted_obs = torch.cat([rgb_latent, belief_state], dim=1)
+                trans_output = t_mlp(extracted_obs)
+                rot_output = rot_mlp(extracted_obs)
 
-            running_losses["loss"] += loss
-            running_losses["loss_rot"] += loss_rot
-            running_losses["loss_trans"] += loss_trans
+                loss_trans = criterion_trans(trans_output, trans_labels)
+                loss_rot = criterion_rot(rot_output, rot_labels)
+                loss = loss_trans + loss_rot
+
+                loss.backward()
+                optimizer.step()
+
+                running_losses["loss"] += loss
+                running_losses["loss_rot"] += loss_rot
+                running_losses["loss_trans"] += loss_trans
+
+                ts_pbar.set_postfix(
+                    {
+                        "loss": running_losses["loss"] / (t + 1),
+                        "loss_rot": running_losses["loss_rot"] / (t + 1),
+                    }
+                )
 
         logger.info(f"#### Epoch {epoch} ####")
         for k, v in running_losses.items():
@@ -198,15 +252,12 @@ def main():
             model.eval()
             val_loss = 0.0
             with torch.no_grad():
-                for batch in val_loader:
-                    images = batch["rgb"]
-                    seg_masks = batch["mask"]
-                    trans_labels = batch["t"]
-                    rot_labels = batch["r"]
-                    images = images.to(device)
-                    seg_masks = seg_masks.to(device)
-                    trans_labels = trans_labels.to(device)
-                    rot_labels = rot_labels.to(device)
+                for batched_seq in val_loader:
+                    batched_seq = transfer_batch_to_device(batched_seq, device)
+                    images = batched_seq["rgb"]
+                    seg_masks = batched_seq["mask"]
+                    trans_labels = batched_seq["t"]
+                    rot_labels = batched_seq["r"]
 
                     trans_output, rot_output = model(images, seg_masks)
 
@@ -239,10 +290,10 @@ def main():
     model.eval()
 
     test_loader = train_loader if args.do_overfit else val_loader
-    for batch in tqdm(test_loader):
-        images = batch["rgb"]
-        seg_masks = batch["mask"]
-        rgb_paths = batch["rgb_path"]
+    for batched_seq in tqdm(test_loader):
+        images = batched_seq["rgb"]
+        seg_masks = batched_seq["mask"]
+        rgb_paths = batched_seq["rgb_path"]
         images = images.to(device)
         seg_masks = seg_masks.to(device).float()
 
@@ -255,8 +306,8 @@ def main():
             pose[:3, :3] = quaternion_to_matrix(r_quat)
             pose[:3, 3] = trans_output[i] * 1e3
             gt_pose = torch.eye(4)
-            gt_pose[:3, :3] = quaternion_to_matrix(batch["r"][i].squeeze())
-            gt_pose[:3, 3] = batch["t"][i].squeeze() * 1e3
+            gt_pose[:3, :3] = quaternion_to_matrix(batched_seq["r"][i].squeeze())
+            gt_pose[:3, 3] = batched_seq["t"][i].squeeze() * 1e3
             pose = pose.cpu().numpy()
             gt_pose = gt_pose.cpu().numpy()
             pose_path = preds_dir / "poses" / f"{name}.txt"
