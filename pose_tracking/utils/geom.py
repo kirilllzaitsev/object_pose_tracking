@@ -282,3 +282,41 @@ def look_at_rotation(point):
     R1 = R.from_euler("xyz", [-np.arctan2(x, 1), 0, 0], degrees=False).as_matrix()
     R2 = R.from_euler("xyz", [np.arctan2(y, 1), 0, 0], degrees=False).as_matrix()
     return R2 @ R1
+
+
+def transform_pts_batch(pose: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
+    """
+    Args:
+        pose: (bsz, 4, 4) or (bsz, dim2, 4, 4)
+        pts: (bsz, n_pts, 3)
+    """
+    bsz = pose.shape[0]
+    n_pts = pts.shape[1]
+    assert pts.shape == (bsz, n_pts, 3)
+    if pose.dim() == 4:
+        pts = pts.unsqueeze(1)
+        assert pose.shape[-2:] == (4, 4)
+    elif pose.dim() == 3:
+        assert pose.shape == (bsz, 4, 4)
+    else:
+        raise ValueError("Unsupported shape for T", pose.shape)
+    pts = pts.unsqueeze(-1)
+    pose = pose.unsqueeze(-3)
+    pts_transformed = pose[..., :3, :3] @ pts + pose[..., :3, [-1]]
+    return pts_transformed.squeeze(-1)
+
+
+def transform_pts(pts, R, t):
+    """
+    Applies a rigid transformation to 3D points.
+
+    Args:
+        pts: nx3 ndarray with 3D points.
+        R: 3x3 rotation matrix.
+        t: 3x1 translation vector.
+    Returns:
+        nx3 ndarray with transformed 3D points.
+    """
+    assert pts.shape[1] == 3
+    pts_t = R.dot(pts.T) + t.reshape((3, 1))
+    return pts_t.T
