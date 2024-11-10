@@ -186,7 +186,7 @@ def main():
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
-        running_losses = loader_forward(
+        train_losses = loader_forward(
             train_loader,
             model,
             device,
@@ -195,8 +195,9 @@ def main():
             optimizer=optimizer,
         )
 
-        logger.info(f"#### Epoch {epoch} ####")
-        for k, v in running_losses.items():
+        logger.info(f"# Epoch {epoch} #")
+        logger.info("## TRAIN ##")
+        for k, v in train_losses.items():
             running_loss = v.item()
             logger.info(f"{k}: {running_loss:.4f}")
             history["train"][k].append(running_loss)
@@ -207,30 +208,25 @@ def main():
 
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
-            val_loss = 0.0
             with torch.no_grad():
-                for batched_seq in val_loader:
-                    batched_seq = transfer_batch_to_device(batched_seq, device)
-                    images = batched_seq["rgb"]
-                    seg_masks = batched_seq["mask"]
-                    trans_labels = batched_seq["t"]
-                    rot_labels = batched_seq["r"]
+                val_losses = loader_forward(
+                    val_loader,
+                    model,
+                    device,
+                    criterion_trans=criterion_trans,
+                    criterion_rot=criterion_rot,
+                )
+            logger.info("## VAL ##")
+            for k, v in val_losses.items():
+                running_loss = v.item()
+                logger.info(f"{k}: {running_loss:.4f}")
+                history["val"][k].append(running_loss)
 
-                    trans_output, rot_output = model(images, seg_masks)
+            if args.use_es_val:
+                early_stopping(loss=val_losses["loss"])
 
-                    loss_trans = criterion_trans(trans_output, trans_labels)
-                    loss_rot = criterion_rot(rot_output, rot_labels)
-                    loss = loss_trans + loss_rot
-
-                    val_loss += loss.item()
-            val_loss /= len(val_loader)
-            logger.info(f"Validation Loss after Epoch {epoch}: {val_loss:.4f}")
-
-            if args.use_early_stopping:
-                early_stopping(loss=val_loss)
-
-        if args.do_overfit and args.use_early_stopping:
-            early_stopping(loss=running_losses["loss"])
+        if args.use_es_train:
+            early_stopping(loss=train_losses["loss"])
 
         if early_stopping.do_stop:
             logger.warning(f"Early stopping on epoch {epoch}")

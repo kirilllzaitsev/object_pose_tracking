@@ -65,5 +65,7 @@ def parse_args():
 def postprocess_args(args):
     if args.do_overfit:
         args.dropout_prob = 0.0
+    args.use_es_train = args.do_overfit and args.use_early_stopping
+    args.use_es_val = args.use_early_stopping and not args.use_es_train
 
     return args
