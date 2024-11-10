@@ -168,7 +168,15 @@ def main():
         encoder_name=args.encoder_name,
     ).to(device)
 
-    logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    num_params_encoder_img = sum(p.numel() for p in model.encoder_img.parameters() if p.requires_grad)
+    num_params_encoder_depth = sum(p.numel() for p in model.encoder_depth.parameters() if p.requires_grad)
+    num_params_state_cell = num_params_total - num_params_encoder_img - num_params_encoder_depth
+    logger.info(f"{num_params_total=}")
+    logger.info(f"{num_params_encoder_img=}")
+    logger.info(f"{num_params_encoder_depth=}")
+    logger.info(f"{num_params_state_cell=}")
+
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
