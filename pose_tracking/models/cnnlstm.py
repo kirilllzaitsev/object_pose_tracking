@@ -156,6 +156,25 @@ class BeliefDecoder(nn.Module):
         }
 
 
+class MLP(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.hidden_dim = hidden_dim
+        self.layers = [nn.Linear(in_dim, hidden_dim)]
+        for i in range(num_layers - 2):
+            self.layers = [nn.Linear(hidden_dim, hidden_dim)]
+        self.layers.append(nn.Linear(hidden_dim, out_dim))
+        self.layers = nn.ModuleList(self.layers)
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = self.act(layer(x))
+        return x
+
+
 class RecurrentCNN(nn.Module):
     def __init__(
         self,
@@ -206,8 +225,8 @@ class RecurrentCNN(nn.Module):
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
-        self.t_mlp = nn.Linear(depth_dim + rgb_dim, 3)
-        self.rot_mlp = nn.Linear(depth_dim + rgb_dim, 4)
+        self.t_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=3, hidden_dim=hidden_dim)
+        self.rot_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=4, hidden_dim=hidden_dim)
         self.encoder_name = encoder_name
         self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
 
