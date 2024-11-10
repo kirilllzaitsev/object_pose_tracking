@@ -229,6 +229,7 @@ class RecurrentCNN(nn.Module):
         return {
             "encoder_out": encoder_out,
             "decoder_out": decoder_out,
+            "latent_depth": latent_depth,
             "hx": hx,
             "cx": cx,
             "t": t,

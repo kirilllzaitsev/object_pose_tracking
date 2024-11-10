@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
@@ -150,7 +151,7 @@ def main():
     history = defaultdict(lambda: defaultdict(list))
 
     hidden_dim = args.hidden_dim
-    priv_dim = 256
+    priv_dim = 1
     latent_dim = 256
     depth_dim = latent_dim
     rgb_dim = latent_dim
@@ -168,7 +169,15 @@ def main():
         encoder_name=args.encoder_name,
     ).to(device)
 
-    logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    num_params_encoder_img = sum(p.numel() for p in model.encoder_img.parameters() if p.requires_grad)
+    num_params_encoder_depth = sum(p.numel() for p in model.encoder_depth.parameters() if p.requires_grad)
+    num_params_state_cell = num_params_total - num_params_encoder_img - num_params_encoder_depth
+    logger.info(f"{num_params_total=}")
+    logger.info(f"{num_params_encoder_img=}")
+    logger.info(f"{num_params_encoder_depth=}")
+    logger.info(f"{num_params_state_cell=}")
+
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -215,10 +224,10 @@ def main():
                 history["val"][k].append(running_loss)
 
             if args.use_es_val:
-                early_stopping(loss=val_losses["loss"])
+                early_stopping(loss=history["val"]["loss"][-1])
 
         if args.use_es_train:
-            early_stopping(loss=train_losses["loss"])
+            early_stopping(loss=history["train"]["loss"][-1])
 
         if early_stopping.do_stop:
             logger.warning(f"Early stopping on epoch {epoch}")
@@ -316,15 +325,11 @@ def loader_forward(
             preds_dir=preds_dir,
         )
 
-        running_losses["loss"] += seq_losses["loss"]
-        running_losses["loss_rot"] += seq_losses["loss_rot"]
-        running_losses["loss_trans"] += seq_losses["loss_trans"]
+        for k, v in seq_losses.items():
+            running_losses[k] += v
 
         seq_pbar.set_postfix(
-            {
-                "loss": running_losses["loss"] / (seq_pack_idx + 1),
-                "loss_rot": running_losses["loss_rot"] / (seq_pack_idx + 1),
-            }
+            {k: v / (seq_pack_idx + 1) for k, v in running_losses.items()},
         )
 
     for k, v in running_losses.items():
@@ -377,12 +382,7 @@ def batched_seq_forward(
             assert preds_dir is not None, "preds_dir must be provided for saving predictions"
             save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
 
-        ts_pbar.set_postfix(
-            {
-                "loss": seq_losses["loss"] / (t + 1),
-                "loss_rot": seq_losses["loss_rot"] / (t + 1),
-            }
-        )
+        ts_pbar.set_postfix({k: v / (t + 1) for k, v in seq_losses.items()})
 
     return seq_losses
 
