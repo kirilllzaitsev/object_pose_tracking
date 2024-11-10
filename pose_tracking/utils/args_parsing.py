@@ -24,8 +24,13 @@ def parse_args():
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--scene_idx", type=int, default=7, help="Scene index")
-    data_args.add_argument("--seq_length", type=int, default=200, help="Number of frames to take")
-    data_args.add_argument("--ds_name", type=str, default="lm", help="Dataset name", choices=["lm", "ycbv"])
+    data_args.add_argument("--seq_length", type=int, default=3, help="Number of frames to take")
+    data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
+    data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
+    data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
+    data_args.add_argument("--ds_name", type=str, default="lm", help="Dataset name", choices=["lm", "ycbv", "ycbi"])
+    data_args.add_argument("--obj_name", type=str, default="mustard0", help="Object name in the dataset")
+    data_args.add_argument("--use_video_ds", action="store_true", help="Use video dataset")
 
     args_raw = parser.parse_args()
     args = postprocess_args(args_raw)
