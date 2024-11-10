@@ -3,7 +3,16 @@ from torch.utils.data import Dataset
 
 
 class VideoDataset(Dataset):
-    # takes in a dataset representing a single video and wraps it to return a seq as a sample rather than a single timestep
+    """Takes in a dataset representing a single video and wraps it to return a seq as a sample rather than a single timestep.
+
+    Args:
+        ds: Dataset representing a single video
+        seq_len: Number of frames to take for a single sample
+        seq_start: Start frame index in the video
+        seq_step: Step between frames in a sequence
+        num_samples: Number of times to sample a sequence from the video
+    """
+
     def __init__(self, ds, seq_len=10, seq_start=0, seq_step=1, num_samples=None):
         self.ds = ds
         self.seq_len = seq_len

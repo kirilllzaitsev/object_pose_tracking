@@ -399,7 +399,7 @@ def plot_imgs(imgs, n_samples=15, return_fig=False):
 def plot_sample(sample):
     fig, axs = plt.subplots(2, 2, figsize=(10, 10))
     color = adjust_img_for_plt(sample["rgb"])
-    depth = sample["depth"]
+    depth = adjust_depth_for_plt(sample["depth"])
     mask = sample["mask"]
     axs[0, 0].imshow(color)
     im = axs[0, 1].imshow(depth, cmap="jet")
