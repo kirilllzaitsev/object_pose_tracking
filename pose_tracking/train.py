@@ -168,15 +168,7 @@ def main():
         encoder_name=args.encoder_name,
     ).to(device)
 
-    num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    num_params_encoder_img = sum(p.numel() for p in model.encoder_img.parameters() if p.requires_grad)
-    num_params_encoder_depth = sum(p.numel() for p in model.encoder_depth.parameters() if p.requires_grad)
-    num_params_state_cell = num_params_total - num_params_encoder_img - num_params_encoder_depth
-    logger.info(f"{num_params_total=}")
-    logger.info(f"{num_params_encoder_img=}")
-    logger.info(f"{num_params_encoder_depth=}")
-    logger.info(f"{num_params_state_cell=}")
-
+    logger.info(f"model.parameters={sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     if args.ddp:
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -367,6 +359,11 @@ def batched_seq_forward(
         loss_rot = criterion_rot(outputs["rot"], rot_labels)
         loss = loss_trans + loss_rot
 
+        loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
+        loss += loss_depth
+        # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
+        # loss += loss_priv
+
         if is_train:
             loss.backward()
             optimizer.step()
@@ -374,6 +371,7 @@ def batched_seq_forward(
         seq_losses["loss"] += loss
         seq_losses["loss_rot"] += loss_rot
         seq_losses["loss_trans"] += loss_trans
+        seq_losses["loss_depth"] += loss_depth
 
         if save_preds:
             assert preds_dir is not None, "preds_dir must be provided for saving predictions"
