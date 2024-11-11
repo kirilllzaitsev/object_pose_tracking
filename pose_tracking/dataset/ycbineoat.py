@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 import imageio
 import numpy as np
+import torch
 import trimesh
 from bop_toolkit_lib.inout import load_depth
 from pose_tracking.config import logger
@@ -37,6 +38,7 @@ class YCBineoatDataset(Dataset):
         include_gt_pose=True,
         transforms=None,
         start_frame_idx=0,
+        num_mesh_pts=1000,
         convert_pose_to_quat=False,
     ):
         self.video_dir = video_dir
@@ -74,12 +76,15 @@ class YCBineoatDataset(Dataset):
         self.id_strs = self.id_strs[start_frame_idx:]
         self.gt_pose_files = self.gt_pose_files[start_frame_idx:]
 
+        self.num_mesh_pts = num_mesh_pts
         if ycb_meshes_dir is not None:
             ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
             mesh_path = f"{ycb_meshes_dir}/{ob_name}/textured_simple.obj"
             load_res = load_mesh(mesh_path)
             self.mesh = load_res["mesh"]
             self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
+            self.mesh_diameter = load_res["diameter"]
+            self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, num_mesh_pts)[0]).float()
 
     def __len__(self):
         return len(self.color_files)
@@ -100,6 +105,10 @@ class YCBineoatDataset(Dataset):
         sample["rgb_path"] = self.color_files[i]
 
         sample["intrinsics"] = self.K
+
+        sample["mesh_pts"] = self.mesh_pts
+        sample["mesh_bbox"] = self.mesh_bbox
+        sample["mesh_diameter"] = self.mesh_diameter
 
         sample = process_raw_sample(sample, transforms=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat)
 

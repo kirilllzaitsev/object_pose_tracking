@@ -69,6 +69,7 @@ def process_raw_sample(sample, transforms=None, convert_pose_to_quat=False):
         transforms=transforms,
         convert_pose_to_quat=convert_pose_to_quat,
     )
+    # add keys present in sample but not in ds_sample
     for k, v in sample.items():
         if k not in ds_sample:
             ds_sample[k] = v
