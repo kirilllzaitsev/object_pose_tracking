@@ -2,7 +2,8 @@ import copy
 
 import numpy as np
 from pose_tracking.utils.common import cast_to_numpy
-from pose_tracking.utils.geom import world_to_cam
+from pose_tracking.utils.geom import transform_pts, world_to_cam
+from pose_tracking.utils.trimesh_utils import get_posed_model_pts
 from scipy.spatial import cKDTree
 from sklearn import metrics
 
@@ -67,17 +68,18 @@ def calc_metrics(
     return res
 
 
-def calc_add(rt1, rt2, model):
+def calc_add(pred_rt, gt_rt, pts=None, model=None):
     """
     TODO: ensure aligns with bop's (wrt using obj diameter)
     """
-    pred_model = copy.deepcopy(model)
-    gt_model = copy.deepcopy(model)
-    pred_model.apply_transform(rt1)
-    gt_model.apply_transform(rt2)
-    pts1 = np.asarray(pred_model.vertices)
-    pts2 = np.asarray(gt_model.vertices)
-    e = calc_add_pts(pts1, pts2)
+    assert pts is None or model is None, "Either pts or model should be provided"
+    if pts is None:
+        pts_pred = get_posed_model_pts(pred_rt, model)
+        pts_gt = get_posed_model_pts(gt_rt, model)
+    else:
+        pts_pred = transform_pts(pts=pts, pose=pred_rt)
+        pts_gt = transform_pts(pts=pts, pose=gt_rt)
+    e = calc_add_pts(pts_pred, pts_gt)
     return e
 
 
@@ -86,13 +88,14 @@ def calc_add_pts(pts1, pts2):
     return np.linalg.norm(pts1 - pts2, axis=1).mean()
 
 
-def calc_adds(pred_rt, gt_rt, model):
-    pred_model = copy.deepcopy(model)
-    gt_model = copy.deepcopy(model)
-    pred_model.apply_transform(pred_rt)
-    gt_model.apply_transform(gt_rt)
-    pts_pred = np.asarray(pred_model.vertices)
-    pts_gt = np.asarray(gt_model.vertices)
+def calc_adds(pred_rt, gt_rt, pts=None, model=None):
+    assert pts is None or model is None, "Either pts or model should be provided"
+    if pts is None:
+        pts_pred = get_posed_model_pts(pred_rt, model)
+        pts_gt = get_posed_model_pts(gt_rt, model)
+    else:
+        pts_pred = transform_pts(pts=pts, pose=pred_rt)
+        pts_gt = transform_pts(pts=pts, pose=gt_rt)
 
     e = calc_adds_pts(pts_pred, pts_gt)
     return e
