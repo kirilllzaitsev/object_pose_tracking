@@ -26,14 +26,16 @@ def prepare_logger(logpath=None, level="INFO"):
 
     # Define handlers
     common_cfg = {
-        "format": "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | {level} | {file}:{line} | <level>{message}</level>",
         "level": level,
         "colorize": True,
     }
+    stdout_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | {level} | {file}:{line} | <level>{message}</level>"
+    file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {file}:{line} | {message}"
     handlers = [
         {
             "sink": sys.stdout,
             **common_cfg,
+            "format": stdout_format,
         }
     ]
 
@@ -42,6 +44,7 @@ def prepare_logger(logpath=None, level="INFO"):
             {
                 "sink": logpath,
                 **common_cfg,
+                "format": file_format,
             }
         )
 
@@ -54,6 +57,7 @@ def prepare_logger(logpath=None, level="INFO"):
         handler_tqdm = {
             "sink": tqdm_sink,
             **common_cfg,
+            "format": stdout_format,
         }
         handlers[0] = handler_tqdm
     except ModuleNotFoundError:

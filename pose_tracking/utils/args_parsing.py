@@ -12,6 +12,7 @@ def parse_args():
     pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
+    pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
@@ -64,7 +65,9 @@ def parse_args():
     data_args.add_argument("--obj_name", type=str, default="mustard0", help="Object name in the dataset")
     data_args.add_argument("--use_video_ds", action="store_true", help="Use video dataset")
 
-    args_raw = parser.parse_args()
+    args_raw, unknown_args = parser.parse_known_args()
+    if unknown_args:
+        print(f"WARNING. Unknown arguments: {unknown_args}")
     args = postprocess_args(args_raw)
     return args
 
