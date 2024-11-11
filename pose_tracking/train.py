@@ -13,6 +13,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import trimesh
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     ARTIFACTS_DIR,
@@ -39,22 +40,20 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
-import trimesh
 
 matplotlib.use("TKAgg")
 
 
 def main():
     args = parse_args()
-    print_args(args)
 
     set_seed(args.seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(args.device)
 
+    world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
     if args.ddp:
-        rank = int(os.environ.get("SLURM_PROCID", 0))
-        world_size = int(os.environ.get("SLURM_NTASKS", 1))
+        rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
         if "MASTER_ADDR" not in os.environ:
@@ -64,7 +63,7 @@ def main():
 
         dist.init_process_group(backend="nccl", init_method="env://", world_size=world_size, rank=rank)
         torch.cuda.set_device(local_rank)
-        device = torch.device("cuda", local_rank)
+        device = torch.device(args.device, local_rank)
 
         is_main_process = rank == 0
     else:
@@ -87,6 +86,11 @@ def main():
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
+    print_args(args, logger=logger)
+    if args.ddp:
+        print(
+            f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
+        )
 
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
@@ -124,7 +128,7 @@ def main():
     full_ds = video_ds
     scene_len = len(full_ds)
     logger.info(f"Scene length: {scene_len}")
-    train_share = 0.8
+    train_share = 1.0 if args.do_overfit else 0.8
     train_len = int(train_share * scene_len)
 
     train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
@@ -187,12 +191,12 @@ def main():
         model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
-    
+
     # downsample mesh pts
     pts = (
         torch.tensor(trimesh.sample.sample_surface(ds_ycbi.mesh, 1000)[0])
         .float()
-        .repeat(args.batch_size, 1, 1)
+        .repeat(min(args.num_samples, args.batch_size), 1, 1)
         .to(device)
     )
 
@@ -204,6 +208,8 @@ def main():
             train_loader,
             model,
             device,
+            hidden_dim=hidden_dim,
+            rnn_type=args.rnn_type,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
             criterion_pose=criterion_pose,
@@ -228,6 +234,8 @@ def main():
                     val_loader,
                     model,
                     device,
+                    hidden_dim=hidden_dim,
+                    rnn_type=args.rnn_type,
                     criterion_trans=criterion_trans,
                     criterion_rot=criterion_rot,
                     criterion_pose=criterion_pose,
@@ -280,6 +288,8 @@ def main():
             test_loader,
             model,
             device,
+            hidden_dim=hidden_dim,
+            rnn_type=args.rnn_type,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
             criterion_pose=criterion_pose,
@@ -332,6 +342,8 @@ def loader_forward(
     train_loader,
     model,
     device,
+    hidden_dim,
+    rnn_type,
     criterion_trans=None,
     criterion_rot=None,
     criterion_pose=None,
@@ -350,6 +362,8 @@ def loader_forward(
             batched_seq=batched_seq,
             model=model,
             device=device,
+            hidden_dim=hidden_dim,
+            rnn_type=rnn_type,
             criterion_trans=criterion_trans,
             criterion_rot=criterion_rot,
             criterion_pose=criterion_pose,
@@ -375,6 +389,8 @@ def batched_seq_forward(
     batched_seq,
     model,
     device,
+    hidden_dim,
+    rnn_type,
     criterion_trans=None,
     criterion_rot=None,
     criterion_pose=None,
@@ -385,9 +401,8 @@ def batched_seq_forward(
 ):
     batched_seq = transfer_batch_to_device(batched_seq, device)
     batch_size = len(batched_seq[0]["rgb"])
-    hidden_dim = model.hidden_dim
     hx = torch.zeros(batch_size, hidden_dim).to(device)
-    cx = None if "gru" in model.rnn_type else torch.zeros(batch_size, hidden_dim).to(device)
+    cx = None if "gru" in rnn_type else torch.zeros(batch_size, hidden_dim).to(device)
     ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
     is_train = optimizer is not None
     seq_losses = defaultdict(float)
