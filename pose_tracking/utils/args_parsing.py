@@ -69,7 +69,8 @@ def parse_args():
     if unknown_args:
         print(f"WARNING. Unknown arguments: {unknown_args}")
     args = postprocess_args(args_raw)
-    return args
+    args_to_group_map = map_args_to_groups(parser, args)
+    return args, args_to_group_map
 
 
 def postprocess_args(args):
@@ -80,3 +81,24 @@ def postprocess_args(args):
     args.use_cuda = args.device == "cuda"
 
     return args
+
+
+def map_args_to_groups(parser: argparse.ArgumentParser, args: argparse.Namespace) -> dict:
+    """
+    Organizes parsed arguments into a dictionary based on their argument groups.
+
+    Parameters:
+        parser: The argument parser with defined groups.
+        args: The parsed arguments.
+
+    Returns:
+        A dictionary with argument names as keys and group names aliases as values.
+    """
+    arg_group_map = {}
+    for group in parser._action_groups:
+        group_name = group.title.lower()[0]
+        for action in group._group_actions:
+            arg_name = action.dest
+            if hasattr(args, arg_name):
+                arg_group_map[arg_name] = group_name
+    return arg_group_map
