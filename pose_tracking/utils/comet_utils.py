@@ -8,7 +8,7 @@ from pathlib import Path
 import comet_ml
 import yaml
 from comet_ml.api import API
-from pose_tracking.config import PROJ_DIR
+from pose_tracking.config import COMET_USERNAME, PROJ_DIR, PROJ_NAME
 
 
 def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_map=None) -> None:
@@ -52,12 +52,12 @@ def get_tag_pref(k, args_to_group_map=None):
 def get_latest_ckpt_epoch(
     exp_name: str,
     model_name_regex: str = r"model_(\d+)\.pt*",
-    project_name: str = "pose_tracking",
+    project_name: str = PROJ_NAME,
 ) -> int:
     """Infers the latest checkpoint epoch from the experiment's assets."""
 
     api = API(api_key=os.environ["COMET_API_KEY"])
-    exp_api = api.get(f"kirilllzaitsev/{project_name}/{exp_name}")
+    exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{exp_name}")
     ckpt_epochs = [
         int(re.match(model_name_regex, x["fileName"]).group(1))
         for x in exp_api.get_asset_list(asset_type="all")
@@ -75,7 +75,7 @@ def load_artifacts_from_comet(
     args_name_regex: str = "args",
     session_artifact_name: t.Optional[str] = None,
     session_checkpoint_path: t.Optional[str] = None,
-    project_name: str = "pose_tracking",
+    project_name: str = PROJ_NAME,
     api: t.Optional[API] = None,
     epoch: t.Optional[int] = None,
 ) -> dict:
@@ -89,7 +89,7 @@ def load_artifacts_from_comet(
         args_name_regex: The regex to match the args file name.
         session_artifact_name: The name of the session artifact.
         session_checkpoint_path: The path to the session checkpoint.
-        project_name: The name of the project.
+        project_name: The name of the Comet project.
         api: The comet.ml API object (takes time to initialize, so it's better to pass it as an argument if done multiple times).
         epoch: The epoch of the model checkpoint to download. It will be inferred if not provided.
     Returns:
@@ -103,7 +103,7 @@ def load_artifacts_from_comet(
     if any([args_not_exist, weights_not_exist]):
         if api is None:
             api = API(api_key=os.environ["COMET_API_KEY"])
-        exp_api = api.get(f"kirilllzaitsev/{project_name}/{exp_name}")
+        exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{exp_name}")
         os.makedirs(local_artifacts_dir, exist_ok=True)
         if args_not_exist:
             try:
@@ -179,14 +179,14 @@ def create_tracking_exp(
     args: argparse.Namespace,
     exp_disabled: bool = True,
     force_disabled: bool = False,
-    project_name: str = "pose_tracking",
+    project_name: str = PROJ_NAME,
 ) -> comet_ml.Experiment:
     """Creates a Comet.ml experiment if args.resume_exp is False, otherwise resumes the experiment with the given name. Logs the package code."""
 
     if "COMET_GIT_DIRECTORY" not in os.environ:
         os.environ["COMET_GIT_DIRECTORY"] = str(PROJ_DIR)
     disabled = getattr(args, "exp_disabled", exp_disabled) or force_disabled
-    api_key = os.environ.get("COMET_API_KEY", os.environ.get("COMET_API_TOKEN"))
+    api_key = get_comet_api_key()
     exp_init_args = dict(
         api_key=api_key,
         auto_output_logging="simple",
@@ -205,7 +205,7 @@ def create_tracking_exp(
         from comet_ml.api import API
 
         api = API(api_key=api_key)
-        exp_api = api.get(f"kirilllzaitsev/{project_name}/{args.exp_name}")
+        exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{args.exp_name}")
         experiment = comet_ml.ExistingExperiment(**exp_init_args, experiment_key=exp_api.id)
     else:
         experiment = comet_ml.Experiment(**exp_init_args, project_name=project_name)
@@ -216,6 +216,10 @@ def create_tracking_exp(
     log_pkg_code(experiment)
 
     return experiment
+
+
+def get_comet_api_key():
+    return os.environ.get("COMET_API_KEY", os.environ["COMET_API_TOKEN"])
 
 
 def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
@@ -233,7 +237,7 @@ def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
 
 def load_artifacts_from_comet_v2(exp_name, save_path_model, save_path_args, comet_api=None):
     if comet_api is None:
-        comet_api = API(api_key=os.environ["COMET_API_KEY"])
+        comet_api = API(api_key=get_comet_api_key())
 
     save_dir = os.path.dirname(save_path_model)
     model_ckpt_regex = r".*model_(\d+).pt"
@@ -250,7 +254,7 @@ def load_artifacts_from_comet_v2(exp_name, save_path_model, save_path_args, come
     os.makedirs(save_path_dir, exist_ok=True)
     if do_load_model or do_load_args:
         experiment = comet_api.get(
-            "kirilllzaitsev",
+            f"{COMET_USERNAME}",
             project_name="pose_tracking",
             experiment=exp_name,
         )

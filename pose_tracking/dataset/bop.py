@@ -27,7 +27,7 @@ class BOPDataset(Dataset):
         rot_repr="rotation6d",
         cad_dir=None,
         do_load_cad=False,
-        seq_length=1,
+        seq_len=1,
         step_skip=1,
         seq_start=0,
         use_keyframes=False,
@@ -76,7 +76,7 @@ class BOPDataset(Dataset):
             self.keyframes = load_keyframes(keyframe_path)
 
         self.trajs = []
-        self.seq_length = seq_length
+        self.seq_len = seq_len
         self.step_skip = step_skip
         self.seq_start = seq_start
         for scene_id, frame_obj_flat in list(self.metadata.groupby("scene_id")):
@@ -94,7 +94,7 @@ class BOPDataset(Dataset):
 
     def __getitem__(self, idx):
         traj = self.load_traj(idx)
-        timesteps = self.seq_length if self.seq_length is not None else len(traj)
+        timesteps = self.seq_len if self.seq_len is not None else len(traj)
         seq_start = self.seq_start
         if seq_start is None:
             seq_start = torch.randint(

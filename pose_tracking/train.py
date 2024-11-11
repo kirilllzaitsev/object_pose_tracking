@@ -1,4 +1,3 @@
-import argparse
 import os
 import shutil
 import sys
@@ -17,7 +16,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
-    DATA_DIR,
     PROJ_DIR,
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
@@ -102,6 +100,7 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{logpath=}")
 
     if is_main_process and not args.exp_disabled:
+        logger.info(f"Experiment created at {exp._get_experiment_url()}")
         logger.info(f'Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
 
     if args.ddp:
@@ -117,10 +116,6 @@ def main(exp_tools: t.Optional[dict] = None):
 
     early_stopping = EarlyStopping(patience=args.es_patience, delta=args.es_delta, verbose=True)
 
-    split = "test"
-    ds_name = args.ds_name
-    ds_dir = DATA_DIR / ds_name
-    seq_length = args.seq_length
     ycbi_kwargs = dict(
         video_dir=YCBINEOAT_SCENE_DIR / args.obj_name,
         shorter_side=None,
@@ -137,7 +132,7 @@ def main(exp_tools: t.Optional[dict] = None):
     ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
     video_ds = VideoDataset(
         ds=ds_ycbi,
-        seq_len=args.seq_length,
+        seq_len=args.seq_len,
         seq_step=args.seq_step,
         seq_start=args.seq_start,
         num_samples=args.num_samples,
@@ -284,8 +279,7 @@ def main(exp_tools: t.Optional[dict] = None):
 
         test_dataset = VideoDataset(
             ds=YCBineoatDataset(**ycbi_kwargs),
-            seq_len=100,
-            # seq_len=None,
+            seq_len=args.seq_len_test,
             seq_step=1,
             seq_start=0,
             num_samples=1,

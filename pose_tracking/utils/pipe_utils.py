@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from pose_tracking.config import ARTIFACTS_DIR
+from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
 from pose_tracking.utils.comet_utils import (
     create_tracking_exp,
     log_args,
@@ -25,7 +25,7 @@ def create_tools(args: argparse.Namespace) -> dict:
     os.makedirs(logdir, exist_ok=True)
     preds_base_dir = f"{logdir}/preds"
     preds_dir = Path(preds_base_dir)
-    exp = create_tracking_exp(args, project_name="pose_tracking")
+    exp = create_tracking_exp(args, project_name=PROJ_NAME)
     args.run_name = exp.name  # automatically assigned by Comet
 
     writer = SummaryWriter(log_dir=logdir, flush_secs=10)
