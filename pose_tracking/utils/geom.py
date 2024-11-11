@@ -293,30 +293,35 @@ def transform_pts_batch(pose: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
     bsz = pose.shape[0]
     n_pts = pts.shape[1]
     assert pts.shape == (bsz, n_pts, 3)
-    if pose.dim() == 4:
-        pts = pts.unsqueeze(1)
+    pose_dim = len(pose.shape)
+    if pose_dim == 4:
+        pts = pts[:, None]
         assert pose.shape[-2:] == (4, 4)
-    elif pose.dim() == 3:
+    elif pose_dim == 3:
         assert pose.shape == (bsz, 4, 4)
     else:
         raise ValueError("Unsupported shape for T", pose.shape)
-    pts = pts.unsqueeze(-1)
-    pose = pose.unsqueeze(-3)
+    pts = pts[..., None]
+    pose = pose[None] if pose_dim == 4 else pose[:, None]
     pts_transformed = pose[..., :3, :3] @ pts + pose[..., :3, [-1]]
     return pts_transformed.squeeze(-1)
 
 
-def transform_pts(pts, R, t):
+def transform_pts(pts, r=None, t=None, pose=None):
     """
     Applies a rigid transformation to 3D points.
 
     Args:
         pts: nx3 ndarray with 3D points.
-        R: 3x3 rotation matrix.
+        r: 3x3 rotation matrix.
         t: 3x1 translation vector.
     Returns:
         nx3 ndarray with transformed 3D points.
     """
+    assert (r is not None and t is not None) or pose is not None, "Either r and t or pose should be provided"
     assert pts.shape[1] == 3
-    pts_t = R.dot(pts.T) + t.reshape((3, 1))
+    if pose is not None:
+        r = pose[:3, :3]
+        t = pose[:3, 3]
+    pts_t = r.dot(pts.T) + t.reshape((3, 1))
     return pts_t.T
