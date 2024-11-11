@@ -94,14 +94,16 @@ def main(exp_tools: t.Optional[dict] = None):
         sys.excepthook = log_exception
     else:
         logger.remove()
+    logger.info(f"CLI command:\npython {' '.join(sys.argv)}")
     print_args(args, logger=logger)
+
+    if is_main_process and not args.exp_disabled:
+        logger.info(f"# Experiment created at {exp._get_experiment_url()}")
+        logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
+
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
-
-    if is_main_process and not args.exp_disabled:
-        logger.info(f"Experiment created at {exp._get_experiment_url()}")
-        logger.info(f'Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
 
     if args.ddp:
         print(
@@ -126,7 +128,7 @@ def main(exp_tools: t.Optional[dict] = None):
         include_mask=True,
         ycb_meshes_dir=YCB_MESHES_DIR,
         transforms=transform,
-        start_frame_idx=70,
+        start_frame_idx=0,
         convert_pose_to_quat=True,
     )
     ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
@@ -140,7 +142,7 @@ def main(exp_tools: t.Optional[dict] = None):
     full_ds = video_ds
     scene_len = len(full_ds)
     logger.info(f"Scene length: {scene_len}")
-    train_share = 1.0 if args.do_overfit else 0.8
+    train_share = 1.0 if args.do_overfit else 0.9
     train_len = int(train_share * scene_len)
 
     train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
@@ -206,7 +208,9 @@ def main(exp_tools: t.Optional[dict] = None):
             output_device=args.local_rank if args.use_cuda else None,
         )
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
+    lr_scheduler = optim.lr_scheduler.StepLR(
+        optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=True
+    )
 
     trainer = Trainer(
         model=model,
@@ -266,8 +270,8 @@ def main(exp_tools: t.Optional[dict] = None):
     if is_main_process:
         save_model(model, model_path)
 
-    logger.info(f"{logdir=}")
-    logger.info(f"{logpath=}")
+    logger.info(f"# {logdir=}")
+    logger.info(f"# {logpath=}")
 
     if args.use_test_set and is_main_process:
         preds_dir = exp_tools["preds_dir"]

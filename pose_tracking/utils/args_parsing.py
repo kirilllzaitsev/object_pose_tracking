@@ -26,6 +26,8 @@ def parse_args():
     train_args.add_argument("--es_patience", type=int, default=10, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-2, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+    train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
+    train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
     train_args.add_argument(
         "--pose_loss_name", type=str, default="add", help="Pose loss name", choices=["separate", "add"]
