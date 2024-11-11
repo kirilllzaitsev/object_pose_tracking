@@ -323,5 +323,5 @@ def transform_pts(pts, r=None, t=None, pose=None):
     if pose is not None:
         r = pose[:3, :3]
         t = pose[:3, 3]
-    pts_t = r.dot(pts.T) + t.reshape((3, 1))
+    pts_t = r @ pts.T + t.reshape((3, 1))
     return pts_t.T

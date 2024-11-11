@@ -36,6 +36,10 @@ def calc_metrics(
         diameter: diameter of the object for ADD/ADDS-10 calculation
 
     """
+    pred_rt = cast_to_numpy(pred_rt)
+    gt_rt = cast_to_numpy(gt_rt)
+    if pts is not None:
+        pts = cast_to_numpy(pts)
     if is_meters:
         pred_rt = copy.deepcopy(pred_rt)
         pred_rt[:3, 3] *= 1000
