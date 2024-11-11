@@ -10,7 +10,6 @@ import comet_ml
 import cv2
 import matplotlib
 import numpy as np
-from pose_tracking.utils.pipe_utils import create_tools
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -36,6 +35,7 @@ from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
 from pose_tracking.utils.misc import set_seed
+from pose_tracking.utils.pipe_utils import create_tools, log_exp_meta
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -46,7 +46,7 @@ matplotlib.use("TKAgg")
 
 
 def main(exp_tools: t.Optional[dict] = None):
-    args = parse_args()
+    args, args_to_group_map = parse_args()
 
     set_seed(args.seed)
 
@@ -78,6 +78,7 @@ def main(exp_tools: t.Optional[dict] = None):
         external_tools = False
         if is_main_process:
             exp_tools = create_tools(args)
+
         else:
             exp_tools = defaultdict(lambda: None)
     logdir = exp_tools["logdir"]
@@ -85,6 +86,9 @@ def main(exp_tools: t.Optional[dict] = None):
 
     exp = exp_tools["exp"]
     writer = exp_tools["writer"]
+
+    if is_main_process:
+        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
 
     logpath = f"{logdir}/log.log"
     logger = prepare_logger(logpath=logpath, level="INFO")
@@ -96,6 +100,10 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
+
+    if is_main_process and not args.exp_disabled:
+        logger.info(f'Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
+
     if args.ddp:
         print(
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
@@ -445,7 +453,7 @@ class Trainer:
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
-        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
+        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
         for t, batch_t in ts_pbar:
             if is_train:
                 optimizer.zero_grad()
