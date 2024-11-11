@@ -220,9 +220,8 @@ def main():
         )
 
         logger.info(f"# Epoch {epoch} #")
-        logger.info("## TRAIN ##")
+        print_stats(train_stats, logger, "train")
         for k, v in train_stats.items():
-            logger.info(f"{k}: {v:.4f}")
             history["train"][k].append(v)
 
         lr_scheduler.step()
@@ -235,9 +234,8 @@ def main():
                 val_stats = trainer.loader_forward(
                     val_loader,
                 )
-            logger.info("## VAL ##")
+            print_stats(val_stats, logger, "val")
             for k, v in val_stats.items():
-                logger.info(f"{k}: {v:.4f}")
                 history["val"][k].append(v)
 
             if args.use_es_val:
@@ -278,16 +276,31 @@ def main():
             shuffle=False,
             collate_fn=collate_fn,
         )
-        trainer.loader_forward(
+        test_stats = trainer.loader_forward(
             test_loader,
             save_preds=True,
             preds_dir=preds_dir,
         )
+        print_stats(test_stats, logger, "test")
 
         logger.info(f"saved to {preds_dir=} {preds_dir.name}")
 
     if args.ddp:
         dist.destroy_process_group()
+
+
+def print_stats(train_stats, logger, stage):
+    logger.info(f"## {stage.upper()} ##")
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth"]
+    ERROR_METRICS = ["r_err", "t_err"]
+    ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
+
+    for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
+        msg = []
+        for k in stat_group:
+            if k in train_stats:
+                msg.append(f"{k}: {train_stats[k]:.4f}")
+        logger.info(" | ".join(msg))
 
 
 def save_results(batch_t, t_pred, rot_pred, preds_dir):
@@ -471,7 +484,7 @@ class Trainer:
 
         return {
             "losses": seq_stats,
-            "metrics": m_batch,
+            "metrics": seq_metrics,
         }
 
 
