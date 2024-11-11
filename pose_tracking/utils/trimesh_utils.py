@@ -75,9 +75,11 @@ def load_mesh(mesh_path, ext=None):
         ext = mesh_path.split(".")[-1]
     mesh = trimesh.load(open(mesh_path, "rb"), file_type=ext, force="mesh")
     bbox = np.asarray(mesh.bounding_box.vertices).copy()
+    diameter = compute_mesh_diameter(mesh)
     return {
         "mesh": mesh,
         "bbox": bbox,
+        "diameter": diameter,
     }
 
 

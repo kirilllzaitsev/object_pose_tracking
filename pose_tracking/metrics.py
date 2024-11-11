@@ -11,8 +11,9 @@ from sklearn import metrics
 def calc_metrics(
     pred_rt,
     gt_rt,
-    model,
-    class_name,
+    class_name=None,
+    model=None,
+    pts=None,
     bbox_3d=None,
     handle_visibility=False,
     use_miou=False,
@@ -26,6 +27,7 @@ def calc_metrics(
         pred_rt: predicted pose
         gt_rt: ground truth pose
         model: CAD model of the object as a trimesh object
+        pts: points of the object, if model is not provided
         class_name: name of the object (applies to Linemod)
         bbox: bounding box of the object
         handle_visibility: account for visibility of a handle (e.g., for a mug)
@@ -39,8 +41,8 @@ def calc_metrics(
         pred_rt[:3, 3] *= 1000
         gt_rt = copy.deepcopy(gt_rt)
         gt_rt[:3, 3] *= 1000
-    add = calc_add(pred_rt, gt_rt, model)
-    adds = calc_adds(pred_rt, gt_rt, model)
+    add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
+    adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
     res = {
         "add": add,
         "adds": adds,
