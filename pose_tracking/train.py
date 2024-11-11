@@ -215,7 +215,6 @@ def main():
         criterion_trans=criterion_trans,
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
-        optimizer=optimizer,
     )
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -224,6 +223,7 @@ def main():
             train_loader.sampler.set_epoch(epoch)
         train_losses = trainer.loader_forward(
             train_loader,
+            optimizer=optimizer,
             pts=pts,
         )
 
@@ -345,7 +345,6 @@ class Trainer:
         criterion_trans=None,
         criterion_rot=None,
         criterion_pose=None,
-        optimizer=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -358,13 +357,13 @@ class Trainer:
         self.criterion_trans = criterion_trans
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
-        self.optimizer = optimizer
         self.use_pose_loss = criterion_pose is not None
 
     def loader_forward(
         self,
         loader,
         *,
+        optimizer=None,
         pts=None,
         save_preds=False,
         preds_dir=None,
@@ -374,6 +373,7 @@ class Trainer:
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
             seq_losses = self.batched_seq_forward(
                 batched_seq=batched_seq,
+                optimizer=optimizer,
                 pts=pts,
                 save_preds=save_preds,
                 preds_dir=preds_dir,
@@ -394,6 +394,7 @@ class Trainer:
         self,
         batched_seq,
         *,
+        optimizer=None,
         pts=None,
         save_preds=False,
         preds_dir=None,
@@ -404,11 +405,11 @@ class Trainer:
         hx = torch.zeros(batch_size, self.hidden_dim).to(self.device)
         cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim).to(self.device)
         ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
-        is_train = self.optimizer is not None
+        is_train = optimizer is not None
         seq_losses = defaultdict(float)
         for t, batch_t in ts_pbar:
             if is_train:
-                self.optimizer.zero_grad()
+                optimizer.zero_grad()
             rgb = batch_t["rgb"]
             seg_masks = batch_t["mask"]
             pose_gt = batch_t["pose"]
@@ -440,7 +441,7 @@ class Trainer:
 
             if is_train:
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
 
             seq_losses["loss"] += loss
             if self.use_pose_loss:
