@@ -78,8 +78,8 @@ class YCBineoatDataset(Dataset):
 
         self.num_mesh_pts = num_mesh_pts
         if ycb_meshes_dir is not None:
-            ob_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
-            mesh_path = f"{ycb_meshes_dir}/{ob_name}/textured_simple.obj"
+            self.obj_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
+            mesh_path = f"{ycb_meshes_dir}/{self.obj_name}/textured_simple.obj"
             load_res = load_mesh(mesh_path)
             self.mesh = load_res["mesh"]
             self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
@@ -109,6 +109,7 @@ class YCBineoatDataset(Dataset):
         sample["mesh_pts"] = self.mesh_pts
         sample["mesh_bbox"] = self.mesh_bbox
         sample["mesh_diameter"] = self.mesh_diameter
+        sample["obj_name"] = self.obj_name
 
         sample = process_raw_sample(sample, transforms=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat)
 
