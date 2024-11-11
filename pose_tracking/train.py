@@ -1,23 +1,23 @@
+import argparse
 import os
 import shutil
 import sys
+import typing as t
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 
 import comet_ml
 import cv2
 import matplotlib
 import numpy as np
+from pose_tracking.utils.pipe_utils import create_tools
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import trimesh
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
-    ARTIFACTS_DIR,
     DATA_DIR,
     PROJ_DIR,
     YCB_MESHES_DIR,
@@ -40,13 +40,12 @@ from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 matplotlib.use("TKAgg")
 
 
-def main():
+def main(exp_tools: t.Optional[dict] = None):
     args = parse_args()
 
     set_seed(args.seed)
@@ -74,13 +73,18 @@ def main():
     else:
         is_main_process = True
 
-    now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    logdir = f"{ARTIFACTS_DIR}/{args.exp_name}_{now}"
-    writer = SummaryWriter(log_dir=logdir) if is_main_process else None
-    preds_base_dir = f"{logdir}/preds"
-    preds_dir = Path(preds_base_dir) / now
-    preds_dir.mkdir(parents=True, exist_ok=True)
-    model_path = preds_dir / "model.pth"
+    external_tools = True
+    if exp_tools is None:
+        external_tools = False
+        if is_main_process:
+            exp_tools = create_tools(args)
+        else:
+            exp_tools = defaultdict(lambda: None)
+    logdir = exp_tools["logdir"]
+    model_path = f"{logdir}/model.pth"
+
+    exp = exp_tools["exp"]
+    writer = exp_tools["writer"]
 
     logpath = f"{logdir}/log.log"
     logger = prepare_logger(logpath=logpath, level="INFO")
