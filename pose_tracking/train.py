@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import comet_ml
 import cv2
 import matplotlib
 import numpy as np
@@ -75,7 +76,7 @@ def main():
 
     now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     logdir = f"{ARTIFACTS_DIR}/{args.exp_name}_{now}"
-    writer = SummaryWriter(log_dir=logdir)
+    writer = SummaryWriter(log_dir=logdir) if is_main_process else None
     preds_base_dir = f"{logdir}/preds"
     preds_dir = Path(preds_base_dir) / now
     preds_dir.mkdir(parents=True, exist_ok=True)
@@ -208,6 +209,7 @@ def main():
         criterion_trans=criterion_trans,
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
+        writer=writer,
     )
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -217,6 +219,7 @@ def main():
         train_stats = trainer.loader_forward(
             train_loader,
             optimizer=optimizer,
+            stage="train",
         )
 
         logger.info(f"# Epoch {epoch} #")
@@ -233,6 +236,7 @@ def main():
             with torch.no_grad():
                 val_stats = trainer.loader_forward(
                     val_loader,
+                    stage="val",
                 )
             print_stats(val_stats, logger, "val")
             for k, v in val_stats.items():
@@ -280,6 +284,7 @@ def main():
             test_loader,
             save_preds=True,
             preds_dir=preds_dir,
+            stage="test",
         )
         print_stats(test_stats, logger, "test")
 
@@ -348,6 +353,7 @@ class Trainer:
         criterion_trans=None,
         criterion_rot=None,
         criterion_pose=None,
+        writer=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -360,7 +366,13 @@ class Trainer:
         self.criterion_trans = criterion_trans
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
+        self.writer = writer
+
         self.use_pose_loss = criterion_pose is not None
+        self.do_log = writer is not None
+        self.seq_counts_per_stage = defaultdict(int)
+        self.ts_counts_per_stage = defaultdict(int)
+        self.epoch_counts_per_stage = defaultdict(int)
 
     def loader_forward(
         self,
@@ -369,6 +381,7 @@ class Trainer:
         optimizer=None,
         save_preds=False,
         preds_dir=None,
+        stage="train",
     ):
         running_stats = defaultdict(float)
         seq_pbar = tqdm(loader, desc="Seq", leave=False)
@@ -378,10 +391,15 @@ class Trainer:
                 optimizer=optimizer,
                 save_preds=save_preds,
                 preds_dir=preds_dir,
+                stage=stage,
             )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
-                running_stats[k] += v.item() if isinstance(v, torch.Tensor) else v
+                v = v.item() if isinstance(v, torch.Tensor) else v
+                running_stats[k] += v
+                if self.do_log:
+                    self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
+            self.seq_counts_per_stage[stage] += 1
 
             seq_pbar.set_postfix(
                 {k: v / (seq_pack_idx + 1) for k, v in running_stats.items()},
@@ -389,6 +407,12 @@ class Trainer:
 
         for k, v in running_stats.items():
             running_stats[k] = v / len(loader)
+
+        if self.do_log:
+            for k, v in running_stats.items():
+                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.epoch_counts_per_stage[stage])
+        self.epoch_counts_per_stage[stage] += 1
+
         return running_stats
 
     def batched_seq_forward(
@@ -398,6 +422,7 @@ class Trainer:
         optimizer=None,
         save_preds=False,
         preds_dir=None,
+        stage="train",
     ):
 
         is_train = optimizer is not None
@@ -455,6 +480,11 @@ class Trainer:
                     m_batch[k].append(v)
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             seq_metrics = {k: seq_metrics[k] + v for k, v in m_batch_avg.items()}
+
+            if self.do_log:
+                for k, v in m_batch_avg.items():
+                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+            self.ts_counts_per_stage[stage] += 1
 
             loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
             loss += loss_depth
