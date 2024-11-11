@@ -200,14 +200,6 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
-    # downsample mesh pts
-    pts = (
-        torch.tensor(trimesh.sample.sample_surface(ds_ycbi.mesh, 1000)[0])
-        .float()
-        .repeat(min(args.num_samples, args.batch_size), 1, 1)
-        .to(device)
-    )
-
     trainer = Trainer(
         model=model,
         device=device,
@@ -225,7 +217,6 @@ def main():
         train_stats = trainer.loader_forward(
             train_loader,
             optimizer=optimizer,
-            pts=pts,
         )
 
         logger.info(f"# Epoch {epoch} #")
@@ -243,7 +234,6 @@ def main():
             with torch.no_grad():
                 val_stats = trainer.loader_forward(
                     val_loader,
-                    pts=pts,
                 )
             logger.info("## VAL ##")
             for k, v in val_stats.items():
@@ -290,7 +280,6 @@ def main():
         )
         trainer.loader_forward(
             test_loader,
-            pts=pts,
             save_preds=True,
             preds_dir=preds_dir,
         )
@@ -311,11 +300,11 @@ def save_results(batch_t, t_pred, rot_pred, preds_dir):
         r_quat = rot_pred[seq_idx]
         pose[:3, :3] = quaternion_to_matrix(r_quat)
         pose[:3, 3] = t_pred[seq_idx] * 1e3
-        pose = to_numpy(pose)
+        pose = cast_to_numpy(pose)
         gt_pose = batch_t["pose"][seq_idx]
         gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
         gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze() * 1e3
-        gt_pose_formatted = to_numpy(gt_pose_formatted)
+        gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
         seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
         pose_path = seq_dir / "poses" / f"{name}.txt"
         gt_path = seq_dir / "poses_gt" / f"{name}.txt"
@@ -365,7 +354,6 @@ class Trainer:
         loader,
         *,
         optimizer=None,
-        pts=None,
         save_preds=False,
         preds_dir=None,
     ):
@@ -375,7 +363,6 @@ class Trainer:
             seq_stats = self.batched_seq_forward(
                 batched_seq=batched_seq,
                 optimizer=optimizer,
-                pts=pts,
                 save_preds=save_preds,
                 preds_dir=preds_dir,
             )
@@ -396,7 +383,6 @@ class Trainer:
         batched_seq,
         *,
         optimizer=None,
-        pts=None,
         save_preds=False,
         preds_dir=None,
     ):
@@ -421,6 +407,7 @@ class Trainer:
 
             outputs = self.model(rgb, depth, hx=hx, cx=cx)
 
+            pts = batch_t["mesh_pts"]
             rot_pred, t_pred = outputs["rot"], outputs["t"]
             pose_pred = torch.stack(
                 [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
@@ -438,23 +425,23 @@ class Trainer:
                 loss_rot = self.criterion_rot(outputs["rot"], rot_labels)
                 loss = loss_trans + loss_rot
 
-            bbox_3d = batch_t["bbox_3d"]
-            diameter = batch_t["diameter"]
+            bbox_3d = batch_t["mesh_bbox"]
+            diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
-            for pred_rt, gt_rt in zip(pose_pred, pose_gt_mat):
+            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
                 m_sample = calc_metrics(
                     pred_rt=pred_rt,
                     gt_rt=gt_rt,
-                    pts=pts,
+                    pts=pts[sample_idx],
                     class_name=None,
                     use_miou=True,
-                    bbox_3d=bbox_3d,
-                    diameter=diameter,
+                    bbox_3d=bbox_3d[sample_idx],
+                    diameter=diameter[sample_idx],
                 )
                 for k, v in m_sample.items():
                     m_batch[k].append(v)
-            m_batch = {k: np.mean(v) for k, v in m_batch.items()}
-            seq_metrics = {k: seq_metrics[k] + v for k, v in m_batch.items()}
+            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            seq_metrics = {k: seq_metrics[k] + v for k, v in m_batch_avg.items()}
 
             loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
             loss += loss_depth
