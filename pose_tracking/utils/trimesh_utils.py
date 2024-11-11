@@ -1,4 +1,6 @@
 # https://github.com/nv-nguyen/nope/blob/main/src/utils/trimesh_utils.py
+import copy
+
 import cv2
 import numpy as np
 import scipy
@@ -142,6 +144,13 @@ def vis_trimesh(mesh):
     bbox = get_bbox_from_mesh(mesh)
     scene = trimesh.Scene([mesh, trimesh.points.PointCloud(bbox)])
     return scene
+
+
+def get_posed_model_pts(rt1, model):
+    pred_model = copy.deepcopy(model)
+    pred_model.apply_transform(rt1)
+    pts1 = np.asarray(pred_model.vertices)
+    return pts1
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import torch
 from pose_tracking.utils.geom import transform_pts_batch
+from pose_tracking.utils.misc import pick_library
 
 
 def normalize_quaternion(quat):
@@ -50,6 +51,7 @@ def compute_adds_loss(pose_pred, pose_gt, points):
 def compute_add_loss(pose_pred, pose_gt, points):
     bsz = len(pose_gt)
     assert pose_pred.shape == (bsz, 4, 4) and pose_gt.shape == (bsz, 4, 4)
-    assert points.dim() == 3 and points.shape[-1] == 3
-    dists = (transform_pts_batch(pose_gt, points) - transform_pts_batch(pose_pred, points)).abs().mean()
+    assert len(points.shape) == 3 and points.shape[-1] == 3
+    lib = pick_library(points)
+    dists = lib.mean(lib.abs(transform_pts_batch(pose_gt, points) - transform_pts_batch(pose_pred, points)))
     return dists
