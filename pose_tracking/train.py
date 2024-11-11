@@ -33,8 +33,8 @@ from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
-from pose_tracking.utils.common import adjust_img_for_plt, print_args
-from pose_tracking.utils.misc import set_seed, to_numpy
+from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
+from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP

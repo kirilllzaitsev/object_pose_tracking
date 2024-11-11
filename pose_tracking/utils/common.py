@@ -35,16 +35,14 @@ def adjust_depth_for_plt(img):
     return img
 
 
-def cast_to_numpy(arr, dtype=None) -> np.ndarray:
-    if isinstance(arr, torch.Tensor):
-        arr = arr.detach().cpu().numpy()
+def cast_to_numpy(x, dtype=None) -> np.ndarray:
+    if isinstance(x, list):
+        return np.array([cast_to_numpy(xx) for xx in x])
+    elif isinstance(x, np.ndarray):
+        return x
+    arr = x.detach().cpu().numpy()
     if dtype is not None:
         arr = arr.astype(dtype)
-    else:
-        if len(arr) == 0:
-            return arr
-        if isinstance(arr[0], torch.Tensor):
-            arr = [cast_to_numpy(a) for a in arr]
     return arr
 
 

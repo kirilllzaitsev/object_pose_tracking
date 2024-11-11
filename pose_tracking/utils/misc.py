@@ -41,11 +41,3 @@ def to(x: torch.Tensor, device: DeviceType) -> torch.Tensor:
 
 def is_tensor(v):
     return isinstance(v, torch.Tensor)
-
-
-def to_numpy(x: TensorOrArrOrList) -> np.ndarray:
-    if isinstance(x, list):
-        return np.array([to_numpy(xx) for xx in x])
-    elif isinstance(x, np.ndarray):
-        return x
-    return x.detach().cpu().numpy()
