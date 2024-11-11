@@ -117,14 +117,9 @@ class BeliefDecoder(nn.Module):
         priv_decoder_num_layers=1,
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
+        use_priv_decoder=False,
     ):
         super().__init__()
-        self.priv_decoder = StateMLP(
-            in_dim=state_dim,
-            out_dim=priv_decoder_out_dim,
-            hidden_dim=priv_decoder_hidden_dim,
-            num_layers=priv_decoder_num_layers,
-        )
         self.hidden_attn = nn.Sequential(
             StateMLP(
                 in_dim=state_dim,
@@ -140,20 +135,31 @@ class BeliefDecoder(nn.Module):
             hidden_dim=depth_decoder_hidden_dim,
             num_layers=depth_decoder_num_layers,
         )
+        self.use_priv_decoder = use_priv_decoder
+        if self.use_priv_decoder:
+            self.priv_decoder = StateMLP(
+                in_dim=state_dim,
+                out_dim=priv_decoder_out_dim,
+                hidden_dim=priv_decoder_hidden_dim,
+                num_layers=priv_decoder_num_layers,
+            )
 
     def forward(self, ht, depth_latent):
         attn = self.hidden_attn(ht)
         depth_latent_attn = depth_latent * attn
         depth_decoded = self.depth_decoder(ht)
         depth_final = depth_latent_attn + depth_decoded
-        priv_decoded = self.priv_decoder(ht)
-        return {
+        res = {
             "attn": attn,
             "depth_latent_attn": depth_latent_attn,
             "depth_decoded": depth_decoded,
             "depth_final": depth_final,
-            "priv_decoded": priv_decoded,
         }
+        if self.use_priv_decoder:
+            priv_decoded = self.priv_decoder(ht)
+            res["priv_decoded"] = priv_decoded
+
+        return res
 
 
 class MLP(nn.Module):
