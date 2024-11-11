@@ -8,32 +8,34 @@ from pathlib import Path
 import comet_ml
 import yaml
 from comet_ml.api import API
+from pose_tracking.config import PROJ_DIR
 
-root_dir = Path(__file__).parent.parent.parent
 
-
-def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment) -> None:
+def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_map=None) -> None:
     """Logs tags to the experiment."""
 
-    extra_tags = [str(args.map_dimension)]
+    extra_tags = []
     if os.path.exists("/home/kirillz"):
         extra_tags.append("e_remote")
     elif os.path.exists("/cluster"):
         extra_tags.append("e_euler")
     else:
         extra_tags.append("e_local")
+    if args.ddp:
+        extra_tags.append("e_ddp")
     for k, v in vars(args).items():
-        if k in ["use_"] or "use_es" in k:
+        if k in ["use_cuda", "use_test_set"] or "use_es" in k:
             continue
+        tag_prefix = get_tag_pref(k, args_to_group_map)
         p = r"^(use_|do_)"
         if re.match(p, k) and v:
-            extra_tags.append(re.sub(p, "", k))
+            extra_tags.append(f'{tag_prefix}{re.sub(p, "", k)}')
         p = r"^(disable_|no_)"
         if re.match(p, k) and v:
-            extra_tags.append(f"no_{re.sub(p, '', k)}")
-    extra_tags.append(f"m_{args.rnn_type}")
-    if args.do_overfit:
-        extra_tags.append("p_overfit")
+            extra_tags.append(f"{tag_prefix}no_{re.sub(p, '', k)}")
+    for k in ["rnn_type"]:
+        tag_prefix = get_tag_pref(k, args_to_group_map)
+        extra_tags.append(f"{tag_prefix}{getattr(args, k)}")
 
     tags_to_log = extra_tags
     if len(args.exp_tags) > 0 and args.exp_tags[0] != "":
@@ -41,10 +43,16 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment) -> None:
     exp.add_tags(tags_to_log)
 
 
+def get_tag_pref(k, args_to_group_map=None):
+    group_alias = args_to_group_map.get(k) if args_to_group_map is not None else None
+    tag_prefix = f"{group_alias}_" if group_alias is not None else ""
+    return tag_prefix
+
+
 def get_latest_ckpt_epoch(
     exp_name: str,
     model_name_regex: str = r"model_(\d+)\.pt*",
-    project_name: str = "terrain-reconstruction",
+    project_name: str = "pose_tracking",
 ) -> int:
     """Infers the latest checkpoint epoch from the experiment's assets."""
 
@@ -64,10 +72,10 @@ def load_artifacts_from_comet(
     model_checkpoint_path: str,
     local_artifacts_dir: str,
     model_artifact_name: str,
-    args_name_regex: str = "train_args",
+    args_name_regex: str = "args",
     session_artifact_name: t.Optional[str] = None,
     session_checkpoint_path: t.Optional[str] = None,
-    project_name: str = "terrain-reconstruction",
+    project_name: str = "pose_tracking",
     api: t.Optional[API] = None,
     epoch: t.Optional[int] = None,
 ) -> dict:
@@ -171,18 +179,19 @@ def create_tracking_exp(
     args: argparse.Namespace,
     exp_disabled: bool = True,
     force_disabled: bool = False,
-    project_name: str = "terrain-reconstruction",
+    project_name: str = "pose_tracking",
 ) -> comet_ml.Experiment:
     """Creates a Comet.ml experiment if args.resume_exp is False, otherwise resumes the experiment with the given name. Logs the package code."""
 
     if "COMET_GIT_DIRECTORY" not in os.environ:
-        os.environ["COMET_GIT_DIRECTORY"] = str(root_dir)
+        os.environ["COMET_GIT_DIRECTORY"] = str(PROJ_DIR)
     disabled = getattr(args, "exp_disabled", exp_disabled) or force_disabled
+    api_key = os.environ.get("COMET_API_KEY", os.environ.get("COMET_API_TOKEN"))
     exp_init_args = dict(
-        api_key=os.environ["COMET_API_KEY"],
+        api_key=api_key,
         auto_output_logging="simple",
         auto_metric_logging=True,
-        auto_param_logging=True,
+        auto_param_logging=False,
         log_env_details=True,
         log_env_host=False,
         log_env_gpu=True,
@@ -195,7 +204,7 @@ def create_tracking_exp(
     if getattr(args, "resume_exp", False):
         from comet_ml.api import API
 
-        api = API(api_key=os.environ["COMET_API_KEY"])
+        api = API(api_key=api_key)
         exp_api = api.get(f"kirilllzaitsev/{project_name}/{args.exp_name}")
         experiment = comet_ml.ExistingExperiment(**exp_init_args, experiment_key=exp_api.id)
     else:
@@ -205,9 +214,6 @@ def create_tracking_exp(
     for code_file in glob.glob("./*.py"):
         experiment.log_code(code_file)
     log_pkg_code(experiment)
-
-    if not disabled:
-        print(f'Please leave a note about the experiment at {experiment._get_experiment_url(tab="notes")}')
 
     return experiment
 
@@ -245,7 +251,7 @@ def load_artifacts_from_comet_v2(exp_name, save_path_model, save_path_args, come
     if do_load_model or do_load_args:
         experiment = comet_api.get(
             "kirilllzaitsev",
-            project_name="terrain-reconstruction",
+            project_name="pose_tracking",
             experiment=exp_name,
         )
     if do_load_model:
