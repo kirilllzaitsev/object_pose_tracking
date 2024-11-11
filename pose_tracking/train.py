@@ -256,12 +256,16 @@ def main():
         shutil.rmtree(logdir)
         return
 
-    save_model(model, model_path)
+    if is_main_process:
+        save_model(model, model_path)
 
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
 
     if args.use_test_set and is_main_process:
+        preds_dir = exp_tools["preds_dir"]
+        preds_dir.mkdir(parents=True, exist_ok=True)
+
         for p in model.parameters():
             p.requires_grad = False
         model.eval()
@@ -289,6 +293,9 @@ def main():
         print_stats(test_stats, logger, "test")
 
         logger.info(f"saved to {preds_dir=} {preds_dir.name}")
+
+    if not external_tools and is_main_process:
+        exp.end()
 
     if args.ddp:
         dist.destroy_process_group()
