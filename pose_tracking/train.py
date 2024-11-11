@@ -61,8 +61,11 @@ def main():
         if "MASTER_PORT" not in os.environ:
             os.environ["MASTER_PORT"] = str(np.random.randint(20000, 30000))
 
-        dist.init_process_group(backend="nccl", init_method="env://", world_size=world_size, rank=rank)
-        torch.cuda.set_device(local_rank)
+        dist.init_process_group(
+            backend="nccl" if args.use_cuda else "gloo", init_method="env://", world_size=world_size, rank=rank
+        )
+        if args.use_cuda:
+            torch.cuda.set_device(local_rank)
         device = torch.device(args.device, local_rank)
 
         is_main_process = rank == 0
@@ -83,10 +86,10 @@ def main():
         sys.excepthook = log_exception
     else:
         logger.remove()
+    print_args(args, logger=logger)
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
-    print_args(args, logger=logger)
     if args.ddp:
         print(
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",

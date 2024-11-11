@@ -77,5 +77,6 @@ def postprocess_args(args):
         args.dropout_prob = 0.0
     args.use_es_train = args.do_overfit and args.use_early_stopping
     args.use_es_val = args.use_early_stopping and not args.use_es_train
+    args.use_cuda = args.device == "cuda"
 
     return args

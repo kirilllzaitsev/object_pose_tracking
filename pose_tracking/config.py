@@ -70,7 +70,7 @@ def prepare_logger(logpath=None, level="INFO"):
     return logger
 
 
-def log_exception(logger, *args):
+def log_exception(*args):
     if len(args) == 1:
         e = args[0]
         etype, value, tb = type(e), e, e.__traceback__
