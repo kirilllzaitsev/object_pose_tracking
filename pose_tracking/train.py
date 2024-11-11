@@ -434,6 +434,24 @@ class Trainer:
                 loss_rot = self.criterion_rot(outputs["rot"], rot_labels)
                 loss = loss_trans + loss_rot
 
+            bbox_3d = batch_t["bbox_3d"]
+            diameter = batch_t["diameter"]
+            m_batch = defaultdict(list)
+            for pred_rt, gt_rt in zip(pose_pred, pose_gt_mat):
+                m_sample = calc_metrics(
+                    pred_rt=pred_rt,
+                    gt_rt=gt_rt,
+                    pts=pts,
+                    class_name=None,
+                    use_miou=True,
+                    bbox_3d=bbox_3d,
+                    diameter=diameter,
+                )
+                for k, v in m_sample.items():
+                    m_batch[k].append(v)
+            m_batch = {k: np.mean(v) for k, v in m_batch.items()}
+            seq_metrics = {k: seq_metrics[k] + v for k, v in m_batch.items()}
+
             loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
             loss += loss_depth
             # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
