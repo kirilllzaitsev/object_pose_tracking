@@ -22,7 +22,7 @@ def parse_args():
     train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
-    train_args.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
+    train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--es_patience", type=int, default=10, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-2, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
@@ -75,8 +75,8 @@ def parse_args():
 def postprocess_args(args):
     if args.do_overfit:
         args.dropout_prob = 0.0
-    args.use_es_train = args.do_overfit and args.use_early_stopping
-    args.use_es_val = args.use_early_stopping and not args.use_es_train
+    args.use_es_train = args.do_overfit and args.use_es
+    args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"
 
     return args
