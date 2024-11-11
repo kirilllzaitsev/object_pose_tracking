@@ -30,6 +30,7 @@ from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import compute_add_loss, geodesic_loss
+from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, print_args
@@ -221,7 +222,7 @@ def main():
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
-        train_losses = trainer.loader_forward(
+        train_stats = trainer.loader_forward(
             train_loader,
             optimizer=optimizer,
             pts=pts,
@@ -229,7 +230,7 @@ def main():
 
         logger.info(f"# Epoch {epoch} #")
         logger.info("## TRAIN ##")
-        for k, v in train_losses.items():
+        for k, v in train_stats.items():
             logger.info(f"{k}: {v:.4f}")
             history["train"][k].append(v)
 
@@ -240,12 +241,12 @@ def main():
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
             with torch.no_grad():
-                val_losses = trainer.loader_forward(
+                val_stats = trainer.loader_forward(
                     val_loader,
                     pts=pts,
                 )
             logger.info("## VAL ##")
-            for k, v in val_losses.items():
+            for k, v in val_stats.items():
                 logger.info(f"{k}: {v:.4f}")
                 history["val"][k].append(v)
 
@@ -368,10 +369,10 @@ class Trainer:
         save_preds=False,
         preds_dir=None,
     ):
-        running_losses = defaultdict(float)
+        running_stats = defaultdict(float)
         seq_pbar = tqdm(loader, desc="Seq", leave=False)
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-            seq_losses = self.batched_seq_forward(
+            seq_stats = self.batched_seq_forward(
                 batched_seq=batched_seq,
                 optimizer=optimizer,
                 pts=pts,
@@ -379,16 +380,16 @@ class Trainer:
                 preds_dir=preds_dir,
             )
 
-            for k, v in seq_losses.items():
-                running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
+            for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
+                running_stats[k] += v.item() if isinstance(v, torch.Tensor) else v
 
             seq_pbar.set_postfix(
-                {k: v / (seq_pack_idx + 1) for k, v in running_losses.items()},
+                {k: v / (seq_pack_idx + 1) for k, v in running_stats.items()},
             )
 
-        for k, v in running_losses.items():
-            running_losses[k] = v / len(loader)
-        return running_losses
+        for k, v in running_stats.items():
+            running_stats[k] = v / len(loader)
+        return running_stats
 
     def batched_seq_forward(
         self,
@@ -400,13 +401,16 @@ class Trainer:
         preds_dir=None,
     ):
 
-        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+        is_train = optimizer is not None
+
         batch_size = len(batched_seq[0]["rgb"])
         hx = torch.zeros(batch_size, self.hidden_dim).to(self.device)
         cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim).to(self.device)
+        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+
+        seq_stats = defaultdict(float)
+        seq_metrics = defaultdict(float)
         ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
-        is_train = optimizer is not None
-        seq_losses = defaultdict(float)
         for t, batch_t in ts_pbar:
             if is_train:
                 optimizer.zero_grad()
@@ -417,14 +421,14 @@ class Trainer:
 
             outputs = self.model(rgb, depth, hx=hx, cx=cx)
 
+            rot_pred, t_pred = outputs["rot"], outputs["t"]
+            pose_pred = torch.stack(
+                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
+            )
+            pose_gt_mat = torch.stack(
+                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
+            )
             if self.use_pose_loss:
-                rot_pred, t_pred = outputs["rot"], outputs["t"]
-                pose_pred = torch.stack(
-                    [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
-                )
-                pose_gt_mat = torch.stack(
-                    [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
-                )
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
             else:
@@ -461,19 +465,27 @@ class Trainer:
                 loss.backward()
                 optimizer.step()
 
-            seq_losses["loss"] += loss
+            seq_stats["loss"] += loss
             if self.use_pose_loss:
-                seq_losses["loss_pose"] += loss_pose
+                seq_stats["loss_pose"] += loss_pose
             else:
-                seq_losses["loss_rot"] += loss_rot
-                seq_losses["loss_trans"] += loss_trans
-            seq_losses["loss_depth"] += loss_depth
+                seq_stats["loss_rot"] += loss_rot
+                seq_stats["loss_trans"] += loss_trans
+            seq_stats["loss_depth"] += loss_depth
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                 save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
 
-        return seq_losses
+        for k, v in seq_stats.items():
+            seq_stats[k] = v / len(batched_seq)
+        for k, v in seq_metrics.items():
+            seq_metrics[k] = v / len(batched_seq)
+
+        return {
+            "losses": seq_stats,
+            "metrics": m_batch,
+        }
 
 
 def save_model(model, model_path):
