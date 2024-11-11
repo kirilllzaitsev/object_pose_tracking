@@ -191,7 +191,11 @@ def main():
     logger.info(f"{num_params_state_cell=}")
 
     if args.ddp:
-        model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
+        model = DDP(
+            model,
+            device_ids=[args.local_rank] if args.use_cuda else None,
+            output_device=args.local_rank if args.use_cuda else None,
+        )
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.num_epochs // 1, gamma=0.5, verbose=False)
 
@@ -203,21 +207,24 @@ def main():
         .to(device)
     )
 
+    trainer = Trainer(
+        model=model,
+        device=device,
+        hidden_dim=hidden_dim,
+        rnn_type=args.rnn_type,
+        criterion_trans=criterion_trans,
+        criterion_rot=criterion_rot,
+        criterion_pose=criterion_pose,
+        optimizer=optimizer,
+    )
+
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
         if args.ddp:
             train_loader.sampler.set_epoch(epoch)
-        train_losses = loader_forward(
+        train_losses = trainer.loader_forward(
             train_loader,
-            model,
-            device,
-            hidden_dim=hidden_dim,
-            rnn_type=args.rnn_type,
-            criterion_trans=criterion_trans,
-            criterion_rot=criterion_rot,
-            criterion_pose=criterion_pose,
             pts=pts,
-            optimizer=optimizer,
         )
 
         logger.info(f"# Epoch {epoch} #")
@@ -233,15 +240,8 @@ def main():
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
             with torch.no_grad():
-                val_losses = loader_forward(
+                val_losses = trainer.loader_forward(
                     val_loader,
-                    model,
-                    device,
-                    hidden_dim=hidden_dim,
-                    rnn_type=args.rnn_type,
-                    criterion_trans=criterion_trans,
-                    criterion_rot=criterion_rot,
-                    criterion_pose=criterion_pose,
                     pts=pts,
                 )
             logger.info("## VAL ##")
@@ -287,15 +287,8 @@ def main():
             shuffle=False,
             collate_fn=collate_fn,
         )
-        loader_forward(
+        trainer.loader_forward(
             test_loader,
-            model,
-            device,
-            hidden_dim=hidden_dim,
-            rnn_type=args.rnn_type,
-            criterion_trans=criterion_trans,
-            criterion_rot=criterion_rot,
-            criterion_pose=criterion_pose,
             pts=pts,
             save_preds=True,
             preds_dir=preds_dir,
@@ -341,124 +334,127 @@ def save_results(batch_t, t_pred, rot_pred, preds_dir):
         cv2.imwrite(rgb_path, rgb)
 
 
-def loader_forward(
-    train_loader,
-    model,
-    device,
-    hidden_dim,
-    rnn_type,
-    criterion_trans=None,
-    criterion_rot=None,
-    criterion_pose=None,
-    pts=None,
-    optimizer=None,
-    save_preds=False,
-    preds_dir=None,
-):
-    assert criterion_pose is not None or (
-        criterion_rot is not None and criterion_trans is not None
-    ), "Either pose or rot & trans criteria must be provided"
-    running_losses = defaultdict(float)
-    seq_pbar = tqdm(train_loader, desc="Seq", leave=False)
-    for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-        seq_losses = batched_seq_forward(
-            batched_seq=batched_seq,
-            model=model,
-            device=device,
-            hidden_dim=hidden_dim,
-            rnn_type=rnn_type,
-            criterion_trans=criterion_trans,
-            criterion_rot=criterion_rot,
-            criterion_pose=criterion_pose,
-            pts=pts,
-            optimizer=optimizer,
-            save_preds=save_preds,
-            preds_dir=preds_dir,
-        )
+class Trainer:
 
-        for k, v in seq_losses.items():
-            running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
+    def __init__(
+        self,
+        model,
+        device,
+        hidden_dim,
+        rnn_type,
+        criterion_trans=None,
+        criterion_rot=None,
+        criterion_pose=None,
+        optimizer=None,
+    ):
+        assert criterion_pose is not None or (
+            criterion_rot is not None and criterion_trans is not None
+        ), "Either pose or rot & trans criteria must be provided"
 
-        seq_pbar.set_postfix(
-            {k: v / (seq_pack_idx + 1) for k, v in running_losses.items()},
-        )
+        self.model = model
+        self.device = device
+        self.hidden_dim = hidden_dim
+        self.rnn_type = rnn_type
+        self.criterion_trans = criterion_trans
+        self.criterion_rot = criterion_rot
+        self.criterion_pose = criterion_pose
+        self.optimizer = optimizer
+        self.use_pose_loss = criterion_pose is not None
 
-    for k, v in running_losses.items():
-        running_losses[k] = v / len(train_loader)
-    return running_losses
-
-
-def batched_seq_forward(
-    batched_seq,
-    model,
-    device,
-    hidden_dim,
-    rnn_type,
-    criterion_trans=None,
-    criterion_rot=None,
-    criterion_pose=None,
-    pts=None,
-    optimizer=None,
-    save_preds=False,
-    preds_dir=None,
-):
-    batched_seq = transfer_batch_to_device(batched_seq, device)
-    batch_size = len(batched_seq[0]["rgb"])
-    hx = torch.zeros(batch_size, hidden_dim).to(device)
-    cx = None if "gru" in rnn_type else torch.zeros(batch_size, hidden_dim).to(device)
-    ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
-    is_train = optimizer is not None
-    seq_losses = defaultdict(float)
-    use_pose_loss = criterion_pose is not None
-    for t, batch_t in ts_pbar:
-        if is_train:
-            optimizer.zero_grad()
-        rgb = batch_t["rgb"]
-        seg_masks = batch_t["mask"]
-        pose_gt = batch_t["pose"]
-        depth = batch_t["depth"]
-
-        outputs = model(rgb, depth, hx=hx, cx=cx)
-
-        if use_pose_loss:
-            rot_pred, t_pred = outputs["rot"], outputs["t"]
-            pose_pred = torch.stack(
-                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
+    def loader_forward(
+        self,
+        loader,
+        *,
+        pts=None,
+        save_preds=False,
+        preds_dir=None,
+    ):
+        running_losses = defaultdict(float)
+        seq_pbar = tqdm(loader, desc="Seq", leave=False)
+        for seq_pack_idx, batched_seq in enumerate(seq_pbar):
+            seq_losses = self.batched_seq_forward(
+                batched_seq=batched_seq,
+                pts=pts,
+                save_preds=save_preds,
+                preds_dir=preds_dir,
             )
-            pose_gt_mat = torch.stack(
-                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
+
+            for k, v in seq_losses.items():
+                running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
+
+            seq_pbar.set_postfix(
+                {k: v / (seq_pack_idx + 1) for k, v in running_losses.items()},
             )
-            loss_pose = criterion_pose(pose_pred, pose_gt_mat, pts)
-            loss = loss_pose.clone()
-        else:
-            trans_labels = pose_gt[:, :3]
-            rot_labels = pose_gt[:, 3:]
-            loss_trans = criterion_trans(outputs["t"], trans_labels)
-            loss_rot = criterion_rot(outputs["rot"], rot_labels)
-            loss = loss_trans + loss_rot
 
-        loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
-        loss += loss_depth
-        # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
-        # loss += loss_priv
+        for k, v in running_losses.items():
+            running_losses[k] = v / len(loader)
+        return running_losses
 
-        if is_train:
-            loss.backward()
-            optimizer.step()
+    def batched_seq_forward(
+        self,
+        batched_seq,
+        *,
+        pts=None,
+        save_preds=False,
+        preds_dir=None,
+    ):
 
-        seq_losses["loss"] += loss
-        if use_pose_loss:
-            seq_losses["loss_pose"] += loss_pose
-        else:
-            seq_losses["loss_rot"] += loss_rot
-            seq_losses["loss_trans"] += loss_trans
-        seq_losses["loss_depth"] += loss_depth
+        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+        batch_size = len(batched_seq[0]["rgb"])
+        hx = torch.zeros(batch_size, self.hidden_dim).to(self.device)
+        cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim).to(self.device)
+        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False)
+        is_train = self.optimizer is not None
+        seq_losses = defaultdict(float)
+        for t, batch_t in ts_pbar:
+            if is_train:
+                self.optimizer.zero_grad()
+            rgb = batch_t["rgb"]
+            seg_masks = batch_t["mask"]
+            pose_gt = batch_t["pose"]
+            depth = batch_t["depth"]
 
-        if save_preds:
-            assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-            save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
+            outputs = self.model(rgb, depth, hx=hx, cx=cx)
 
-    return seq_losses
+            if self.use_pose_loss:
+                rot_pred, t_pred = outputs["rot"], outputs["t"]
+                pose_pred = torch.stack(
+                    [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
+                )
+                pose_gt_mat = torch.stack(
+                    [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
+                )
+                loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
+                loss = loss_pose.clone()
+            else:
+                trans_labels = pose_gt[:, :3]
+                rot_labels = pose_gt[:, 3:]
+                loss_trans = self.criterion_trans(outputs["t"], trans_labels)
+                loss_rot = self.criterion_rot(outputs["rot"], rot_labels)
+                loss = loss_trans + loss_rot
+
+            loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
+            loss += loss_depth
+            # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
+            # loss += loss_priv
+
+            if is_train:
+                loss.backward()
+                self.optimizer.step()
+
+            seq_losses["loss"] += loss
+            if self.use_pose_loss:
+                seq_losses["loss_pose"] += loss_pose
+            else:
+                seq_losses["loss_rot"] += loss_rot
+                seq_losses["loss_trans"] += loss_trans
+            seq_losses["loss_depth"] += loss_depth
+
+            if save_preds:
+                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
+
+        return seq_losses
 
 
 def save_model(model, model_path):
