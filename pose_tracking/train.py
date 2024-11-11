@@ -33,7 +33,7 @@ from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
 from pose_tracking.utils.misc import set_seed
-from pose_tracking.utils.pipe_utils import create_tools, log_exp_meta
+from pose_tracking.utils.pipe_utils import create_tools, log_exp_meta, print_stats
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -309,20 +309,6 @@ def main(exp_tools: t.Optional[dict] = None):
 
     if args.ddp:
         dist.destroy_process_group()
-
-
-def print_stats(train_stats, logger, stage):
-    logger.info(f"## {stage.upper()} ##")
-    LOSS_METRICS = ["loss", "loss_pose", "loss_depth"]
-    ERROR_METRICS = ["r_err", "t_err"]
-    ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
-
-    for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
-        msg = []
-        for k in stat_group:
-            if k in train_stats:
-                msg.append(f"{k}: {train_stats[k]:.4f}")
-        logger.info(" | ".join(msg))
 
 
 def save_results(batch_t, t_pred, rot_pred, preds_dir):

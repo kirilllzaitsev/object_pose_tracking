@@ -1,5 +1,7 @@
 import argparse
 
+import yaml
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -105,3 +107,9 @@ def map_args_to_groups(parser: argparse.ArgumentParser, args: argparse.Namespace
             if hasattr(args, arg_name):
                 arg_group_map[arg_name] = group_name
     return arg_group_map
+
+
+def load_args_from_file(path):
+    with open(path, "r") as f:
+        args = argparse.Namespace(**yaml.load(f, Loader=yaml.FullLoader))
+    return args

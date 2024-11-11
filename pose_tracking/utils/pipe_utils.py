@@ -10,6 +10,7 @@ from pose_tracking.utils.comet_utils import (
     log_params_to_exp,
     log_tags,
 )
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -47,3 +48,22 @@ def log_exp_meta(args, save_args, logdir, exp, args_to_group_map=None):
 
     if save_args:
         log_args(exp, args, f"{logdir}/args.yaml")
+
+
+def load_model_from_ckpt(model, ckpt_path):
+    model.load_state_dict(torch.load(ckpt_path))
+    return model
+
+
+def print_stats(train_stats, logger, stage):
+    logger.info(f"## {stage.upper()} ##")
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth"]
+    ERROR_METRICS = ["r_err", "t_err"]
+    ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
+
+    for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
+        msg = []
+        for k in stat_group:
+            if k in train_stats:
+                msg.append(f"{k}: {train_stats[k]:.4f}")
+        logger.info(" | ".join(msg))
