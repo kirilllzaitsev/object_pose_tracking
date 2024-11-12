@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 from pose_tracking.config import logger
-from pose_tracking.utils.common import infer_lib
+from pose_tracking.utils.misc import pick_library
 from scipy.spatial.transform import Rotation as R
 
 
@@ -51,7 +51,7 @@ def get_inv_pose(pose=None, rot=None, t=None):
 
 
 def get_pose(rot, t):
-    lib = infer_lib(rot)
+    lib = pick_library(rot)
     pose = lib.eye(4)
     pose[:3, :3] = rot
     pose[:3, 3] = t
@@ -84,6 +84,30 @@ def backproj_depth(depth, intrinsics, instance_mask=None, do_flip_xy=True):
         pts[:, 0] = -pts[:, 0]
         pts[:, 1] = -pts[:, 1]
     return pts, idxs
+
+
+def backproj_2d_to_3d_batch(pts, depth, K):
+    return [backproj_2d_to_3d(pt, d, Ki) for pt, d, Ki in zip(pts, depth, K)]
+
+
+def backproj_2d_to_3d(pts, depth, K):
+    """
+    Backproject 2D points to 3D points
+    Args:
+        pts: (N, 2) or (2, N)
+        depth: 1D depth values
+    """
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    lib = pick_library(pts)
+    if pts.shape[1] != 2:
+        pts = pts.T
+    ones = lib.ones((pts.shape[0], 1))
+    if lib == torch:
+        ones = ones.to(pts.device)
+    pts = lib.hstack((pts, ones))
+    pts = pts * depth.reshape(-1, 1)
+    pts = lib.linalg.inv(K) @ pts.T
+    return pts.T
 
 
 def pose_to_egocentric_delta_pose(A_in_cam, B_in_cam):
