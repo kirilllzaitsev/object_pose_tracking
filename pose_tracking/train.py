@@ -281,13 +281,16 @@ def main(exp_tools: t.Optional[dict] = None):
             p.requires_grad = False
         model.eval()
 
-        test_dataset = VideoDataset(
-            ds=YCBineoatDataset(**ycbi_kwargs),
-            seq_len=args.seq_len_test,
-            seq_step=1,
-            seq_start=0,
-            num_samples=1,
-        )
+        if args.do_overfit:
+            test_dataset = train_dataset
+        else:
+            test_dataset = VideoDataset(
+                ds=YCBineoatDataset(**ycbi_kwargs),
+                seq_len=args.seq_len_test,
+                seq_step=1,
+                seq_start=0,
+                num_samples=1,
+            )
         test_loader = DataLoader(
             test_dataset,
             batch_size=1,
@@ -357,6 +360,7 @@ class Trainer:
         criterion_rot=None,
         criterion_pose=None,
         writer=None,
+        do_debug=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -370,6 +374,8 @@ class Trainer:
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
         self.writer = writer
+        self.do_debug = do_debug
+        self.processed_data = defaultdict(list)
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -509,6 +515,27 @@ class Trainer:
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                 save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
+            if self.do_debug:
+                # add everything to processed_data
+                self.processed_data["rgb"].append(rgb)
+                self.processed_data["seg_masks"].append(seg_masks)
+                self.processed_data["pose_gt"].append(pose_gt)
+                self.processed_data["pose_gt_mat"].append(pose_gt_mat)
+                self.processed_data["depth"].append(depth)
+                self.processed_data["rot_pred"].append(rot_pred)
+                self.processed_data["t_pred"].append(t_pred)
+                self.processed_data["pose_pred"].append(pose_pred)
+                self.processed_data["pts"].append(pts)
+                self.processed_data["bbox_3d"].append(bbox_3d)
+                self.processed_data["diameter"].append(diameter)
+                self.processed_data["loss"].append(loss)
+                self.processed_data["m_batch"].append(m_batch)
+                # self.processed_data["loss_depth"].append(loss_depth)
+                if self.use_pose_loss:
+                    self.processed_data["loss_pose"].append(loss_pose)
+                else:
+                    self.processed_data["loss_rot"].append(loss_rot)
+                    self.processed_data["loss_trans"].append(loss_trans)
 
         for k, v in seq_stats.items():
             seq_stats[k] = v / len(batched_seq)
