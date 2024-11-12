@@ -6,7 +6,7 @@ from pose_tracking.utils.misc import pick_library
 from scipy.spatial.transform import Rotation as R
 
 
-def project_3d_to_2d(pt, K, rt):
+def world_to_2d_pt_homo(pt, K, rt):
     pt = pt.reshape(4, 1)
     projected = K @ ((rt @ pt)[:3, :])
     projected = projected.reshape(-1)
@@ -30,7 +30,7 @@ def get_34_intrinsics(K):
 
 
 def world_to_2d(pts, K, rt):
-    # returns N x 2 pts in image frame
+    # returns N x 2 pts
     assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
     if pts.shape[1] == 3:
         pts = pts.T

@@ -10,7 +10,6 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 import pyrender
 import torch
 import torchvision
@@ -20,7 +19,8 @@ from pose_tracking.utils.common import (
     adjust_img_for_plt,
     cast_to_numpy,
 )
-from pose_tracking.utils.geom import project_3d_to_2d, to_homo
+from pose_tracking.utils.geom import to_homo, world_to_2d_pt_homo
+from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
@@ -39,10 +39,10 @@ def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_
     xx[:3] = xx[:3] * scale
     yy[:3] = yy[:3] * scale
     zz[:3] = zz[:3] * scale
-    origin = tuple(project_3d_to_2d(np.array([0.0, 0.0, 0.0, 1]), K, rt))
-    xx = tuple(project_3d_to_2d(xx, K, rt))
-    yy = tuple(project_3d_to_2d(yy, K, rt))
-    zz = tuple(project_3d_to_2d(zz, K, rt))
+    origin = tuple(world_to_2d_pt_homo(np.array([0.0, 0.0, 0.0, 1]), K, rt))
+    xx = tuple(world_to_2d_pt_homo(xx, K, rt))
+    yy = tuple(world_to_2d_pt_homo(yy, K, rt))
+    zz = tuple(world_to_2d_pt_homo(zz, K, rt))
     line_type = cv2.LINE_AA
 
     color_x = (0, 0, 255)
