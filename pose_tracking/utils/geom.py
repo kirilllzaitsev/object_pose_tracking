@@ -39,6 +39,21 @@ def world_to_2d(pts, K, rt):
     return new_pts.T
 
 
+def cam_to_2d(pts, K):
+    # project 3d pts in camera frame onto img
+
+    if len(pts.shape) == 3:
+        new_pts = torch.bmm(K, pts.transpose(-1, -2)).transpose(-1, -2)
+        new_pts = (new_pts / new_pts[..., 2:])[..., :2]
+        return new_pts
+
+    if pts.shape[-1] == 3:
+        pts = pts.T
+    new_pts = K @ pts
+    new_pts = new_pts[:2, ...] / new_pts[2, ...]
+    return new_pts.T
+
+
 def get_inv_pose(pose=None, rot=None, t=None):
     if pose is not None:
         assert rot is None and t is None
