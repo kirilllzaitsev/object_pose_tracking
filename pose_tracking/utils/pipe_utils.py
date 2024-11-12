@@ -57,7 +57,7 @@ def load_model_from_ckpt(model, ckpt_path):
 
 def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")
-    LOSS_METRICS = ["loss", "loss_pose", "loss_depth"]
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_trans"]
     ERROR_METRICS = ["r_err", "t_err"]
     ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
 

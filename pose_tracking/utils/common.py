@@ -55,10 +55,3 @@ def convert_arr_to_tensor(v):
 
 def istensor(x):
     return isinstance(x, torch.Tensor)
-
-
-def infer_lib(x):
-    if istensor(x):
-        return torch
-    else:
-        return np

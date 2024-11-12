@@ -10,6 +10,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 import pyrender
 import torch
 import torchvision
@@ -396,11 +397,18 @@ def plot_imgs(imgs, n_samples=15, return_fig=False):
         return fig
 
 
-def plot_sample(sample):
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-    color = adjust_img_for_plt(sample["rgb"])
-    depth = adjust_depth_for_plt(sample["depth"])
+def plot_sample_dict(sample):
+    rgb = sample["rgb"]
+    depth = sample["depth"]
     mask = sample["mask"]
+    return plot_sample(rgb, depth, mask)
+
+
+def plot_sample(rgb, depth, mask):
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+    color = adjust_img_for_plt(rgb)
+    depth = adjust_depth_for_plt(depth)
+    mask = adjust_img_for_plt(mask)
     axs[0, 0].imshow(color)
     im = axs[0, 1].imshow(depth, cmap="jet")
     fig.colorbar(im, ax=axs[0, 1])
@@ -411,14 +419,17 @@ def plot_sample(sample):
     return fig, axs
 
 
-def plot_sample_pose(sample, scale=50.0, bbox=None, axs=None):
-    color = adjust_img_for_plt(sample["rgb"])
+def plot_sample_pose_dict(sample, scale=50.0, bbox=None, axs=None):
+    color = sample["rgb"]
     pose = sample["pose"]
+    if pose.shape[-1] == 7:
+        pose = convert_pose_quaternion_to_matrix(pose)
     K = sample["intrinsics"]
     return plot_pose(color, pose, K, bbox=bbox, axs=axs, scale=scale)
 
 
 def plot_pose(color, pose, K, bbox=None, axs=None, scale=50.0):
+    color = adjust_img_for_plt(color)
     if axs is None:
         fig, axs = plt.subplots(1, 1, figsize=(10, 5))
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)

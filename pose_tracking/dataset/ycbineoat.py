@@ -38,7 +38,7 @@ class YCBineoatDataset(Dataset):
         include_gt_pose=True,
         transforms=None,
         start_frame_idx=0,
-        num_mesh_pts=1000,
+        num_mesh_pts=2000,
         convert_pose_to_quat=False,
     ):
         self.video_dir = video_dir
