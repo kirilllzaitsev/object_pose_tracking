@@ -541,6 +541,7 @@ class Trainer:
 
             if is_train:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
 
             seq_stats["loss"] += loss.item()
@@ -548,7 +549,7 @@ class Trainer:
                 seq_stats["loss_pose"] += loss_pose.item()
             else:
                 seq_stats["loss_rot"] += loss_rot.item()
-                seq_stats["loss_trans"] += loss_trans.item()
+                seq_stats["loss_t"] += loss_t.item()
             seq_stats["loss_depth"] += loss_depth
 
             if save_preds:
@@ -564,8 +565,7 @@ class Trainer:
                 self.processed_data["rot_pred"].append(rot_pred)
                 self.processed_data["t_pred"].append(t_pred)
                 if self.do_predict_2d:
-                    self.processed_data["t_pred_2d"].append(t_pred_2d)
-                    self.processed_data["t_gt_2d"].append(t_gt_2d)
+                    self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
                 self.processed_data["pose_pred"].append(pose_pred)
                 self.processed_data["pts"].append(pts)
                 self.processed_data["bbox_3d"].append(bbox_3d)
@@ -577,7 +577,7 @@ class Trainer:
                     self.processed_data["loss_pose"].append(loss_pose)
                 else:
                     self.processed_data["loss_rot"].append(loss_rot)
-                    self.processed_data["loss_trans"].append(loss_trans)
+                    self.processed_data["loss_t"].append(loss_t)
 
         for k, v in seq_stats.items():
             seq_stats[k] = v / len(batched_seq)
