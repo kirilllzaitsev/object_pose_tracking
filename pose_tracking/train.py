@@ -7,7 +7,6 @@ from pathlib import Path
 
 import comet_ml
 import cv2
-import matplotlib
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -32,6 +31,7 @@ from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
+from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import create_tools, log_exp_meta, print_stats
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
@@ -39,8 +39,6 @@ from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm.auto import tqdm
-
-matplotlib.use("TKAgg")
 
 
 def main(exp_tools: t.Optional[dict] = None):
@@ -112,7 +110,9 @@ def main(exp_tools: t.Optional[dict] = None):
 
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
-    criterion_pose = compute_add_loss if args.pose_loss_name in ["add"] else None
+    use_pose_loss = args.pose_loss_name in ["add"]
+    assert not (use_pose_loss and args.do_predict_2d), "tmp:pose loss implemented only for direct 3d"
+    criterion_pose = compute_add_loss if use_pose_loss else None
 
     transform = get_transforms()
 

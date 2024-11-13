@@ -37,6 +37,9 @@ def parse_args():
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
+        "--do_predict_2d", action="store_true", help="Predict object 2D center and depth separately"
+    )
+    model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
     )
     model_args.add_argument(
