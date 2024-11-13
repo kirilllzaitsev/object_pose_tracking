@@ -460,21 +460,54 @@ class Trainer:
 
             pts = batch_t["mesh_pts"]
             rot_pred, t_pred = outputs["rot"], outputs["t"]
+
+            img_size = rgb.shape[-2:]
+            h, w = img_size
+            t_gt = pose_gt[:, :3]
+            rot_gt = pose_gt[:, 3:]
+            intrinsics = batch_t["intrinsics"]
+
+            if self.do_predict_2d:
+                t_pred_2d_denorm = t_pred.detach().clone()
+                t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
+                t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
+
+                depth_gt = t_gt[:, 2]
+                center_depth_pred = outputs["center_depth"]
+                t_pred_2d_backproj = []
+                for sample_idx in range(len(depth_gt)):
+                    t_pred_2d_backproj.append(
+                        backproj_2d_to_3d(
+                            t_pred_2d_denorm[sample_idx][None], center_depth_pred[sample_idx], intrinsics[sample_idx]
+                        ).squeeze()
+                    )
+                t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
+
+            pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
             pose_pred = torch.stack(
-                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([rot_pred, t_pred], dim=1)]
-            )
-            pose_gt_mat = torch.stack(
-                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([pose_gt[:, 3:], pose_gt[:, :3]], dim=1)]
+                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
             )
             if self.use_pose_loss:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
             else:
-                trans_labels = pose_gt[:, :3]
-                rot_labels = pose_gt[:, 3:]
-                loss_trans = self.criterion_trans(outputs["t"], trans_labels)
-                loss_rot = self.criterion_rot(outputs["rot"], rot_labels)
-                loss = loss_trans + loss_rot
+                if self.do_predict_2d:
+                    t_gt_2d = cam_to_2d(t_gt.unsqueeze(1), intrinsics).squeeze(1)
+                    t_gt_2d_norm = t_gt_2d.clone()
+                    t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
+                    t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
+
+                    loss_t_2d = torch.abs(outputs["t"] - t_gt_2d_norm).mean()
+                    loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
+
+                    loss_rot = torch.abs(
+                        rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
+                    ).mean()
+                    loss_t = loss_t_2d + loss_center_depth
+                else:
+                    loss_t = self.criterion_trans(t_pred, t_gt)
+                    loss_rot = self.criterion_rot(rot_pred, rot_gt)
+                loss = loss_rot + loss_t
 
             bbox_3d = batch_t["mesh_bbox"]
             diameter = batch_t["mesh_diameter"]
