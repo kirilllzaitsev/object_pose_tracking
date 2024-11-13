@@ -190,6 +190,7 @@ def main(exp_tools: t.Optional[dict] = None):
         benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
         bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
         encoder_name=args.encoder_name,
+        do_predict_2d=args.do_predict_2d,
     ).to(device)
 
     num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -221,6 +222,7 @@ def main(exp_tools: t.Optional[dict] = None):
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
         writer=writer,
+        do_predict_2d=args.do_predict_2d,
     )
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -361,11 +363,16 @@ class Trainer:
         criterion_pose=None,
         writer=None,
         do_debug=False,
+        do_predict_2d=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
         ), "Either pose or rot & trans criteria must be provided"
 
+        self.do_debug = do_debug
+        self.do_predict_2d = do_predict_2d
+        self.use_pose_loss = criterion_pose is not None
+        self.do_log = writer is not None
         self.model = model
         self.device = device
         self.hidden_dim = hidden_dim
@@ -374,11 +381,8 @@ class Trainer:
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
         self.writer = writer
-        self.do_debug = do_debug
         self.processed_data = defaultdict(list)
 
-        self.use_pose_loss = criterion_pose is not None
-        self.do_log = writer is not None
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
         self.epoch_counts_per_stage = defaultdict(int)
