@@ -21,7 +21,6 @@ def parse_args():
     train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
     train_args.add_argument("--save_epoch_freq", type=int, default=10, help="Save model every N epochs")
     train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
-    train_args.add_argument("--local_rank", type=int, default=0, help="Local rank for distributed training")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")

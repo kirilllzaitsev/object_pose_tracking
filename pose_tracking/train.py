@@ -50,9 +50,9 @@ def main(exp_tools: t.Optional[dict] = None):
     device = torch.device(args.device)
 
     world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
+    rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
     if args.ddp:
-        rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
         if "MASTER_ADDR" not in os.environ:
             os.environ["MASTER_ADDR"] = "localhost"
@@ -206,8 +206,8 @@ def main(exp_tools: t.Optional[dict] = None):
     if args.ddp:
         model = DDP(
             model,
-            device_ids=[args.local_rank] if args.use_cuda else None,
-            output_device=args.local_rank if args.use_cuda else None,
+            device_ids=[local_rank] if args.use_cuda else None,
+            output_device=local_rank if args.use_cuda else None,
         )
     optimizer = optim.AdamW(
         [
@@ -217,7 +217,7 @@ def main(exp_tools: t.Optional[dict] = None):
             },
             {
                 "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
-                "lr": 5e-4,
+                "lr": args.lr,
             },
         ],
         weight_decay=args.weight_decay,
@@ -254,6 +254,11 @@ def main(exp_tools: t.Optional[dict] = None):
             history["train"][k].append(v)
 
         lr_scheduler.step()
+
+        # clip lr to min value 1e-6
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = max(param_group["lr"], 1e-6)
+
         if epoch % args.save_epoch_freq == 0:
             save_model(model, model_path)
 
@@ -273,6 +278,10 @@ def main(exp_tools: t.Optional[dict] = None):
 
         if args.use_es_train:
             early_stopping(loss=history["train"]["loss"][-1])
+
+        for i, pg in enumerate(optimizer.param_groups):
+            writer.add_scalar(f"lr/group_{i}", pg["lr"], epoch)
+        writer.add_scalar("epoch", epoch, epoch)
 
         if early_stopping.do_stop:
             logger.warning(f"Early stopping on epoch {epoch}")
