@@ -163,15 +163,20 @@ class BeliefDecoder(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="gelu", act_out=None):
+    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="gelu", act_out=None, dropout=0.0):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
+        self.dropout = dropout
         if num_layers > 1:
             self.layers = [nn.Linear(in_dim, hidden_dim)]
+            if dropout > 0:
+                self.layers.append(nn.Dropout(dropout))
             for i in range(num_layers - 2):
                 self.layers = [nn.Linear(hidden_dim, hidden_dim)]
+                if dropout > 0:
+                    self.layers.append(nn.Dropout(dropout))
             self.layers.append(nn.Linear(hidden_dim, out_dim))
         else:
             self.layers = [nn.Linear(in_dim, out_dim)]
@@ -202,6 +207,8 @@ class RecurrentCNN(nn.Module):
         bdec_hidden_attn_hidden_dim,
         benc_belief_enc_num_layers=2,
         benc_belief_depth_enc_num_layers=2,
+        rt_mlps_num_layers=1,
+        dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
         do_predict_2d=False,
@@ -252,17 +259,30 @@ class RecurrentCNN(nn.Module):
         )
         if do_predict_2d:
             self.t_mlp_out_dim = 2
-            self.depth_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=1, hidden_dim=hidden_dim, num_layers=1)
+            self.depth_mlp = MLP(
+                in_dim=depth_dim + rgb_dim,
+                out_dim=1,
+                hidden_dim=hidden_dim,
+                num_layers=rt_mlps_num_layers,
+                dropout=dropout,
+            )
         else:
             self.t_mlp_out_dim = 3
         self.t_mlp = MLP(
             in_dim=depth_dim + rgb_dim,
             out_dim=self.t_mlp_out_dim,
             hidden_dim=hidden_dim,
-            num_layers=1,
+            num_layers=rt_mlps_num_layers,
             act_out=nn.Sigmoid() if do_predict_2d else None,  # normalized coords
+            dropout=dropout,
         )
-        self.rot_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=4, hidden_dim=hidden_dim, num_layers=1)
+        self.rot_mlp = MLP(
+            in_dim=depth_dim + rgb_dim,
+            out_dim=4,
+            hidden_dim=hidden_dim,
+            num_layers=rt_mlps_num_layers,
+            dropout=dropout,
+        )
         self.encoder_name = encoder_name
         self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
 
