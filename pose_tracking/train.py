@@ -484,11 +484,13 @@ class Trainer:
                     use_miou=True,
                     bbox_3d=bbox_3d[sample_idx],
                     diameter=diameter[sample_idx],
+                    is_meters=True,
                 )
                 for k, v in m_sample.items():
                     m_batch[k].append(v)
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
-            seq_metrics = {k: seq_metrics[k] + v for k, v in m_batch_avg.items()}
+            for k, v in m_batch_avg.items():
+                seq_metrics[k] += v
 
             if self.do_log:
                 for k, v in m_batch_avg.items():
@@ -504,12 +506,12 @@ class Trainer:
                 loss.backward()
                 optimizer.step()
 
-            seq_stats["loss"] += loss
+            seq_stats["loss"] += loss.item()
             if self.use_pose_loss:
-                seq_stats["loss_pose"] += loss_pose
+                seq_stats["loss_pose"] += loss_pose.item()
             else:
-                seq_stats["loss_rot"] += loss_rot
-                seq_stats["loss_trans"] += loss_trans
+                seq_stats["loss_rot"] += loss_rot.item()
+                seq_stats["loss_trans"] += loss_trans.item()
             seq_stats["loss_depth"] += loss_depth
 
             if save_preds:
@@ -524,13 +526,16 @@ class Trainer:
                 self.processed_data["depth"].append(depth)
                 self.processed_data["rot_pred"].append(rot_pred)
                 self.processed_data["t_pred"].append(t_pred)
+                if self.do_predict_2d:
+                    self.processed_data["t_pred_2d"].append(t_pred_2d)
+                    self.processed_data["t_gt_2d"].append(t_gt_2d)
                 self.processed_data["pose_pred"].append(pose_pred)
                 self.processed_data["pts"].append(pts)
                 self.processed_data["bbox_3d"].append(bbox_3d)
                 self.processed_data["diameter"].append(diameter)
                 self.processed_data["loss"].append(loss)
                 self.processed_data["m_batch"].append(m_batch)
-                # self.processed_data["loss_depth"].append(loss_depth)
+                self.processed_data["loss_depth"].append(loss_depth)
                 if self.use_pose_loss:
                     self.processed_data["loss_pose"].append(loss_pose)
                 else:
