@@ -25,7 +25,7 @@ from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import get_ds_sample
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.geom import get_inv_pose
-from pose_tracking.utils.io import load_color, load_depth, load_pose
+from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from pose_tracking.utils.segm_utils import mask_erode
 from pose_tracking.utils.trimesh_utils import load_mesh
@@ -104,11 +104,8 @@ class CustomSimDataset(Dataset):
         return sample
 
     def load_mask(self, path):
-        mask = load_color(path.replace("rgb/", "instance_segmentation_fast/"))
-        obj_color = (255, 25, 25)
-        mask = np.all(mask == obj_color, axis=-1).astype(bool)
+        mask = load_mask(path.replace("rgb/", "masks/"))
         mask = torch.from_numpy(mask).float()
-        # mask /= 255.0
         return mask
 
     def get_color(self, i):
