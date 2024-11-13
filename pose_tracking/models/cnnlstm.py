@@ -204,13 +204,25 @@ class RecurrentCNN(nn.Module):
         benc_belief_depth_enc_num_layers=2,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
+        do_predict_2d=False,
     ):
         super().__init__()
-        self.hidden_dim = hidden_dim
-        self.rnn_type = rnn_type
-        self.input_dim = rgb_dim + depth_dim
-        self.rgb_dim = rgb_dim
         self.depth_dim = depth_dim
+        self.rgb_dim = rgb_dim
+        self.hidden_dim = hidden_dim
+        self.benc_belief_enc_hidden_dim = benc_belief_enc_hidden_dim
+        self.benc_belief_depth_enc_hidden_dim = benc_belief_depth_enc_hidden_dim
+        self.bdec_priv_decoder_out_dim = bdec_priv_decoder_out_dim
+        self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
+        self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
+        self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
+        self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
+        self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
+        self.rnn_type = rnn_type
+        self.encoder_name = encoder_name
+        self.do_predict_2d = do_predict_2d
+
+        self.input_dim = depth_dim + rgb_dim
 
         if rnn_type == "lstm":
             self.lstm_cell = LSTMCell(self.input_dim, hidden_dim)
@@ -238,8 +250,19 @@ class RecurrentCNN(nn.Module):
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
         )
-        self.t_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=3, hidden_dim=hidden_dim)
-        self.rot_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=4, hidden_dim=hidden_dim)
+        if do_predict_2d:
+            self.t_mlp_out_dim = 2
+            self.depth_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=1, hidden_dim=hidden_dim, num_layers=1)
+        else:
+            self.t_mlp_out_dim = 3
+        self.t_mlp = MLP(
+            in_dim=depth_dim + rgb_dim,
+            out_dim=self.t_mlp_out_dim,
+            hidden_dim=hidden_dim,
+            num_layers=1,
+            act_out=nn.Sigmoid() if do_predict_2d else None,  # normalized coords
+        )
+        self.rot_mlp = MLP(in_dim=depth_dim + rgb_dim, out_dim=4, hidden_dim=hidden_dim, num_layers=1)
         self.encoder_name = encoder_name
         self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
 
@@ -258,7 +281,7 @@ class RecurrentCNN(nn.Module):
         t = self.t_mlp(extracted_obs)
         rot = self.rot_mlp(extracted_obs)
 
-        return {
+        res = {
             "encoder_out": encoder_out,
             "decoder_out": decoder_out,
             "latent_depth": latent_depth,
@@ -267,3 +290,8 @@ class RecurrentCNN(nn.Module):
             "t": t,
             "rot": rot,
         }
+        if self.do_predict_2d:
+            center_depth = self.depth_mlp(extracted_obs)
+            res["center_depth"] = center_depth
+
+        return res
