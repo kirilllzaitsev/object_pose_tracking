@@ -54,6 +54,22 @@ def load_model_from_ckpt(model, ckpt_path):
     model.load_state_dict(torch.load(ckpt_path))
     return model
 
+def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=None) -> None:
+    num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    printer = logger.info if logger is not None else print
+    printer(f"{num_params_total=}")
+
+    def sender(x):
+        if exp is not None:
+            exp.log_parameters(x)
+
+    for name, submodule in model.named_children():  # Only immediate submodules
+        num_params = sum(p.numel() for p in submodule.parameters())
+        printer(f"num_params_{name}: {num_params}")
+        sender({f"model/num_params_{name}": num_params})
+
+    sender({"model/num_params_total": num_params_total})
+
 
 def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")

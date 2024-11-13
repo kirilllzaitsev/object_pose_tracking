@@ -34,7 +34,12 @@ from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
 from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
 from pose_tracking.utils.misc import set_seed
-from pose_tracking.utils.pipe_utils import create_tools, log_exp_meta, print_stats
+from pose_tracking.utils.pipe_utils import (
+    create_tools,
+    log_exp_meta,
+    log_model_meta,
+    print_stats,
+)
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -194,14 +199,7 @@ def main(exp_tools: t.Optional[dict] = None):
         do_predict_2d=args.do_predict_2d,
     ).to(device)
 
-    num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    num_params_encoder_img = sum(p.numel() for p in model.encoder_img.parameters() if p.requires_grad)
-    num_params_encoder_depth = sum(p.numel() for p in model.encoder_depth.parameters() if p.requires_grad)
-    num_params_state_cell = num_params_total - num_params_encoder_img - num_params_encoder_depth
-    logger.info(f"{num_params_total=}")
-    logger.info(f"{num_params_encoder_img=}")
-    logger.info(f"{num_params_encoder_depth=}")
-    logger.info(f"{num_params_state_cell=}")
+    log_model_meta(model, exp=exp, logger=logger)
 
     if args.ddp:
         model = DDP(
@@ -223,7 +221,7 @@ def main(exp_tools: t.Optional[dict] = None):
         weight_decay=args.weight_decay,
     )
     lr_scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=True
+        optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=False
     )
 
     trainer = Trainer(
