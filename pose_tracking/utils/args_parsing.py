@@ -67,10 +67,16 @@ def parse_args():
     model_args.add_argument(
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
+    model_args.add_argument(
+        "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"
+    )
+    model_args.add_argument(
+        "--dropout", type=float, default=0.0, help="Dropout rate for the model"
+    )
 
     data_args = parser.add_argument_group("Data arguments")
-    data_args.add_argument("--seq_len", type=int, default=3, help="Number of frames to take for train/val")
-    data_args.add_argument("--seq_len_test", type=int, default=100, help="Number of frames to take for test")
+    data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
+    data_args.add_argument("--seq_len_test", type=int, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
@@ -109,7 +115,7 @@ def postprocess_args(args):
             setattr(args, k, v)
 
     if args.do_overfit:
-        args.dropout_prob = 0.0
+        args.dropout = 0.0
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"

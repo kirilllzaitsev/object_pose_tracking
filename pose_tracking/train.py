@@ -197,6 +197,8 @@ def main(exp_tools: t.Optional[dict] = None):
         bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
         encoder_name=args.encoder_name,
         do_predict_2d=args.do_predict_2d,
+        rt_mlps_num_layers=args.rt_mlps_num_layers,
+        dropout=args.dropout,
     ).to(device)
 
     log_model_meta(model, exp=exp, logger=logger)
@@ -405,7 +407,7 @@ class Trainer:
 
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
-        self.epoch_counts_per_stage = defaultdict(int)
+        self.train_epoch_count = 0
 
     def loader_forward(
         self,
@@ -443,8 +445,9 @@ class Trainer:
 
         if self.do_log:
             for k, v in running_stats.items():
-                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.epoch_counts_per_stage[stage])
-        self.epoch_counts_per_stage[stage] += 1
+                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
+        if stage == "train":
+            self.train_epoch_count += 1
 
         return running_stats
 
