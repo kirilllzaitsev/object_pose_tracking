@@ -25,3 +25,7 @@ def get_encoders(model_name="regnet_y_800mf", device="cpu", weights_img="imagene
     for m in [encoder_s_img, encoder_s_depth]:
         m.to(device)
     return encoder_s_img, encoder_s_depth
+
+
+def is_param_part_of_encoders(name):
+    return "encoder_img" in name or "encoder_depth" in name

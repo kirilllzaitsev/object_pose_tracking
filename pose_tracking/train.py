@@ -29,6 +29,7 @@ from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.cnnlstm import RecurrentCNN
+from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
 from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
@@ -208,7 +209,19 @@ def main(exp_tools: t.Optional[dict] = None):
             device_ids=[args.local_rank] if args.use_cuda else None,
             output_device=args.local_rank if args.use_cuda else None,
         )
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.AdamW(
+        [
+            {
+                "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
+                "lr": 1e-5,
+            },
+            {
+                "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
+                "lr": 5e-4,
+            },
+        ],
+        weight_decay=args.weight_decay,
+    )
     lr_scheduler = optim.lr_scheduler.StepLR(
         optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=True
     )
@@ -554,7 +567,7 @@ class Trainer:
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, outputs["t"], outputs["rot"], preds_dir)
+                save_results(batch_t, t_pred, rot_pred, preds_dir)
             if self.do_debug:
                 # add everything to processed_data
                 self.processed_data["rgb"].append(rgb)
