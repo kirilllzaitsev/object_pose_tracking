@@ -15,6 +15,13 @@ def parse_args():
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
     pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")
+    pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
+    pipe_args.add_argument(
+        "--ignored_file_args",
+        nargs="*",
+        default=[],
+        help="List of args to ignore when loading from file.",
+    )
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
@@ -25,7 +32,7 @@ def parse_args():
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--es_patience", type=int, default=10, help="Early stopping patience")
-    train_args.add_argument("--es_delta", type=float, default=1e-2, help="Early stopping delta")
+    train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
@@ -78,6 +85,29 @@ def parse_args():
 
 
 def postprocess_args(args):
+
+    if args.args_path:
+        import yaml
+
+        with open(args.args_path, "r") as f:
+            loaded_args = yaml.load(f, Loader=yaml.FullLoader)
+
+        default_ignored_file_args = [
+            "device",
+            "run_name",
+            "log_subdir",
+            "ddp",
+            "exp_disabled",
+            "batch_size",
+            "vis_epoch_freq",
+        ]
+        ignored_file_args = set(args.ignored_file_args) | set(default_ignored_file_args)
+        for k, v in loaded_args.items():
+            if k in ignored_file_args:
+                print(f"Ignoring overriding {k}")
+                continue
+            setattr(args, k, v)
+
     if args.do_overfit:
         args.dropout_prob = 0.0
     args.use_es_train = args.do_overfit and args.use_es
