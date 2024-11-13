@@ -1,16 +1,22 @@
 import argparse
 import os
+import typing as t
 from datetime import datetime
 from pathlib import Path
 
+import comet_ml
+import torch
+import torch.nn as nn
 from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
+from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.comet_utils import (
     create_tracking_exp,
     log_args,
+    log_ckpt_to_exp,
     log_params_to_exp,
     log_tags,
 )
-import torch
+from pose_tracking.utils.misc import DeviceType
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -27,7 +33,7 @@ def create_tools(args: argparse.Namespace) -> dict:
     preds_base_dir = f"{logdir}/preds"
     preds_dir = Path(preds_base_dir)
     exp = create_tracking_exp(args, project_name=PROJ_NAME)
-    args.run_name = exp.name  # automatically assigned by Comet
+    args.comet_exp_name = exp.name  # automatically assigned by Comet
 
     writer = SummaryWriter(log_dir=logdir, flush_secs=10)
     return {
@@ -53,6 +59,57 @@ def log_exp_meta(args, save_args, logdir, exp, args_to_group_map=None):
 def load_model_from_ckpt(model, ckpt_path):
     model.load_state_dict(torch.load(ckpt_path))
     return model
+
+
+def load_from_ckpt(
+    checkpoint_path: str,
+    device: DeviceType,
+    trep_net: nn.Module,
+    optimizer: t.Any = None,
+    scheduler: t.Any = None,
+) -> dict:
+    state_dicts = torch.load(
+        checkpoint_path,
+        map_location=device,
+    )
+    trep_net.load_state_dict(state_dicts["model"])
+    if optimizer is not None:
+        optimizer.load_state_dict(state_dicts["optimizer"])
+        for g in optimizer.param_groups:
+            g["lr"] = 0.005
+    if scheduler is not None:
+        scheduler.load_state_dict(state_dicts["scheduler"])
+
+    return {
+        "model": trep_net,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
+    }
+
+
+def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int) -> str:
+    """Logs the training artifacts to the experiment and saves the model and session to the log directory."""
+
+    save_path_model = os.path.join(log_dir, f"model_{epoch}.pt")
+    save_path_session = os.path.join(log_dir, f"session_{epoch}.pt")
+    torch.save(
+        {
+            "model": artifacts["model"].state_dict(),
+        },
+        save_path_model,
+    )
+    torch.save(
+        {
+            "optimizer": artifacts["optimizer"].state_dict(),
+            "scheduler": artifacts["scheduler"].state_dict(),
+            "epoch": epoch,
+        },
+        save_path_session,
+    )
+    log_ckpt_to_exp(exp, save_path_model, "ckpt")
+    log_ckpt_to_exp(exp, save_path_session, "ckpt")
+    return save_path_model
+
 
 def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=None) -> None:
     num_params_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
