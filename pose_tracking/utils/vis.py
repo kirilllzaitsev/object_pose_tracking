@@ -347,11 +347,18 @@ def plot_rgb_depth(color, depth, axs=None):
     if axs is None:
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))
     color = adjust_img_for_plt(color)
-    depth = adjust_depth_for_plt(depth)
     axs[0].imshow(color)
-    im = axs[1].imshow(depth, cmap="jet")
-    plt.colorbar(im, ax=axs[1])
+    plot_depth(depth, ax=axs[1])
     return axs
+
+
+def plot_depth(depth, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    depth = adjust_depth_for_plt(depth)
+    im = ax.imshow(depth, cmap="viridis")
+    plt.colorbar(im, ax=ax)
+    return ax
 
 
 def vis_optical_flow(flow):
