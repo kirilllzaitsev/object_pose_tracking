@@ -84,6 +84,7 @@ def log_exception(*args):
             "Not able to log exception. Wrong number of arguments given. Should either receive 1 argument "
             "- an exception, or 3 arguments: exc type, exc value and traceback"
         )
+        logger.error(args)
         return
 
     tb_msg = "".join(traceback.format_exception(etype, value, tb))

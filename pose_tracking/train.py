@@ -447,6 +447,8 @@ class Trainer:
         preds_dir=None,
         stage="train",
     ):
+        if stage == "train":
+            self.train_epoch_count += 1
         running_stats = defaultdict(float)
         seq_pbar = tqdm(loader, desc="Seq", leave=False)
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
@@ -475,8 +477,6 @@ class Trainer:
         if self.do_log:
             for k, v in running_stats.items():
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
-        if stage == "train":
-            self.train_epoch_count += 1
 
         return running_stats
 
