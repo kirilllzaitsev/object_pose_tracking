@@ -251,6 +251,7 @@ def main(exp_tools: t.Optional[dict] = None):
         writer=writer,
         do_predict_2d=args.do_predict_2d,
         do_predict_6d_rot=args.do_predict_6d_rot,
+        use_rnn=not args.no_rnn,
     )
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
@@ -414,6 +415,7 @@ class Trainer:
         do_debug=False,
         do_predict_2d=False,
         do_predict_6d_rot=False,
+        use_rnn=True,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -424,6 +426,9 @@ class Trainer:
         self.do_predict_6d_rot = do_predict_6d_rot
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
+        self.use_rnn = use_rnn
+        self.use_optim_every_ts = not use_rnn
+
         self.model = model
         self.device = device
         self.hidden_dim = hidden_dim
@@ -500,8 +505,15 @@ class Trainer:
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
         ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
+
+        do_opt_every_ts = is_train and self.use_optim_every_ts
+        do_opt_in_the_end = is_train and not self.use_optim_every_ts
+        if do_opt_in_the_end:
+            optimizer.zero_grad()
+            total_loss = 0
+
         for t, batch_t in ts_pbar:
-            if is_train:
+            if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["rgb"]
             seg_masks = batch_t["mask"]
@@ -608,10 +620,12 @@ class Trainer:
             # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
             # loss += loss_priv
 
-            if is_train:
+            if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
+            elif do_opt_in_the_end:
+                total_loss += loss
 
             seq_stats["loss"] += loss.item()
             if self.use_pose_loss:
@@ -647,6 +661,12 @@ class Trainer:
                 else:
                     self.processed_data["loss_rot"].append(loss_rot)
                     self.processed_data["loss_t"].append(loss_t)
+
+        if do_opt_in_the_end:
+            total_loss /= len(batched_seq)
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            optimizer.step()
 
         for k, v in seq_stats.items():
             seq_stats[k] = v / len(batched_seq)
