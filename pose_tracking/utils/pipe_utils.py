@@ -87,17 +87,13 @@ def load_from_ckpt(
     }
 
 
-def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int) -> str:
+def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int, suffix=None) -> str:
     """Logs the training artifacts to the experiment and saves the model and session to the log directory."""
 
-    save_path_model = os.path.join(log_dir, f"model_{epoch}.pt")
-    save_path_session = os.path.join(log_dir, f"session_{epoch}.pt")
-    torch.save(
-        {
-            "model": artifacts["model"].state_dict(),
-        },
-        save_path_model,
-    )
+    suffix = epoch if suffix is None else suffix
+    save_path_model = os.path.join(log_dir, f"model_{suffix}.pt")
+    log_model(artifacts, save_path_model)
+    save_path_session = os.path.join(log_dir, "session.pt")
     torch.save(
         {
             "optimizer": artifacts["optimizer"].state_dict(),
@@ -109,6 +105,15 @@ def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch
     log_ckpt_to_exp(exp, save_path_model, "ckpt")
     log_ckpt_to_exp(exp, save_path_session, "ckpt")
     return save_path_model
+
+
+def log_model(model, save_path_model):
+    torch.save(
+        {
+            "model": model.state_dict(),
+        },
+        save_path_model,
+    )
 
 
 def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=None) -> None:
