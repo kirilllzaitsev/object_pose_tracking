@@ -79,7 +79,7 @@ def parse_args():
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
-    data_args.add_argument("--obj_name", type=str, default="mustard0", help="Object name in the dataset")
+    data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
 
     args_raw, unknown_args = parser.parse_known_args()
     if unknown_args:
@@ -90,6 +90,8 @@ def parse_args():
 
 
 def postprocess_args(args):
+
+    args = fix_outdated_args(args)
 
     if args.args_path:
         import yaml
@@ -118,6 +120,15 @@ def postprocess_args(args):
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"
+
+    return args
+
+
+def fix_outdated_args(args):
+    if not hasattr(args, "obj_names"):
+        args.obj_names = [args.obj_name]
+    if not hasattr(args, "args_path"):
+        args.args_path = None
 
     return args
 

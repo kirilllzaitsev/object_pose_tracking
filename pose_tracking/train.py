@@ -24,7 +24,7 @@ from pose_tracking.config import (
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
-from pose_tracking.dataset.video_ds import VideoDataset
+from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.metrics import calc_metrics
@@ -124,28 +124,36 @@ def main(exp_tools: t.Optional[dict] = None):
 
     early_stopping = EarlyStopping(patience=args.es_patience, delta=args.es_delta, verbose=True)
 
-    ycbi_kwargs = dict(
-        video_dir=YCBINEOAT_SCENE_DIR / args.obj_name,
-        shorter_side=None,
-        zfar=np.inf,
-        include_rgb=True,
-        include_depth=True,
-        include_gt_pose=True,
-        include_mask=True,
-        ycb_meshes_dir=YCB_MESHES_DIR,
-        transforms=transform,
-        start_frame_idx=0,
-        convert_pose_to_quat=True,
-    )
-    ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
-    video_ds = VideoDataset(
-        ds=ds_ycbi,
-        seq_len=args.seq_len,
-        seq_step=args.seq_step,
-        seq_start=args.seq_start,
-        num_samples=args.num_samples,
-    )
-    full_ds = video_ds
+    video_datasets = []
+    for obj_name in args.obj_names:
+        ycbi_kwargs = dict(
+            video_dir=YCBINEOAT_SCENE_DIR / obj_name,
+            shorter_side=None,
+            zfar=np.inf,
+            include_rgb=True,
+            include_depth=True,
+            include_gt_pose=True,
+            include_mask=True,
+            ycb_meshes_dir=YCB_MESHES_DIR,
+            transforms=transform,
+            start_frame_idx=0,
+            convert_pose_to_quat=True,
+        )
+        ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
+        video_ds = VideoDataset(
+            ds=ds_ycbi,
+            seq_len=args.seq_len,
+            seq_step=args.seq_step,
+            seq_start=args.seq_start,
+            num_samples=args.num_samples,
+        )
+        video_datasets.append(video_ds)
+
+    if len(video_datasets) > 1:
+        full_ds = MultiVideoDataset(video_datasets)
+    else:
+        full_ds = video_datasets[0]
+
     scene_len = len(full_ds)
     logger.info(f"Scene length: {scene_len}")
     train_share = 1.0 if args.do_overfit else 0.9
@@ -500,6 +508,7 @@ class Trainer:
             intrinsics = batch_t["intrinsics"]
 
             if self.do_predict_2d:
+                # 3d t_pred will be used only for metrics
                 t_pred_2d_denorm = t_pred.detach().clone()
                 t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
                 t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
@@ -534,7 +543,8 @@ class Trainer:
                     t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
                     t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
 
-                    loss_t_2d = torch.abs(outputs["t"] - t_gt_2d_norm).mean()
+                    t_pred_2d = outputs["t"]
+                    loss_t_2d = torch.abs(t_pred_2d - t_gt_2d_norm).mean()
                     loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
 
                     loss_t = loss_t_2d + loss_center_depth
