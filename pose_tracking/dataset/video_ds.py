@@ -40,3 +40,22 @@ class VideoDataset(Dataset):
             sample = self.ds[frame_idx]
             seq.append(sample)
         return seq
+
+
+class MultiVideoDataset(Dataset):
+    """
+    Takes in multiple datasets representing different videos and wraps them to return a seq from a random video.
+
+    Args:
+        video_datasets: List of datasets representing different videos
+    """
+
+    def __init__(self, video_datasets: list[VideoDataset]):
+        self.video_datasets = video_datasets
+
+    def __len__(self):
+        return sum(len(ds) for ds in self.video_datasets)
+
+    def __getitem__(self, idx):
+        video_idx = torch.randint(0, len(self.video_datasets), (1,)).item()
+        return self.video_datasets[video_idx][idx]

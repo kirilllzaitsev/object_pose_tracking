@@ -45,6 +45,7 @@ def parse_args():
     model_args.add_argument(
         "--do_predict_2d", action="store_true", help="Predict object 2D center and depth separately"
     )
+    model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
     )
@@ -70,9 +71,7 @@ def parse_args():
     model_args.add_argument(
         "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"
     )
-    model_args.add_argument(
-        "--dropout", type=float, default=0.0, help="Dropout rate for the model"
-    )
+    model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
