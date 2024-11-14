@@ -13,7 +13,7 @@ class VideoDataset(Dataset):
         num_samples: Number of times to sample a sequence from the video (length of the dataset)
     """
 
-    def __init__(self, ds, seq_len=10, seq_start=0, seq_step=1, num_samples=None):
+    def __init__(self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None):
         self.ds = ds
         self.seq_len = seq_len
         self.seq_start = seq_start
