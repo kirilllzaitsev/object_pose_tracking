@@ -8,12 +8,12 @@ def parse_args():
 
     pipe_args = parser.add_argument_group("Training arguments")
 
-    pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
-    pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
     pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
     pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
+    pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
+    pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
     pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")
     pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
     pipe_args.add_argument(
@@ -24,14 +24,14 @@ def parse_args():
     )
 
     train_args = parser.add_argument_group("Training arguments")
+    train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
+    train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
     train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
     train_args.add_argument("--save_epoch_freq", type=int, default=5, help="Save model every N epochs")
-    train_args.add_argument("--ddp", action="store_true", help="Use Distributed Data Parallel")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
-    train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
-    train_args.add_argument("--es_patience", type=int, default=5, help="Early stopping patience")
+    train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
@@ -46,6 +46,7 @@ def parse_args():
         "--do_predict_2d", action="store_true", help="Predict object 2D center and depth separately"
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
+    model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
     )
@@ -118,7 +119,7 @@ def postprocess_args(args):
             "device",
             "run_name",
             "log_subdir",
-            "ddp",
+            "use_ddp",
             "exp_disabled",
             "batch_size",
             "vis_epoch_freq",
