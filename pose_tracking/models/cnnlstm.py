@@ -55,26 +55,28 @@ class StateMLP(nn.Module):
 class BeliefEncoder(nn.Module):
     def __init__(
         self,
-        rnn_cell,
-        rnn_hidden_dim,
+        state_cell,
+        state_cell_out_dim,
         depth_latent_dim,
         belief_enc_hidden_dim,
         belief_depth_enc_hidden_dim,
         belief_enc_num_layers=2,
         belief_depth_enc_num_layers=2,
+        use_rnn=True,
     ):
         super().__init__()
-        self.rnn_cell = rnn_cell
+        self.state_cell = state_cell
         self.depth_latent_dim = depth_latent_dim
+        self.use_rnn = use_rnn
 
         self.belief_prior_mlp = StateMLP(
-            in_dim=rnn_hidden_dim,
+            in_dim=state_cell_out_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_enc_hidden_dim,
             num_layers=belief_enc_num_layers,
         )
         self.belief_depth_mlp = StateMLP(
-            in_dim=rnn_hidden_dim,
+            in_dim=state_cell_out_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_depth_enc_hidden_dim,
             num_layers=belief_depth_enc_num_layers,
@@ -82,12 +84,16 @@ class BeliefEncoder(nn.Module):
 
     def forward(self, latent_rgb, latent_depth, hx, cx=None):
         latent_obs = torch.cat([latent_rgb, latent_depth], dim=-1)
-        if cx is None:
-            cell_out = self.rnn_cell(latent_obs, hx)
-            cx_new = None
+        if self.use_rnn:
+            if cx is None:
+                cell_out = self.state_cell(latent_obs, hx)
+                cx_new = None
+            else:
+                cell_out = self.state_cell(latent_obs, hx, cx)
+                cx_new = cell_out["cell_state"]
         else:
-            cell_out = self.rnn_cell(latent_obs, hx, cx)
-            cx_new = cell_out["cell_state"]
+            cell_out = self.state_cell(latent_obs)
+            cx_new = None
         prior_belief = cell_out["hidden_state"] if isinstance(cell_out, dict) else cell_out
         prior_belief_encoded = self.belief_prior_mlp(prior_belief)
         prior_belief_depth_encoded = self.belief_depth_mlp(prior_belief)
@@ -96,11 +102,11 @@ class BeliefEncoder(nn.Module):
         return {
             "posterior_belief": posterior_belief,
             "prior_belief": prior_belief,
-            "hidden_state": prior_belief,
             "belief_state": posterior_belief,
             "prior_belief_encoded": prior_belief_encoded,
             "prior_belief_depth_encoded": prior_belief_depth_encoded,
             "latent_depth_gated": latent_depth_gated,
+            "hx": prior_belief,
             "cx": cx_new,
         }
 
@@ -216,6 +222,7 @@ class RecurrentCNN(nn.Module):
         encoder_name="regnet_y_800mf",
         do_predict_2d=False,
         do_predict_6d_rot=False,
+        use_rnn=True,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -236,23 +243,32 @@ class RecurrentCNN(nn.Module):
 
         self.input_dim = depth_dim + rgb_dim
 
-        if rnn_type == "lstm":
-            self.lstm_cell = LSTMCell(self.input_dim, hidden_dim)
-        elif rnn_type == "gru":
-            self.lstm_cell = nn.GRUCell(self.input_dim, hidden_dim)
-        elif rnn_type == "gru_custom":
-            self.lstm_cell = GRUCell(self.input_dim, hidden_dim)
+        if use_rnn:
+            if rnn_type == "lstm":
+                self.state_cell = LSTMCell(self.input_dim, hidden_dim)
+            elif rnn_type == "gru":
+                self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
+            elif rnn_type == "gru_custom":
+                self.state_cell = GRUCell(self.input_dim, hidden_dim)
+            else:
+                raise ValueError("rnn_type must be 'lstm' or 'gru'")
         else:
-            raise ValueError("rnn_type must be 'lstm' or 'gru'")
+            self.state_cell = StateMLP(
+                in_dim=self.input_dim,
+                out_dim=hidden_dim,
+                hidden_dim=hidden_dim,
+                num_layers=1,
+            )
 
         self.belief_encoder = BeliefEncoder(
-            self.lstm_cell,
-            rnn_hidden_dim=hidden_dim,
+            state_cell=self.state_cell,
+            state_cell_out_dim=hidden_dim,
             depth_latent_dim=depth_dim,
             belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
             belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
             belief_enc_num_layers=benc_belief_enc_num_layers,
             belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
+            use_rnn=use_rnn,
         )
         self.belief_decoder = BeliefDecoder(
             state_dim=hidden_dim,
@@ -300,7 +316,7 @@ class RecurrentCNN(nn.Module):
         latent_depth = self.encoder_depth(depth)
 
         encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
-        hx, cx = (encoder_out["hidden_state"], encoder_out["cx"])
+        hx, cx = encoder_out["hx"], encoder_out["cx"]
         decoder_out = self.belief_decoder(hx, latent_depth)
 
         # pose estimation
