@@ -212,6 +212,7 @@ class RecurrentCNN(nn.Module):
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
         do_predict_2d=False,
+        do_predict_6d_rot=False,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -228,6 +229,7 @@ class RecurrentCNN(nn.Module):
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
         self.do_predict_2d = do_predict_2d
+        self.do_predict_6d_rot = do_predict_6d_rot
 
         self.input_dim = depth_dim + rgb_dim
 
@@ -278,7 +280,7 @@ class RecurrentCNN(nn.Module):
         )
         self.rot_mlp = MLP(
             in_dim=depth_dim + rgb_dim,
-            out_dim=4,
+            out_dim=6 if do_predict_6d_rot else 4,
             hidden_dim=hidden_dim,
             num_layers=rt_mlps_num_layers,
             dropout=dropout,

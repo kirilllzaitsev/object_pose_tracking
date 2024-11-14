@@ -236,6 +236,7 @@ def main(exp_tools: t.Optional[dict] = None):
         criterion_pose=criterion_pose,
         writer=writer,
         do_predict_2d=args.do_predict_2d,
+        do_predict_6d_rot=args.do_predict_6d_rot,
     )
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -386,6 +387,7 @@ class Trainer:
         writer=None,
         do_debug=False,
         do_predict_2d=False,
+        do_predict_6d_rot=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -393,6 +395,7 @@ class Trainer:
 
         self.do_debug = do_debug
         self.do_predict_2d = do_predict_2d
+        self.do_predict_6d_rot = do_predict_6d_rot
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
         self.model = model
@@ -484,6 +487,12 @@ class Trainer:
             pts = batch_t["mesh_pts"]
             rot_pred, t_pred = outputs["rot"], outputs["t"]
 
+            if self.do_predict_6d_rot:
+                r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
+                r2 = rot_pred[:, 3:] / torch.norm(rot_pred[:, 3:], dim=1, keepdim=True)
+                r3 = torch.cross(r1, r2)
+                rot_pred = torch.cat([r1, r2, r3], dim=1).view(-1, 3, 3)
+
             img_size = rgb.shape[-2:]
             h, w = img_size
             t_gt = pose_gt[:, :3]
@@ -507,9 +516,14 @@ class Trainer:
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
-            pose_pred = torch.stack(
-                [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
-            )
+            if self.do_predict_6d_rot:
+                pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
+                pose_pred[:, :3, :3] = rot_pred
+                pose_pred[:, :3, 3] = t_pred
+            else:
+                pose_pred = torch.stack(
+                    [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
+                )
             if self.use_pose_loss:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
