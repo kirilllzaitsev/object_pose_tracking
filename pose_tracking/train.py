@@ -507,11 +507,12 @@ class Trainer:
             seg_masks = batch_t["mask"]
             pose_gt = batch_t["pose"]
             depth = batch_t["depth"]
+            pts = batch_t["mesh_pts"]
 
             outputs = self.model(rgb, depth, hx=hx, cx=cx)
 
-            pts = batch_t["mesh_pts"]
             rot_pred, t_pred = outputs["rot"], outputs["t"]
+            hx, cx = outputs["hx"], outputs["cx"]
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
@@ -551,6 +552,7 @@ class Trainer:
                 pose_pred = torch.stack(
                     [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
                 )
+
             if self.use_pose_loss:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
