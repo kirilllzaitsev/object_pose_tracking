@@ -35,7 +35,9 @@ from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_
 from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
+    Printer,
     create_tools,
+    log_artifacts,
     log_exp_meta,
     log_model_meta,
     print_stats,
@@ -252,6 +254,11 @@ def main(exp_tools: t.Optional[dict] = None):
         do_predict_2d=args.do_predict_2d,
         do_predict_6d_rot=args.do_predict_6d_rot,
     )
+    artifacts = {
+        "model": model,
+        "optimizer": optimizer,
+        "scheduler": lr_scheduler,
+    }
     printer = Printer(logger)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -276,6 +283,7 @@ def main(exp_tools: t.Optional[dict] = None):
             param_group["lr"] = max(param_group["lr"], 1e-6)
 
         if epoch % args.save_epoch_freq == 0:
+            log_artifacts(artifacts, exp, logdir, epoch)
             printer.saved_artifacts(epoch)
 
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
@@ -308,6 +316,7 @@ def main(exp_tools: t.Optional[dict] = None):
         return
 
     if is_main_process:
+        log_artifacts(artifacts, exp, logdir, epoch)
         printer.saved_artifacts(epoch)
 
     logger.info(f"# {logdir=}")
@@ -644,10 +653,6 @@ class Trainer:
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
-
-
-def save_model(model, model_path):
-    torch.save(model.state_dict(), model_path)
 
 
 if __name__ == "__main__":
