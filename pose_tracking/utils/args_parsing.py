@@ -31,7 +31,7 @@ def parse_args():
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
-    train_args.add_argument("--es_patience", type=int, default=10, help="Early stopping patience")
+    train_args.add_argument("--es_patience", type=int, default=5, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")

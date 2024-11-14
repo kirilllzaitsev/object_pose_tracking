@@ -39,7 +39,12 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
 
     tags_to_log = extra_tags
     if len(args.exp_tags) > 0 and args.exp_tags[0] != "":
-        tags_to_log += args.exp_tags
+        # ot=other tags
+        tag_prefix = "ot_"
+        tags_to_log += [f"{tag_prefix}{x}" for x in args.exp_tags]
+    if args.exp_name not in ["", "test"]:
+        # en=exp_name
+        tags_to_log.append(f"en_{args.exp_name}")
     exp.add_tags(tags_to_log)
 
 
