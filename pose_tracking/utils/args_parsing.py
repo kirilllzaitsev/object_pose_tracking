@@ -54,19 +54,34 @@ def parse_args():
     )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
     model_args.add_argument(
-        "--bdec_priv_decoder_hidden_dim", type=int, default=32, help="Hidden dimension for privileged info decoder"
-    )
-    model_args.add_argument(
-        "--bdec_depth_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for depth decoder"
-    )
-    model_args.add_argument(
         "--benc_belief_enc_hidden_dim", type=int, default=512, help="Hidden dimension for belief encoder"
     )
     model_args.add_argument(
         "--benc_belief_depth_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief depth encoder"
     )
     model_args.add_argument(
+        "--benc_belief_enc_num_layers", type=int, default=2, help="Number of layers for belief encoder"
+    )
+    model_args.add_argument(
+        "--benc_belief_depth_enc_num_layers", type=int, default=2, help="Number of layers for belief depth encoder"
+    )
+    model_args.add_argument(
+        "--bdec_priv_decoder_hidden_dim", type=int, default=32, help="Hidden dimension for privileged info decoder"
+    )
+    model_args.add_argument(
+        "--bdec_depth_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for depth decoder"
+    )
+    model_args.add_argument(
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
+    )
+    model_args.add_argument(
+        "--priv_decoder_num_layers", type=int, default=1, help="Number of layers for privileged info decoder"
+    )
+    model_args.add_argument(
+        "--depth_decoder_num_layers", type=int, default=1, help="Number of layers for depth decoder from hidden state"
+    )
+    model_args.add_argument(
+        "--hidden_attn_num_layers", type=int, default=1, help="Number of layers for hidden attention in decoder"
     )
     model_args.add_argument(
         "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"

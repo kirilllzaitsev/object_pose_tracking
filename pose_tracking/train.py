@@ -205,6 +205,12 @@ def main(exp_tools: t.Optional[dict] = None):
         bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
         encoder_name=args.encoder_name,
         do_predict_2d=args.do_predict_2d,
+        do_predict_6d_rot=args.do_predict_6d_rot,
+        benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
+        benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
+        priv_decoder_num_layers=args.priv_decoder_num_layers,
+        depth_decoder_num_layers=args.depth_decoder_num_layers,
+        hidden_attn_num_layers=args.hidden_attn_num_layers,
         rt_mlps_num_layers=args.rt_mlps_num_layers,
         dropout=args.dropout,
     ).to(device)

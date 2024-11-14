@@ -207,6 +207,9 @@ class RecurrentCNN(nn.Module):
         bdec_hidden_attn_hidden_dim,
         benc_belief_enc_num_layers=2,
         benc_belief_depth_enc_num_layers=2,
+        priv_decoder_num_layers=1,
+        depth_decoder_num_layers=1,
+        hidden_attn_num_layers=1,
         rt_mlps_num_layers=1,
         dropout=0.0,
         rnn_type="gru",
@@ -258,6 +261,9 @@ class RecurrentCNN(nn.Module):
             depth_decoder_out_dim=depth_dim,
             depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
             hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
+            priv_decoder_num_layers=priv_decoder_num_layers,
+            depth_decoder_num_layers=depth_decoder_num_layers,
+            hidden_attn_num_layers=hidden_attn_num_layers,
         )
         if do_predict_2d:
             self.t_mlp_out_dim = 2
