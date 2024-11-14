@@ -523,12 +523,14 @@ class Trainer:
                     loss_t_2d = torch.abs(outputs["t"] - t_gt_2d_norm).mean()
                     loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
 
-                    loss_rot = torch.abs(
-                        rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
-                    ).mean()
                     loss_t = loss_t_2d + loss_center_depth
                 else:
                     loss_t = self.criterion_trans(t_pred, t_gt)
+                if self.do_predict_6d_rot:
+                    loss_rot = torch.abs(
+                        rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
+                    ).mean()
+                else:
                     loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 loss = loss_rot + loss_t
 
