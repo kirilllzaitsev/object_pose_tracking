@@ -92,7 +92,7 @@ def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch
 
     suffix = epoch if suffix is None else suffix
     save_path_model = os.path.join(log_dir, f"model_{suffix}.pt")
-    log_model(artifacts, save_path_model)
+    log_model(artifacts["model"], save_path_model)
     save_path_session = os.path.join(log_dir, "session.pt")
     torch.save(
         {

@@ -59,8 +59,7 @@ def main(exp_tools: t.Optional[dict] = None):
     world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
     rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    if args.ddp:
-
+    if args.use_ddp:
         if "MASTER_ADDR" not in os.environ:
             os.environ["MASTER_ADDR"] = "localhost"
         if "MASTER_PORT" not in os.environ:
@@ -111,7 +110,7 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
 
-    if args.ddp:
+    if args.use_ddp:
         print(
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
         )
@@ -123,8 +122,6 @@ def main(exp_tools: t.Optional[dict] = None):
     criterion_pose = compute_add_loss if use_pose_loss else None
 
     transform = get_transforms()
-
-    early_stopping = EarlyStopping(patience=args.es_patience, delta=args.es_delta, verbose=True)
 
     video_datasets = []
     for obj_name in args.obj_names:
@@ -170,7 +167,7 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{len(train_dataset)=}")
 
     collate_fn = seq_collate_fn
-    if args.ddp:
+    if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(
             train_dataset, batch_size=args.batch_size, sampler=train_sampler, collate_fn=collate_fn
@@ -215,11 +212,12 @@ def main(exp_tools: t.Optional[dict] = None):
         hidden_attn_num_layers=args.hidden_attn_num_layers,
         rt_mlps_num_layers=args.rt_mlps_num_layers,
         dropout=args.dropout,
+        use_rnn=not args.no_rnn,
     ).to(device)
 
     log_model_meta(model, exp=exp, logger=logger)
 
-    if args.ddp:
+    if args.use_ddp:
         model = DDP(
             model,
             device_ids=[local_rank] if args.use_cuda else None,
@@ -254,6 +252,7 @@ def main(exp_tools: t.Optional[dict] = None):
         do_predict_2d=args.do_predict_2d,
         do_predict_6d_rot=args.do_predict_6d_rot,
     )
+    early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model,
         "optimizer": optimizer,
@@ -264,7 +263,7 @@ def main(exp_tools: t.Optional[dict] = None):
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
-        if args.ddp:
+        if args.use_ddp:
             train_loader.sampler.set_epoch(epoch)
         train_stats = trainer.loader_forward(
             train_loader,
@@ -362,7 +361,7 @@ def main(exp_tools: t.Optional[dict] = None):
     if not external_tools and is_main_process:
         exp.end()
 
-    if args.ddp:
+    if args.use_ddp:
         dist.destroy_process_group()
 
 

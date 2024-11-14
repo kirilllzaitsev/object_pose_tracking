@@ -21,8 +21,6 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         extra_tags.append("e_euler")
     else:
         extra_tags.append("e_local")
-    if args.ddp:
-        extra_tags.append("e_ddp")
     for k, v in vars(args).items():
         if k in ["use_cuda", "use_test_set"] or "use_es" in k:
             continue
@@ -33,7 +31,7 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         p = r"^(disable_|no_)"
         if re.match(p, k) and v:
             extra_tags.append(f"{tag_prefix}no_{re.sub(p, '', k)}")
-    for k in ["rnn_type"]:
+    for k in []:
         tag_prefix = get_tag_pref(k, args_to_group_map)
         extra_tags.append(f"{tag_prefix}{getattr(args, k)}")
 
