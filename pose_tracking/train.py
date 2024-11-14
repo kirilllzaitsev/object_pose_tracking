@@ -252,6 +252,7 @@ def main(exp_tools: t.Optional[dict] = None):
         do_predict_2d=args.do_predict_2d,
         do_predict_6d_rot=args.do_predict_6d_rot,
     )
+    printer = Printer(logger)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
@@ -275,7 +276,7 @@ def main(exp_tools: t.Optional[dict] = None):
             param_group["lr"] = max(param_group["lr"], 1e-6)
 
         if epoch % args.save_epoch_freq == 0:
-            save_model(model, model_path)
+            printer.saved_artifacts(epoch)
 
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
@@ -307,7 +308,7 @@ def main(exp_tools: t.Optional[dict] = None):
         return
 
     if is_main_process:
-        save_model(model, model_path)
+        printer.saved_artifacts(epoch)
 
     logger.info(f"# {logdir=}")
     logger.info(f"# {logpath=}")

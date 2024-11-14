@@ -140,3 +140,11 @@ def print_stats(train_stats, logger, stage):
             if k in train_stats:
                 msg.append(f"{k}: {train_stats[k]:.4f}")
         logger.info(" | ".join(msg))
+
+
+class Printer:
+    def __init__(self, logger):
+        self.logger = logger
+
+    def saved_artifacts(self, epoch):
+        self.logger.info(f"Saved artifacts on epoch {epoch}")
