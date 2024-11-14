@@ -260,6 +260,7 @@ def main(exp_tools: t.Optional[dict] = None):
         "scheduler": lr_scheduler,
     }
     printer = Printer(logger)
+    best_val_loss = np.inf
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
@@ -282,10 +283,6 @@ def main(exp_tools: t.Optional[dict] = None):
         for param_group in optimizer.param_groups:
             param_group["lr"] = max(param_group["lr"], 1e-6)
 
-        if epoch % args.save_epoch_freq == 0:
-            log_artifacts(artifacts, exp, logdir, epoch)
-            printer.saved_artifacts(epoch)
-
         if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
             model.eval()
             with torch.no_grad():
@@ -297,8 +294,14 @@ def main(exp_tools: t.Optional[dict] = None):
             for k, v in val_stats.items():
                 history["val"][k].append(v)
 
+            cur_val_loss = history["val"]["loss"][-1]
+            best_val_loss = min(best_val_loss, cur_val_loss)
             if args.use_es_val:
-                early_stopping(loss=history["val"]["loss"][-1])
+                early_stopping(loss=cur_val_loss)
+
+            if epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
+                log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
+                printer.saved_artifacts(epoch)
 
         if args.use_es_train:
             early_stopping(loss=history["train"]["loss"][-1])
@@ -316,7 +319,7 @@ def main(exp_tools: t.Optional[dict] = None):
         return
 
     if is_main_process:
-        log_artifacts(artifacts, exp, logdir, epoch)
+        log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
         printer.saved_artifacts(epoch)
 
     logger.info(f"# {logdir=}")
