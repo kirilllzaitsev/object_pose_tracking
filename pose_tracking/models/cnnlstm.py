@@ -223,6 +223,7 @@ class RecurrentCNN(nn.Module):
         do_predict_2d=False,
         do_predict_6d_rot=False,
         use_rnn=True,
+        use_obs_belief=False,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -240,6 +241,7 @@ class RecurrentCNN(nn.Module):
         self.encoder_name = encoder_name
         self.do_predict_2d = do_predict_2d
         self.do_predict_6d_rot = do_predict_6d_rot
+        self.use_obs_belief = use_obs_belief
 
         self.input_dim = depth_dim + rgb_dim
 
@@ -260,27 +262,28 @@ class RecurrentCNN(nn.Module):
                 num_layers=1,
             )
 
-        self.belief_encoder = BeliefEncoder(
-            state_cell=self.state_cell,
-            state_cell_out_dim=hidden_dim,
-            depth_latent_dim=depth_dim,
-            belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
-            belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
-            belief_enc_num_layers=benc_belief_enc_num_layers,
-            belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
-            use_rnn=use_rnn,
-        )
-        self.belief_decoder = BeliefDecoder(
-            state_dim=hidden_dim,
-            priv_decoder_out_dim=bdec_priv_decoder_out_dim,
-            priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-            depth_decoder_out_dim=depth_dim,
-            depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-            hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
-            priv_decoder_num_layers=priv_decoder_num_layers,
-            depth_decoder_num_layers=depth_decoder_num_layers,
-            hidden_attn_num_layers=hidden_attn_num_layers,
-        )
+        if use_obs_belief:
+            self.belief_encoder = BeliefEncoder(
+                state_cell=self.state_cell,
+                state_cell_out_dim=hidden_dim,
+                depth_latent_dim=depth_dim,
+                belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
+                belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
+                belief_enc_num_layers=benc_belief_enc_num_layers,
+                belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
+                use_rnn=use_rnn,
+            )
+            self.belief_decoder = BeliefDecoder(
+                state_dim=hidden_dim,
+                priv_decoder_out_dim=bdec_priv_decoder_out_dim,
+                priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
+                depth_decoder_out_dim=depth_dim,
+                depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
+                hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
+                priv_decoder_num_layers=priv_decoder_num_layers,
+                depth_decoder_num_layers=depth_decoder_num_layers,
+                hidden_attn_num_layers=hidden_attn_num_layers,
+            )
         if do_predict_2d:
             self.t_mlp_out_dim = 2
             self.depth_mlp = MLP(
@@ -315,25 +318,37 @@ class RecurrentCNN(nn.Module):
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
 
-        encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
-        hx, cx = encoder_out["hx"], encoder_out["cx"]
-        decoder_out = self.belief_decoder(hx, latent_depth)
+        res = {}
+        if self.use_obs_belief:
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
+            hx, cx = encoder_out["hx"], encoder_out["cx"]
+            decoder_out = self.belief_decoder(hx, latent_depth)
 
-        # pose estimation
-        belief_state = encoder_out["belief_state"]
-        extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
+            belief_state = encoder_out["belief_state"]
+            extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
+
+            res.update(
+                {
+                    "encoder_out": encoder_out,
+                    "decoder_out": decoder_out,
+                }
+            )
+        else:
+            extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
+
         t = self.t_mlp(extracted_obs)
         rot = self.rot_mlp(extracted_obs)
 
-        res = {
-            "encoder_out": encoder_out,
-            "decoder_out": decoder_out,
-            "latent_depth": latent_depth,
-            "hx": hx,
-            "cx": cx,
-            "t": t,
-            "rot": rot,
-        }
+        res.update(
+            {
+                "latent_depth": latent_depth,
+                "hx": hx,
+                "cx": cx,
+                "t": t,
+                "rot": rot,
+            }
+        )
+
         if self.do_predict_2d:
             center_depth = self.depth_mlp(extracted_obs)
             res["center_depth"] = center_depth
