@@ -1,5 +1,6 @@
 import os
-from collections import defaultdict
+from glob import glob
+from pathlib import Path
 
 import numpy as np
 from pose_tracking.config import (
@@ -8,12 +9,12 @@ from pose_tracking.config import (
     YCBINEOAT_SCENE_DIR,
     logger,
 )
-from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
 from pose_tracking.dataset.ycbineoat import YCBineoatDatasetBenchmark
 from pose_tracking.utils.common import print_args
 from pose_tracking.utils.eval_utils import get_preds_path_benchmark
-from pose_tracking.utils.trimesh_utils import compute_mesh_diameter
-from pose_tracking.utils.vis import draw_poses_on_video, save_video
+from pose_tracking.utils.io import load_color, load_pose
+from pose_tracking.utils.video_utils import save_video
+from pose_tracking.utils.vis import draw_poses_on_video
 from tqdm import tqdm
 
 
@@ -55,6 +56,42 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
         save_path = BENCHMARK_DIR / ds_name / f"{obj_name}_{model_name}.mp4"
 
         save_video(images, save_path, frame_height, frame_width, fps, live_preview=False)
+
+
+def save_videos_for_obj(exp_dir, exp_name, save_dir, obj_name, intrinsics=None, bbox=None, fps=10):
+    poses_pred = []
+    poses_gt = []
+    rgbs = []
+    exp_dir = Path(exp_dir)
+    preds_dir = exp_dir / "preds" / obj_name
+    if intrinsics is None:
+        intrinsics = np.loadtxt(preds_dir / "intrinsics.txt")
+    paths = sorted(glob(str(preds_dir / "rgb" / "*.png")))
+    for path in tqdm(paths):
+        rgb = load_color(path)
+        filename = Path(path).stem
+        pred = load_pose(preds_dir / "poses" / f"{filename}.txt")
+        gt = load_pose(preds_dir / "poses_gt" / f"{filename}.txt")
+        rgbs.append(rgb)
+        poses_pred.append(pred)
+        poses_gt.append(gt)
+
+    rgb_bbox = draw_poses_on_video(
+        rgbs,
+        intrinsics,
+        poses_pred=poses_pred,
+        poses_gt=poses_gt,
+        bbox=bbox,
+        bbox_color=(255, 255, 0),
+        scale=0.05,
+    )
+    images = rgb_bbox
+    frame_height, frame_width = images[0].shape[:2]
+
+    video_dir = f"{save_dir}/{obj_name}"
+    save_path = os.path.join(video_dir, f"{exp_name}.mp4")
+
+    save_video(images, save_path, frame_height, frame_width, fps)
 
 
 if __name__ == "__main__":
