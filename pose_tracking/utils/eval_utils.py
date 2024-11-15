@@ -1,13 +1,21 @@
 import copy
-import os
 from collections import defaultdict
 
-import cv2
 import numpy as np
 import pandas as pd
-from pose_tracking.config import PROJ_DIR, WORKSPACE_DIR
+from pose_tracking.config import WORKSPACE_DIR
 from pose_tracking.metrics import calc_auc
 from pose_tracking.utils.common import create_dir
+
+EXP_NAME_TO_FULLNAME = {
+    "2dt": "2D translation",
+    "3dt": "3D translation",
+    "3dt_no_obs_belief": "3D translation & naive fusion",
+    "3dt_rnn": "3D translation & RNN (GRU)",
+    "3dt_pose_loss": "3D translation & Pose-based Loss",
+    "full_ycbi": "Full YCBInEOAT & 2D T & 6D Rot",
+    "2dt_6drot": "2D translation & 6D Rotation",
+}
 
 
 def get_metrics_per_obj(metrics_all):
@@ -105,8 +113,14 @@ def format_metrics_df(df):
         "add_auc": "ADD AUC",
         "adds_auc": "ADDS AUC",
         "t_err_auc": "T error AUC",
+        "loss": "Loss",
+        "loss_pose": "Pose loss",
+        "loss_depth": "Depth loss",
+        "loss_rot": "Rot loss",
+        "loss_t": "T loss",
     }
     df = df.rename(columns=cols_rename)
+    df = df.round(5)
     return df
 
 
@@ -132,3 +146,24 @@ def get_preds_path_benchmark(model_name, obj_name, ds_name=None):
     else:
         raise ValueError(f"Unknown model_name: {model_name}")
     return preds_path
+
+
+def convert_exp_results_to_df(exp_results):
+    df = pd.DataFrame(exp_results).T
+    cols_to_drop = ["miou", "add10", "adds10", "loss_pose"]
+    df = df.drop(columns=cols_to_drop, errors="ignore")
+
+    # report col and index of nan
+    nan_locations = df.isna().stack()[lambda x: x].index.tolist()
+    nan_df = pd.DataFrame(nan_locations, columns=["Index", "Column"])
+    print(nan_df)
+
+    loss_columns = [col for col in df.columns if "loss" in col]
+    other_columns = [col for col in df.columns if "loss" not in col]
+    df = df[other_columns + loss_columns]
+
+    df = df.sort_values(by="5deg5cm", ascending=False)
+    df = format_metrics_df(df)
+    df.index = df.index.map(EXP_NAME_TO_FULLNAME)
+    df.index.name = "Experiment Name"
+    return df
