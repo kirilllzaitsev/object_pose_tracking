@@ -8,6 +8,7 @@ import comet_ml
 import torch
 import torch.nn as nn
 from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
+from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.comet_utils import (
     create_tracking_exp,
@@ -18,6 +19,66 @@ from pose_tracking.utils.comet_utils import (
 )
 from pose_tracking.utils.misc import DeviceType
 from torch.utils.tensorboard import SummaryWriter
+
+
+def get_model(args):
+    priv_dim = 1
+    latent_dim = 256  # defined by the encoders
+    depth_dim = latent_dim
+    rgb_dim = latent_dim
+    model = RecurrentCNN(
+        depth_dim=depth_dim,
+        rgb_dim=rgb_dim,
+        hidden_dim=args.hidden_dim,
+        rnn_type=args.rnn_type,
+        bdec_priv_decoder_out_dim=priv_dim,
+        bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
+        bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
+        benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
+        benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
+        bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
+        encoder_name=args.encoder_name,
+        do_predict_2d=args.do_predict_2d,
+        do_predict_6d_rot=args.do_predict_6d_rot,
+        benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
+        benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
+        priv_decoder_num_layers=args.priv_decoder_num_layers,
+        depth_decoder_num_layers=args.depth_decoder_num_layers,
+        hidden_attn_num_layers=args.hidden_attn_num_layers,
+        rt_mlps_num_layers=args.rt_mlps_num_layers,
+        dropout=args.dropout,
+        use_rnn=not args.no_rnn,
+        use_obs_belief=not args.no_obs_belief,
+    )
+
+    return model
+
+
+def get_trainer(args, model, device, writer=None):
+    from pose_tracking.train import Trainer
+
+    criterion_trans = nn.MSELoss()
+    criterion_rot = geodesic_loss
+    use_pose_loss = args.pose_loss_name in ["add"]
+    assert not (use_pose_loss and args.do_predict_2d), "tmp:pose loss implemented only for direct 3d"
+    criterion_pose = compute_add_loss if use_pose_loss else None
+
+    trainer = Trainer(
+        model=model,
+        device=device,
+        hidden_dim=args.hidden_dim,
+        rnn_type=args.rnn_type,
+        criterion_trans=criterion_trans,
+        criterion_rot=criterion_rot,
+        criterion_pose=criterion_pose,
+        writer=writer,
+        do_predict_2d=args.do_predict_2d,
+        do_predict_6d_rot=args.do_predict_6d_rot,
+        use_rnn=not args.no_rnn,
+        use_obs_belief=not args.no_obs_belief,
+    )
+
+    return trainer
 
 
 def create_tools(args: argparse.Namespace) -> dict:
@@ -57,7 +118,15 @@ def log_exp_meta(args, save_args, logdir, exp, args_to_group_map=None):
 
 
 def load_model_from_ckpt(model, ckpt_path):
-    model.load_state_dict(torch.load(ckpt_path))
+    state_dict = torch.load(ckpt_path)
+    if "model" in state_dict:
+        state_dict = state_dict["model"]
+    # rename all occurences of lstm_cell and rnn_cell to state_cell
+    for key in list(state_dict.keys()):
+        if "lstm_cell" in key or "rnn_cell" in key:
+            new_key = key.replace("lstm_cell", "state_cell").replace("rnn_cell", "state_cell")
+            state_dict[new_key] = state_dict.pop(key)
+    model.load_state_dict(state_dict)
     return model
 
 
@@ -91,9 +160,9 @@ def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch
     """Logs the training artifacts to the experiment and saves the model and session to the log directory."""
 
     suffix = epoch if suffix is None else suffix
-    save_path_model = os.path.join(log_dir, f"model_{suffix}.pt")
+    save_path_model = os.path.join(log_dir, f"model_{suffix}.pth")
     log_model(artifacts["model"], save_path_model)
-    save_path_session = os.path.join(log_dir, "session.pt")
+    save_path_session = os.path.join(log_dir, "session.pth")
     torch.save(
         {
             "optimizer": artifacts["optimizer"].state_dict(),
@@ -135,7 +204,7 @@ def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=Non
 
 def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")
-    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_trans"]
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t"]
     ERROR_METRICS = ["r_err", "t_err"]
     ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
 

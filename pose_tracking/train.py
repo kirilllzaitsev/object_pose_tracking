@@ -26,9 +26,7 @@ from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
-from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.metrics import calc_metrics
-from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
@@ -37,6 +35,8 @@ from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
+    get_model,
+    get_trainer,
     log_artifacts,
     log_exp_meta,
     log_model_meta,
@@ -115,12 +115,6 @@ def main(exp_tools: t.Optional[dict] = None):
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
         )
 
-    criterion_trans = nn.MSELoss()
-    criterion_rot = geodesic_loss
-    use_pose_loss = args.pose_loss_name in ["add"]
-    assert not (use_pose_loss and args.do_predict_2d), "tmp:pose loss implemented only for direct 3d"
-    criterion_pose = compute_add_loss if use_pose_loss else None
-
     transform = get_transforms()
 
     video_datasets = []
@@ -186,34 +180,7 @@ def main(exp_tools: t.Optional[dict] = None):
 
     history = defaultdict(lambda: defaultdict(list))
 
-    hidden_dim = args.hidden_dim
-    priv_dim = 1
-    latent_dim = 256
-    depth_dim = latent_dim
-    rgb_dim = latent_dim
-    model = RecurrentCNN(
-        depth_dim=depth_dim,
-        rgb_dim=rgb_dim,
-        hidden_dim=hidden_dim,
-        rnn_type=args.rnn_type,
-        bdec_priv_decoder_out_dim=priv_dim,
-        bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
-        benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
-        benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
-        bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
-        encoder_name=args.encoder_name,
-        do_predict_2d=args.do_predict_2d,
-        do_predict_6d_rot=args.do_predict_6d_rot,
-        benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
-        benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
-        priv_decoder_num_layers=args.priv_decoder_num_layers,
-        depth_decoder_num_layers=args.depth_decoder_num_layers,
-        hidden_attn_num_layers=args.hidden_attn_num_layers,
-        rt_mlps_num_layers=args.rt_mlps_num_layers,
-        dropout=args.dropout,
-        use_rnn=not args.no_rnn,
-    ).to(device)
+    model = get_model(args).to(device)
 
     log_model_meta(model, exp=exp, logger=logger)
 
@@ -240,19 +207,7 @@ def main(exp_tools: t.Optional[dict] = None):
         optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=False
     )
 
-    trainer = Trainer(
-        model=model,
-        device=device,
-        hidden_dim=hidden_dim,
-        rnn_type=args.rnn_type,
-        criterion_trans=criterion_trans,
-        criterion_rot=criterion_rot,
-        criterion_pose=criterion_pose,
-        writer=writer,
-        do_predict_2d=args.do_predict_2d,
-        do_predict_6d_rot=args.do_predict_6d_rot,
-        use_rnn=not args.no_rnn,
-    )
+    trainer = get_trainer(args, model, device=device, writer=writer)
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model,
