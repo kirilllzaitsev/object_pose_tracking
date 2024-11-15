@@ -329,12 +329,12 @@ def save_results(batch_t, t_pred, rot_pred, preds_dir):
         name = Path(batch_t["rgb_path"][seq_idx]).stem
         pose = torch.eye(4)
         r_quat = rot_pred[seq_idx]
-        pose[:3, :3] = quaternion_to_matrix(r_quat)
-        pose[:3, 3] = t_pred[seq_idx] * 1e3
+        pose[:3, :3] = quaternion_to_matrix(r_quat) if r_quat.shape != (3, 3) else r_quat
+        pose[:3, 3] = t_pred[seq_idx]
         pose = cast_to_numpy(pose)
         gt_pose = batch_t["pose"][seq_idx]
         gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
-        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze() * 1e3
+        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze()
         gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
         seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
         pose_path = seq_dir / "poses" / f"{name}.txt"
@@ -371,6 +371,7 @@ class Trainer:
         do_predict_2d=False,
         do_predict_6d_rot=False,
         use_rnn=True,
+        use_obs_belief=True,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -379,9 +380,11 @@ class Trainer:
         self.do_debug = do_debug
         self.do_predict_2d = do_predict_2d
         self.do_predict_6d_rot = do_predict_6d_rot
+        self.use_rnn = use_rnn
+        self.use_obs_belief = use_obs_belief
+
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
-        self.use_rnn = use_rnn
         self.use_optim_every_ts = not use_rnn
 
         self.model = model
@@ -570,7 +573,10 @@ class Trainer:
                     self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
             self.ts_counts_per_stage[stage] += 1
 
-            loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
+            if self.use_obs_belief:
+                loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
+            else:
+                loss_depth = torch.tensor(0.0).to(self.device)
             loss += loss_depth
             # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
             # loss += loss_priv
