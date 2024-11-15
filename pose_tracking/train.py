@@ -434,8 +434,6 @@ class Trainer:
         is_train = optimizer is not None
 
         batch_size = len(batched_seq[0]["rgb"])
-        hx = torch.zeros(batch_size, self.hidden_dim).to(self.device)
-        cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim).to(self.device)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
         seq_stats = defaultdict(float)
@@ -448,6 +446,8 @@ class Trainer:
             optimizer.zero_grad()
             total_loss = 0
 
+        self.model.reset_state(batch_size, device=self.device)
+
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
                 optimizer.zero_grad()
@@ -457,10 +457,9 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
 
-            outputs = self.model(rgb, depth, hx=hx, cx=cx)
+            outputs = self.model(rgb, depth)
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
-            hx, cx = outputs["hx"], outputs["cx"]
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)

@@ -313,16 +313,21 @@ class RecurrentCNN(nn.Module):
         self.encoder_name = encoder_name
         self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
 
-    def forward(self, rgb, depth, hx, cx=None):
+    def reset_state(self, batch_size, device):
+        # should be called at the beginning of each sequence
+        self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
+        self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
+
+    def forward(self, rgb, depth):
 
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
 
         res = {}
         if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
-            hx, cx = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(hx, latent_depth)
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, self.hx, self.cx)
+            self.hx, self.cx = encoder_out["hx"], encoder_out["cx"]
+            decoder_out = self.belief_decoder(self.hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
             extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
@@ -342,8 +347,8 @@ class RecurrentCNN(nn.Module):
         res.update(
             {
                 "latent_depth": latent_depth,
-                "hx": hx,
-                "cx": cx,
+                "hx": self.hx,
+                "cx": self.cx,
                 "t": t,
                 "rot": rot,
             }
