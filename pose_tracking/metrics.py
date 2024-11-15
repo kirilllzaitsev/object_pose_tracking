@@ -19,7 +19,7 @@ def calc_metrics(
     use_miou=False,
     use_symmetry=True,
     diameter=None,
-    is_meters=False,
+    is_meters=True,
 ):
     """
     Calculate required metrics for pose estimation.

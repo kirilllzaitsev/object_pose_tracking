@@ -7,16 +7,6 @@ from pose_tracking.config import WORKSPACE_DIR
 from pose_tracking.metrics import calc_auc
 from pose_tracking.utils.common import create_dir
 
-EXP_NAME_TO_FULLNAME = {
-    "2dt": "2D translation",
-    "3dt": "3D translation",
-    "3dt_no_obs_belief": "3D translation & naive fusion",
-    "3dt_rnn": "3D translation & RNN (GRU)",
-    "3dt_pose_loss": "3D translation & Pose-based Loss",
-    "full_ycbi": "Full YCBInEOAT & 2D T & 6D Rot",
-    "2dt_6drot": "2D translation & 6D Rotation",
-}
-
 
 def get_metrics_per_obj(metrics_all):
     # get metrics per object from all scenes it appears in
@@ -167,3 +157,13 @@ def convert_exp_results_to_df(exp_results):
     df.index = df.index.map(EXP_NAME_TO_FULLNAME)
     df.index.name = "Experiment Name"
     return df
+
+
+def convert_exp_results_per_obj_to_per_exp(exp_results: dict, exp_names=None) -> dict:
+    exp_results_per_exp = defaultdict(defaultdict)
+    if exp_names is None:
+        exp_names = exp_results[next(iter(exp_results))].keys()
+    for exp_name in exp_names:
+        for obj_name in exp_results.keys():
+            exp_results_per_exp[exp_name][obj_name] = exp_results[obj_name][exp_name]
+    return exp_results_per_exp

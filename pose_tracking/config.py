@@ -20,8 +20,8 @@ YCBINEOAT_SCENE_DIR = DATA_DIR / "ycbineoat"
 YCB_MESHES_DIR = DATA_DIR / "ycb/models"
 HO3D_ROOT = DATA_DIR / "ho3d"
 
-PROJ_NAME = "pose_tracking"
-COMET_USERNAME = "kirilllzaitsev"
+PROJ_NAME = "pose-tracking"
+COMET_WORKSPACE = "kirilllzaitsev"
 
 
 def prepare_logger(logpath=None, level="INFO"):
