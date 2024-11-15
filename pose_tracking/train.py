@@ -41,14 +41,18 @@ from pose_tracking.utils.pipe_utils import (
     log_exp_meta,
     log_model_meta,
     print_stats,
+    reduce_metric,
+    save_results,
 )
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
+from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm.auto import tqdm
 
 
+@record
 def main(exp_tools: t.Optional[dict] = None):
     args, args_to_group_map = parse_args()
 
@@ -210,7 +214,7 @@ def main(exp_tools: t.Optional[dict] = None):
     trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size)
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
-        "model": model,
+        "model": model.module if args.use_ddp else model,
         "optimizer": optimizer,
         "scheduler": lr_scheduler,
     }
@@ -261,9 +265,10 @@ def main(exp_tools: t.Optional[dict] = None):
         if args.use_es_train:
             early_stopping(loss=history["train"]["loss"][-1])
 
-        for i, pg in enumerate(optimizer.param_groups):
-            writer.add_scalar(f"lr/group_{i}", pg["lr"], epoch)
-        writer.add_scalar("epoch", epoch, epoch)
+        if is_main_process:
+            for i, pg in enumerate(optimizer.param_groups):
+                writer.add_scalar(f"lr/group_{i}", pg["lr"], epoch)
+            writer.add_scalar("epoch", epoch, epoch)
 
         if early_stopping.do_stop:
             logger.warning(f"Early stopping on epoch {epoch}")
@@ -273,7 +278,7 @@ def main(exp_tools: t.Optional[dict] = None):
         shutil.rmtree(logdir)
         return
 
-    if is_main_process:
+    if is_main_process and not args.do_overfit:
         log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
         printer.saved_artifacts(epoch)
 
