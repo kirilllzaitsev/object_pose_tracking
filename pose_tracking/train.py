@@ -207,7 +207,7 @@ def main(exp_tools: t.Optional[dict] = None):
         optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=False
     )
 
-    trainer = get_trainer(args, model, device=device, writer=writer)
+    trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size)
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model,
@@ -338,6 +338,7 @@ class Trainer:
         do_predict_6d_rot=False,
         use_rnn=True,
         use_obs_belief=True,
+        world_size=1,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -348,10 +349,12 @@ class Trainer:
         self.do_predict_6d_rot = do_predict_6d_rot
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
+        self.world_size = world_size
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
+        self.use_ddp = world_size > 1
 
         self.model = model
         self.device = device
@@ -390,7 +393,10 @@ class Trainer:
             )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
-                v = v.item() if isinstance(v, torch.Tensor) else v
+                if isinstance(v, torch.Tensor):
+                    v = v.item()
+                    if self.use_ddp:
+                        reduce_metric(v, world_size=self.world_size)
                 running_stats[k] += v
                 if self.do_log:
                     self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
