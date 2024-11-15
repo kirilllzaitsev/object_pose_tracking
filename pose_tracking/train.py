@@ -321,40 +321,6 @@ def main(exp_tools: t.Optional[dict] = None):
         dist.destroy_process_group()
 
 
-def save_results(batch_t, t_pred, rot_pred, preds_dir):
-    # batch_t contains data for the t-th timestep in N sequences
-    batch_size = len(batch_t["rgb"])
-    for seq_idx in range(batch_size):
-        rgb = batch_t["rgb"][seq_idx].cpu().numpy()
-        name = Path(batch_t["rgb_path"][seq_idx]).stem
-        pose = torch.eye(4)
-        r_quat = rot_pred[seq_idx]
-        pose[:3, :3] = quaternion_to_matrix(r_quat) if r_quat.shape != (3, 3) else r_quat
-        pose[:3, 3] = t_pred[seq_idx]
-        pose = cast_to_numpy(pose)
-        gt_pose = batch_t["pose"][seq_idx]
-        gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
-        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze()
-        gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
-        seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
-        pose_path = seq_dir / "poses" / f"{name}.txt"
-        gt_path = seq_dir / "poses_gt" / f"{name}.txt"
-        rgb_path = seq_dir / "rgb" / f"{name}.png"
-        pose_path.parent.mkdir(parents=True, exist_ok=True)
-        rgb_path.parent.mkdir(parents=True, exist_ok=True)
-        gt_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pose_path, "w") as f:
-            for row in pose:
-                f.write(" ".join(map(str, row)) + "\n")
-        with open(gt_path, "w") as f:
-            for row in gt_pose_formatted:
-                f.write(" ".join(map(str, row)) + "\n")
-        rgb = adjust_img_for_plt(rgb)
-        rgb = rgb[..., ::-1]
-        rgb_path = str(rgb_path)
-        cv2.imwrite(rgb_path, rgb)
-
-
 class Trainer:
 
     def __init__(

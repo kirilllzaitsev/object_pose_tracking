@@ -125,12 +125,10 @@ def postprocess_args(args):
 
         default_ignored_file_args = [
             "device",
-            "run_name",
-            "log_subdir",
+            "exp_name",
             "use_ddp",
             "exp_disabled",
             "batch_size",
-            "vis_epoch_freq",
         ]
         ignored_file_args = set(args.ignored_file_args) | set(default_ignored_file_args)
         for k, v in loaded_args.items():

@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import comet_ml
+import cv2
 import torch
 import torch.nn as nn
 from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
@@ -17,7 +18,10 @@ from pose_tracking.utils.comet_utils import (
     log_params_to_exp,
     log_tags,
 )
+from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy
 from pose_tracking.utils.misc import DeviceType
+from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
+from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -54,7 +58,7 @@ def get_model(args):
     return model
 
 
-def get_trainer(args, model, device, writer=None):
+def get_trainer(args, model, device, writer=None, world_size=1):
     from pose_tracking.train import Trainer
 
     criterion_trans = nn.MSELoss()
@@ -76,6 +80,7 @@ def get_trainer(args, model, device, writer=None):
         do_predict_6d_rot=args.do_predict_6d_rot,
         use_rnn=not args.no_rnn,
         use_obs_belief=not args.no_obs_belief,
+        world_size=world_size,
     )
 
     return trainer
@@ -88,13 +93,14 @@ def create_tools(args: argparse.Namespace) -> dict:
     - logdir
     Logs the arguments and tags to the experiment.
     """
+    exp = create_tracking_exp(args, project_name=PROJ_NAME)
+    args.comet_exp_name = exp.name  # automatically assigned by Comet
     now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    logdir = f"{ARTIFACTS_DIR}/{args.exp_name}/{now}"
+    exp_name = args.comet_exp_name or f"{args.exp_name}/{now}"
+    logdir = f"{ARTIFACTS_DIR}/{exp_name}"
     os.makedirs(logdir, exist_ok=True)
     preds_base_dir = f"{logdir}/preds"
     preds_dir = Path(preds_base_dir)
-    exp = create_tracking_exp(args, project_name=PROJ_NAME)
-    args.comet_exp_name = exp.name  # automatically assigned by Comet
 
     writer = SummaryWriter(log_dir=logdir, flush_secs=10)
     return {
@@ -103,6 +109,47 @@ def create_tools(args: argparse.Namespace) -> dict:
         "preds_dir": preds_dir,
         "logdir": logdir,
     }
+
+
+def save_results(batch_t, t_pred, rot_pred, preds_dir):
+    # batch_t contains data for the t-th timestep in N sequences
+    batch_size = len(batch_t["rgb"])
+    for seq_idx in range(batch_size):
+        rgb = batch_t["rgb"][seq_idx].cpu().numpy()
+        name = Path(batch_t["rgb_path"][seq_idx]).stem
+        pose = torch.eye(4)
+        r_quat = rot_pred[seq_idx]
+        pose[:3, :3] = quaternion_to_matrix(r_quat) if r_quat.shape != (3, 3) else r_quat
+        pose[:3, 3] = t_pred[seq_idx]
+        pose = cast_to_numpy(pose)
+        gt_pose = batch_t["pose"][seq_idx]
+        gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
+        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze()
+        gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
+        seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
+        pose_path = seq_dir / "poses" / f"{name}.txt"
+        gt_path = seq_dir / "poses_gt" / f"{name}.txt"
+        rgb_path = seq_dir / "rgb" / f"{name}.png"
+        pose_path.parent.mkdir(parents=True, exist_ok=True)
+        rgb_path.parent.mkdir(parents=True, exist_ok=True)
+        gt_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pose_path, "w") as f:
+            for row in pose:
+                f.write(" ".join(map(str, row)) + "\n")
+        with open(gt_path, "w") as f:
+            for row in gt_pose_formatted:
+                f.write(" ".join(map(str, row)) + "\n")
+        rgb = adjust_img_for_plt(rgb)
+        rgb = rgb[..., ::-1]
+        rgb_path = str(rgb_path)
+        cv2.imwrite(rgb_path, rgb)
+
+
+def reduce_metric(value, world_size):
+    """Synchronize and average a metric across all processes."""
+    tensor = torch.tensor(value, device="cuda")
+    torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.SUM)
+    return tensor.item() / world_size
 
 
 def log_exp_meta(args, save_args, logdir, exp, args_to_group_map=None):
