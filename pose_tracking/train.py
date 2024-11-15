@@ -202,7 +202,7 @@ def main(exp_tools: t.Optional[dict] = None):
             },
             {
                 "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
-                "lr": args.lr,
+                "lr": args.lr * np.sqrt(world_size),
             },
         ],
         weight_decay=args.weight_decay,
@@ -249,20 +249,21 @@ def main(exp_tools: t.Optional[dict] = None):
                     val_loader,
                     stage="val",
                 )
-            print_stats(val_stats, logger, "val")
-            for k, v in val_stats.items():
-                history["val"][k].append(v)
+            if is_main_process:
+                print_stats(val_stats, logger, "val")
+                for k, v in val_stats.items():
+                    history["val"][k].append(v)
 
-            cur_val_loss = history["val"]["loss"][-1]
-            best_val_loss = min(best_val_loss, cur_val_loss)
-            if args.use_es_val:
-                early_stopping(loss=cur_val_loss)
+                cur_val_loss = history["val"]["loss"][-1]
+                best_val_loss = min(best_val_loss, cur_val_loss)
+                if args.use_es_val:
+                    early_stopping(loss=cur_val_loss)
 
-            if epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
-                log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
-                printer.saved_artifacts(epoch)
+                if epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
+                    log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
+                    printer.saved_artifacts(epoch)
 
-        if args.use_es_train:
+        if args.use_es_train and is_main_process:
             early_stopping(loss=history["train"]["loss"][-1])
 
         if is_main_process:
