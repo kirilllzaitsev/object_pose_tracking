@@ -4,6 +4,17 @@ import yaml
 
 
 def parse_args():
+    parser = get_parser()
+
+    args_raw, unknown_args = parser.parse_known_args()
+    if unknown_args:
+        print(f"WARNING. Unknown arguments: {unknown_args}")
+    args = postprocess_args(args_raw)
+    args_to_group_map = map_args_to_groups(parser, args)
+    return args, args_to_group_map
+
+
+def get_parser():
     parser = argparse.ArgumentParser()
 
     pipe_args = parser.add_argument_group("Training arguments")
@@ -47,6 +58,9 @@ def parse_args():
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
+    model_args.add_argument(
+        "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
+    )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
     )
@@ -96,13 +110,7 @@ def parse_args():
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
     data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
-
-    args_raw, unknown_args = parser.parse_known_args()
-    if unknown_args:
-        print(f"WARNING. Unknown arguments: {unknown_args}")
-    args = postprocess_args(args_raw)
-    args_to_group_map = map_args_to_groups(parser, args)
-    return args, args_to_group_map
+    return parser
 
 
 def postprocess_args(args):
@@ -141,10 +149,22 @@ def postprocess_args(args):
 
 
 def fix_outdated_args(args):
-    if not hasattr(args, "obj_names"):
+    parser = get_parser()
+
+    def noattr(x):
+        return not hasattr(args, x)
+
+    if noattr("obj_names"):
         args.obj_names = [args.obj_name]
-    if not hasattr(args, "args_path"):
+    if noattr("args_path"):
         args.args_path = None
+
+    # for all args present in parser but not in args, set them to their default values
+    for group in parser._action_groups:
+        for action in group._group_actions:
+            arg_name = action.dest
+            if noattr(arg_name):
+                setattr(args, arg_name, action.default)
 
     return args
 
