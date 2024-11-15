@@ -1,5 +1,6 @@
-from albumentations import Compose, Normalize
 import albumentations as A
+import numpy as np
+from albumentations import Compose, Normalize
 from albumentations.pytorch.transforms import ToTensorV2
 
 
@@ -10,3 +11,12 @@ def get_transforms(use_norm=False):
         norm = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ts.append(norm)
     return Compose(ts)
+
+
+def mask_pixels(img, p=0.5, pixels_masked_share_range=0.5):
+    us, vs = np.where(img > 0)
+    if np.random.uniform() < p:
+        pixels_masked_share = np.random.uniform(0, pixels_masked_share_range)
+        pxs = np.random.choice(np.arange(0, len(us)), int(pixels_masked_share * len(us)), replace=False)
+        img[vs[pxs], us[pxs]] = 0
+    return img
