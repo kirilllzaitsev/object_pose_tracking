@@ -25,7 +25,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         seq = []
-        timesteps = self.seq_len if self.seq_len is not None else len(self.ds)
+        timesteps = min(len(self.ds), self.seq_len) if self.seq_len is not None else len(self.ds)
         seq_start = self.seq_start
         if seq_start is None:
             seq_start = torch.randint(
@@ -40,6 +40,17 @@ class VideoDataset(Dataset):
             sample = self.ds[frame_idx]
             seq.append(sample)
         return seq
+
+
+class VideoDatasetPreload(VideoDataset):
+    """Preloads the entire dataset in memory for faster access."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.seq = super().__getitem__(0)
+
+    def __getitem__(self, idx):
+        return self.seq
 
 
 class MultiVideoDataset(Dataset):
