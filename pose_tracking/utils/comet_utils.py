@@ -8,7 +8,7 @@ from pathlib import Path
 import comet_ml
 import yaml
 from comet_ml.api import API
-from pose_tracking.config import COMET_USERNAME, PROJ_DIR, PROJ_NAME
+from pose_tracking.config import ARTIFACTS_DIR, COMET_WORKSPACE, PROJ_DIR, PROJ_NAME
 
 
 def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_map=None) -> None:
@@ -60,7 +60,7 @@ def get_latest_ckpt_epoch(
     """Infers the latest checkpoint epoch from the experiment's assets."""
 
     api = API(api_key=os.environ["COMET_API_KEY"])
-    exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{exp_name}")
+    exp_api = api.get(f"{COMET_WORKSPACE}/{project_name}/{exp_name}")
     ckpt_epochs = [
         int(re.match(model_name_regex, x["fileName"]).group(1))
         for x in exp_api.get_asset_list(asset_type="all")
@@ -71,16 +71,16 @@ def get_latest_ckpt_epoch(
 
 def load_artifacts_from_comet(
     exp_name: str,
-    args_file_path: str,
-    model_checkpoint_path: str,
-    local_artifacts_dir: str,
-    model_artifact_name: str,
-    args_name_regex: str = "args",
+    args_file_path: str = None,
+    model_checkpoint_path: str = None,
+    local_artifacts_dir: str = ARTIFACTS_DIR,
+    model_artifact_name: str = "model_best",
+    args_filename: str = "args",
     session_artifact_name: t.Optional[str] = None,
     session_checkpoint_path: t.Optional[str] = None,
-    project_name: str = PROJ_NAME,
     api: t.Optional[API] = None,
     epoch: t.Optional[int] = None,
+    use_epoch: bool = False,
 ) -> dict:
     """Downloads artifacts from comet.ml if they don't exist locally and returns the paths to them.
     Args:
@@ -89,7 +89,7 @@ def load_artifacts_from_comet(
         model_checkpoint_path: The local path to the model checkpoint.
         local_artifacts_dir: The directory to save the artifacts to.
         model_artifact_name: The path to the model artifact in the experiment Assets.
-        args_name_regex: The regex to match the args file name.
+        args_filename: The regex to match the args file name.
         session_artifact_name: The name of the session artifact.
         session_checkpoint_path: The path to the session checkpoint.
         project_name: The name of the Comet project.
@@ -100,49 +100,55 @@ def load_artifacts_from_comet(
     """
 
     include_session = session_artifact_name is not None and session_checkpoint_path is not None
+    exp_dir = f"{local_artifacts_dir}/{exp_name}"
+    args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
+    model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
     args_not_exist = not os.path.exists(args_file_path)
     weights_not_exist = not os.path.exists(model_checkpoint_path)
 
     if any([args_not_exist, weights_not_exist]):
+        os.makedirs(exp_dir, exist_ok=True)
         if api is None:
             api = API(api_key=os.environ["COMET_API_KEY"])
-        exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{exp_name}")
-        os.makedirs(local_artifacts_dir, exist_ok=True)
+        exp_api = api.get(
+            workspace=COMET_WORKSPACE,
+            project_name=PROJ_NAME,
+            experiment=exp_name,
+        )
+        assert exp_api is not None, f"Experiment {exp_name} not found"
         if args_not_exist:
             try:
-                asset_id = [
-                    x for x in exp_api.get_asset_list(asset_type="all") if f"{args_name_regex}" in x["fileName"]
-                ][0]["assetId"]
+                asset_id = [x for x in exp_api.get_asset_list(asset_type="all") if args_filename in x["fileName"]][0][
+                    "assetId"
+                ]
                 api.download_experiment_asset(
                     exp_api.id,
                     asset_id,
                     args_file_path,
                 )
             except IndexError:
-                print(f"No args found with name {args_name_regex}")
+                print(f"No args found with name {args_filename}")
                 args_file_path = None
-        if weights_not_exist:
-            if epoch is None:
+        elif weights_not_exist or include_session:
+            if use_epoch and epoch is None:
                 epoch = get_latest_ckpt_epoch(exp_name)
-            exp_api.download_model(f"{model_artifact_name}_{epoch}", local_artifacts_dir)
-        if include_session:
-            session_not_exist = not os.path.exists(session_checkpoint_path)
-            if session_not_exist:
-                try:
-                    # has to be sorted by step (another attr of an object?!)
-                    asset_id = [
-                        x
-                        for x in exp_api.get_asset_list(asset_type="all")
-                        if f"{session_artifact_name}" in x["fileName"]
-                    ][0]["assetId"]
-                    api.download_experiment_asset(
-                        exp_api.id,
-                        asset_id,
-                        session_checkpoint_path,
-                    )
-                except IndexError:
-                    print(f"No session found with name {session_artifact_name}")
-                    session_checkpoint_path = None
+                artifact_name = f"{model_artifact_name}_{epoch}"
+            else:
+                artifact_name = model_artifact_name
+            logged_models = exp_api.get_model_asset_list("ckpt")
+            sorted_assets = sorted(logged_models, key=lambda x: x["step"], reverse=True)
+            model_assets = [x for x in sorted_assets if artifact_name in x["fileName"]]
+            model_asset = model_assets[0]
+            load_asset(exp_api, model_asset["assetId"], model_checkpoint_path)
+            if include_session:
+                session_not_exist = not os.path.exists(session_checkpoint_path)
+                if session_not_exist:
+                    try:
+                        session_asset = [x for x in sorted_assets if session_artifact_name in x["fileName"]][0]
+                        load_asset(exp_api, session_asset["assetId"], session_checkpoint_path)
+                    except IndexError:
+                        print(f"No session found with name {session_artifact_name}")
+                        session_checkpoint_path = None
     results = {
         "checkpoint_path": model_checkpoint_path,
     }
@@ -151,6 +157,14 @@ def load_artifacts_from_comet(
     if include_session:
         results["session_checkpoint_path"] = session_checkpoint_path
     return results
+
+
+def load_asset(exp_api, assetId, save_path):
+    asset_response = exp_api.get_asset(assetId, "response")
+    with open(save_path, "wb") as f:
+        for chunk in asset_response.iter_content(chunk_size=1024**2):
+            f.write(chunk)
+    return save_path
 
 
 def log_args(exp: comet_ml.Experiment, args: argparse.Namespace, save_path: str) -> None:
@@ -175,7 +189,7 @@ def log_params_to_exp(experiment: comet_ml.Experiment, params: dict, prefix: str
 
 
 def log_ckpt_to_exp(experiment: comet_ml.Experiment, ckpt_path: str, model_name: str) -> None:
-    experiment.log_model(model_name, ckpt_path, overwrite=False)
+    experiment.log_model(model_name, ckpt_path, overwrite=True)
 
 
 def create_tracking_exp(
@@ -208,7 +222,7 @@ def create_tracking_exp(
         from comet_ml.api import API
 
         api = API(api_key=api_key)
-        exp_api = api.get(f"{COMET_USERNAME}/{project_name}/{args.exp_name}")
+        exp_api = api.get(f"{COMET_WORKSPACE}/{project_name}/{args.exp_name}")
         experiment = comet_ml.ExistingExperiment(**exp_init_args, experiment_key=exp_api.id)
     else:
         experiment = comet_ml.Experiment(**exp_init_args, project_name=project_name)
@@ -257,7 +271,7 @@ def load_artifacts_from_comet_v2(exp_name, save_path_model, save_path_args, come
     os.makedirs(save_path_dir, exist_ok=True)
     if do_load_model or do_load_args:
         experiment = comet_api.get(
-            f"{COMET_USERNAME}",
+            COMET_WORKSPACE,
             project_name="pose_tracking",
             experiment=exp_name,
         )
