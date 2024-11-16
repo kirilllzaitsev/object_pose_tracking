@@ -452,13 +452,13 @@ class Trainer:
             total_loss = 0
 
         if self.use_ddp:
-            state = self.model.module.reset_state(batch_size, device=self.device)
+            self.model.module.reset_state(batch_size, device=self.device)
         else:
-            state = self.model.reset_state(batch_size, device=self.device)
+            self.model.reset_state(batch_size, device=self.device)
+        if self.do_debug:
+            self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
         for t, batch_t in ts_pbar:
-            if self.do_debug:
-                self.processed_data["state"].append(state)
             if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["rgb"]
@@ -467,10 +467,9 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
 
-            outputs = self.model(rgb, depth, state=state)
+            outputs = self.model(rgb, depth)
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
-            state = outputs["state"]
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
@@ -589,6 +588,7 @@ class Trainer:
                 save_results(batch_t, t_pred, rot_pred, preds_dir)
             if self.do_debug:
                 # add everything to processed_data
+                self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
                 self.processed_data["rgb"].append(rgb)
                 self.processed_data["seg_masks"].append(seg_masks)
                 self.processed_data["pose_gt"].append(pose_gt)
