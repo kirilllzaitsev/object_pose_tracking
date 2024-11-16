@@ -193,6 +193,7 @@ def main(exp_tools: t.Optional[dict] = None):
             model,
             device_ids=[local_rank] if args.use_cuda else None,
             output_device=local_rank if args.use_cuda else None,
+            broadcast_buffers=False,  # how does this affect training on diff subs
         )
     optimizer = optim.AdamW(
         [
