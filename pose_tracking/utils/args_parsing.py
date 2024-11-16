@@ -37,6 +37,8 @@ def get_parser():
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
+    train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
+    train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
     train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
     train_args.add_argument("--save_epoch_freq", type=int, default=5, help="Save model every N epochs")

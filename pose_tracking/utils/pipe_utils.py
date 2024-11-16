@@ -81,6 +81,8 @@ def get_trainer(args, model, device, writer=None, world_size=1):
         use_rnn=not args.no_rnn,
         use_obs_belief=not args.no_obs_belief,
         world_size=world_size,
+        do_log_every_ts=args.do_log_every_ts,
+        do_log_every_seq=args.do_log_every_seq,
     )
 
     return trainer
