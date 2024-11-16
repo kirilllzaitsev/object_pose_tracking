@@ -315,19 +315,21 @@ class RecurrentCNN(nn.Module):
 
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
-        self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
-        self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
+        hx = torch.zeros(batch_size, self.hidden_dim, device=device)
+        cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
+        return {"hx": hx, "cx": cx}
 
-    def forward(self, rgb, depth):
+    def forward(self, rgb, depth, state):
 
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
 
         res = {}
+        hx, cx = state["hx"], state["cx"]
         if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb, latent_depth, self.hx, self.cx)
-            self.hx, self.cx = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(self.hx, latent_depth)
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, hx, cx)
+            hx, cx = encoder_out["hx"], encoder_out["cx"]
+            decoder_out = self.belief_decoder(hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
             extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
@@ -344,11 +346,11 @@ class RecurrentCNN(nn.Module):
         t = self.t_mlp(extracted_obs)
         rot = self.rot_mlp(extracted_obs)
 
+        new_state = {"hx": hx, "cx": cx}
         res.update(
             {
                 "latent_depth": latent_depth,
-                "hx": self.hx,
-                "cx": self.cx,
+                "state": new_state,
                 "t": t,
                 "rot": rot,
             }

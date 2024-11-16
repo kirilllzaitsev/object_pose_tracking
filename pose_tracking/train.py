@@ -346,6 +346,8 @@ class Trainer:
         use_rnn=True,
         use_obs_belief=True,
         world_size=1,
+        do_log_every_ts=False,
+        do_log_every_seq=True,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -357,6 +359,8 @@ class Trainer:
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
+        self.do_log_every_ts = do_log_every_ts
+        self.do_log_every_seq = do_log_every_seq
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -416,7 +420,7 @@ class Trainer:
         for k, v in running_stats.items():
             running_stats[k] = v / len(loader)
 
-        if self.do_log:
+        if self.do_log and self.do_log_every_seq:
             for k, v in running_stats.items():
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
 
@@ -447,9 +451,14 @@ class Trainer:
             optimizer.zero_grad()
             total_loss = 0
 
-        self.model.reset_state(batch_size, device=self.device)
+        if self.use_ddp:
+            state = self.model.module.reset_state(batch_size, device=self.device)
+        else:
+            state = self.model.reset_state(batch_size, device=self.device)
 
         for t, batch_t in ts_pbar:
+            if self.do_debug:
+                self.processed_data["state"].append(state)
             if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["rgb"]
@@ -458,9 +467,10 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
 
-            outputs = self.model(rgb, depth)
+            outputs = self.model(rgb, depth, state=state)
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
+            state = outputs["state"]
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
@@ -546,7 +556,7 @@ class Trainer:
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
 
-            if self.do_log:
+            if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
                     self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
             self.ts_counts_per_stage[stage] += 1
