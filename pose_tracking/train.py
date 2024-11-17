@@ -153,7 +153,7 @@ def main(exp_tools: t.Optional[dict] = None):
             seq_len=args.seq_len,
             seq_step=args.seq_step,
             seq_start=args.seq_start,
-            num_samples=args.num_samples,
+            num_samples=min(args.num_samples, 400),
             ds_kwargs=ds_kwargs,
         )
         logger.info(f"Using {args.obj_names_val=} for validation")
@@ -292,40 +292,6 @@ def main(exp_tools: t.Optional[dict] = None):
 
     logger.info(f"# {logdir=}")
     logger.info(f"# {logpath=}")
-
-    if args.use_test_set and is_main_process:
-        preds_dir = exp_tools["preds_dir"]
-        preds_dir.mkdir(parents=True, exist_ok=True)
-
-        for p in model.parameters():
-            p.requires_grad = False
-        model.eval()
-
-        if args.do_overfit:
-            test_dataset = train_dataset
-        else:
-            test_dataset = VideoDataset(
-                ds=get_obj_ds(ds_name=args.ds_name, ds_kwargs=ds_kwargs, obj_name=args.obj_names[0]),
-                seq_len=args.seq_len_test,
-                seq_step=1,
-                seq_start=0,
-                num_samples=1,
-            )
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=1,
-            shuffle=False,
-            collate_fn=collate_fn,
-        )
-        test_stats = trainer.loader_forward(
-            test_loader,
-            save_preds=True,
-            preds_dir=preds_dir,
-            stage="test",
-        )
-        print_stats(test_stats, logger, "test")
-
-        logger.info(f"saved to {preds_dir=} {preds_dir.name}")
 
     if not external_tools and is_main_process:
         exp.end()
