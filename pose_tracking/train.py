@@ -3,39 +3,32 @@ import shutil
 import sys
 import typing as t
 from collections import defaultdict
-from pathlib import Path
 
 import comet_ml
-import cv2
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
-from pose_tracking.config import (
-    PROJ_DIR,
-    YCB_MESHES_DIR,
-    YCBINEOAT_SCENE_DIR,
-    log_exception,
-    prepare_logger,
-)
+from pose_tracking.config import PROJ_DIR, YCB_MESHES_DIR, log_exception, prepare_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
-from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
-from pose_tracking.dataset.ycbineoat import YCBineoatDataset
+from pose_tracking.dataset.video_ds import VideoDataset
+from pose_tracking.losses import compute_chamfer_dist
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
-from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, print_args
+from pose_tracking.utils.common import print_args
 from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
+    get_full_ds,
     get_model,
+    get_obj_ds,
     get_trainer,
     log_artifacts,
     log_exp_meta,
@@ -45,7 +38,6 @@ from pose_tracking.utils.pipe_utils import (
     save_results,
 )
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
-from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
@@ -121,48 +113,62 @@ def main(exp_tools: t.Optional[dict] = None):
 
     transform = get_transforms()
 
-    video_datasets = []
-    for obj_name in args.obj_names:
-        ycbi_kwargs = dict(
-            video_dir=YCBINEOAT_SCENE_DIR / obj_name,
-            shorter_side=None,
-            zfar=np.inf,
-            include_rgb=True,
-            include_depth=True,
-            include_gt_pose=True,
-            include_mask=True,
-            ycb_meshes_dir=YCB_MESHES_DIR,
-            transforms=transform,
-            start_frame_idx=0,
-            convert_pose_to_quat=True,
-        )
-        ds_ycbi = YCBineoatDataset(**ycbi_kwargs)
-        video_ds = VideoDataset(
-            ds=ds_ycbi,
+    ycbi_kwargs = dict(
+        shorter_side=None,
+        zfar=np.inf,
+        include_rgb=True,
+        include_depth=True,
+        include_gt_pose=True,
+        include_mask=True,
+        ycb_meshes_dir=YCB_MESHES_DIR,
+        transforms=transform,
+        start_frame_idx=0,
+        convert_pose_to_quat=True,
+    )
+    cube_sim_kwargs = dict(
+        root_dir=f"{args.ds_path}",
+        mesh_path=f"{args.ds_path}/mesh/cube.obj",
+        include_masks=True,
+        use_priv_info=args.use_priv_decoder,
+        convert_pose_to_quat=True,
+    )
+    ds_kwargs = ycbi_kwargs if args.ds_name == "ycbi" else cube_sim_kwargs
+    full_ds = get_full_ds(
+        obj_names=args.obj_names,
+        ds_name=args.ds_name,
+        seq_len=args.seq_len,
+        seq_step=args.seq_step,
+        seq_start=args.seq_start,
+        num_samples=args.num_samples,
+        ds_kwargs=ds_kwargs,
+    )
+    scene_len = len(full_ds)
+    logger.info(f"Scene length: {scene_len}")
+
+    if args.obj_names_val:
+        train_dataset = full_ds
+        val_dataset = get_full_ds(
+            obj_names=args.obj_names_val,
+            ds_name=args.ds_name,
             seq_len=args.seq_len,
             seq_step=args.seq_step,
             seq_start=args.seq_start,
             num_samples=args.num_samples,
+            ds_kwargs=ds_kwargs,
         )
-        video_datasets.append(video_ds)
-
-    if len(video_datasets) > 1:
-        full_ds = MultiVideoDataset(video_datasets)
+        logger.info(f"Using {args.obj_names_val=} for validation")
     else:
-        full_ds = video_datasets[0]
-
-    scene_len = len(full_ds)
-    logger.info(f"Scene length: {scene_len}")
-    train_share = 1.0 if args.do_overfit else 0.9
-    train_len = int(train_share * scene_len)
-
-    train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
-    val_dataset = torch.utils.data.Subset(full_ds, range(train_len, scene_len))
+        train_share = 1.0 if args.do_overfit else 0.9
+        train_len = int(train_share * scene_len)
+        train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
+        val_dataset = torch.utils.data.Subset(full_ds, range(train_len, scene_len))
+        logger.info("Using parts of train videos for validation")
 
     if args.do_overfit:
         val_dataset = train_dataset
 
     logger.info(f"{len(train_dataset)=}")
+    logger.info(f"{len(val_dataset)=}")
 
     collate_fn = seq_collate_fn
     if args.use_ddp:
@@ -299,7 +305,7 @@ def main(exp_tools: t.Optional[dict] = None):
             test_dataset = train_dataset
         else:
             test_dataset = VideoDataset(
-                ds=YCBineoatDataset(**ycbi_kwargs),
+                ds=get_obj_ds(ds_name=args.ds_name, ds_kwargs=ds_kwargs, obj_name=args.obj_names[0]),
                 seq_len=args.seq_len_test,
                 seq_step=1,
                 seq_start=0,

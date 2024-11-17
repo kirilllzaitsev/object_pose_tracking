@@ -8,7 +8,10 @@ import comet_ml
 import cv2
 import torch
 import torch.nn as nn
-from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
+from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, YCBINEOAT_SCENE_DIR
+from pose_tracking.dataset.custom_sim_ds import CustomSimDataset
+from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
+from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import compute_add_loss, geodesic_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.comet_utils import (
@@ -253,9 +256,52 @@ def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=Non
     sender({"model/num_params_total": num_params_total})
 
 
+def get_full_ds(
+    obj_names,
+    ds_name,
+    seq_len,
+    seq_step,
+    seq_start,
+    num_samples,
+    ds_kwargs,
+    ds_path=None,
+):
+    video_datasets = []
+    for obj_name in obj_names:
+        ds = get_obj_ds(ds_name, ds_kwargs, obj_name, ds_path=ds_path)
+        video_ds = VideoDataset(
+            ds=ds,
+            seq_len=seq_len,
+            seq_step=seq_step,
+            seq_start=seq_start,
+            num_samples=num_samples,
+        )
+        video_datasets.append(video_ds)
+
+    if len(video_datasets) > 1:
+        full_ds = MultiVideoDataset(video_datasets)
+    else:
+        full_ds = video_datasets[0]
+    return full_ds
+
+
+def get_obj_ds(ds_name, ds_kwargs, obj_name, ds_path=None):
+    if ds_name == "ycbi":
+        ds = YCBineoatDataset(video_dir=YCBINEOAT_SCENE_DIR / obj_name, **ds_kwargs)
+    elif ds_name == "cube_sim":
+        assert ds_path is not None, "ds_path must be provided for cube_sim"
+        ds = CustomSimDataset(
+            obj_name=obj_name,
+            **ds_kwargs,
+        )
+    else:
+        raise NotImplementedError(f"Unknown dataset name {ds_name}")
+    return ds
+
+
 def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")
-    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t"]
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t", "loss_priv"]
     ERROR_METRICS = ["r_err", "t_err"]
     ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
 
