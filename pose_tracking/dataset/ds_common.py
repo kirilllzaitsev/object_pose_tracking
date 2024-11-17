@@ -14,6 +14,7 @@ def get_ds_sample(
     mask_visib=None,
     intrinsics=None,
     transforms=None,
+    priv=None,
     convert_pose_to_quat=False,
 ):
     if transforms is None:
@@ -46,6 +47,10 @@ def get_ds_sample(
                 quat = convert_rotation_representation(rot, rot_representation="quaternion")
                 pose = np.concatenate([pose[:3, 3], quat])
         sample["pose"] = from_numpy(pose)
+    if mask_visib is not None:
+        sample["mask_visib"] = from_numpy(mask_visib)
+    if priv is not None:
+        sample["priv"] = from_numpy(priv)
 
     return sample
 
@@ -68,6 +73,7 @@ def process_raw_sample(sample, transforms=None, convert_pose_to_quat=False):
         intrinsics=sample.get("intrinsics"),
         transforms=transforms,
         convert_pose_to_quat=convert_pose_to_quat,
+        priv=sample.get("priv"),
     )
     # add keys present in sample but not in ds_sample
     for k, v in sample.items():
