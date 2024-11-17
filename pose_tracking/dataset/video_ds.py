@@ -15,7 +15,7 @@ class VideoDataset(Dataset):
 
     def __init__(self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None):
         self.ds = ds
-        self.seq_len = seq_len
+        self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
         self.seq_start = seq_start
         self.seq_step = seq_step
         self.num_samples = len(ds) if num_samples is None else num_samples
@@ -25,7 +25,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         seq = []
-        timesteps = min(len(self.ds), self.seq_len) if self.seq_len is not None else len(self.ds)
+        timesteps = self.seq_len
         seq_start = self.seq_start
         if seq_start is None:
             seq_start = torch.randint(
@@ -63,10 +63,12 @@ class MultiVideoDataset(Dataset):
 
     def __init__(self, video_datasets: list[VideoDataset]):
         self.video_datasets = video_datasets
+        self.lens = [len(ds) for ds in self.video_datasets]
 
     def __len__(self):
-        return sum(len(ds) for ds in self.video_datasets)
+        return sum(self.lens)
 
     def __getitem__(self, idx):
-        video_idx = torch.randint(0, len(self.video_datasets), (1,)).item()
-        return self.video_datasets[video_idx][idx]
+        ds_idx = torch.randint(0, len(self.video_datasets), (1,)).item()
+        sample_idx = idx - sum(self.lens[:ds_idx])
+        return self.video_datasets[ds_idx][sample_idx]
