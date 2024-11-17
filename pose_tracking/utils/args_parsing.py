@@ -60,6 +60,8 @@ def get_parser():
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
+    model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
+    model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
@@ -83,7 +85,7 @@ def get_parser():
         "--benc_belief_depth_enc_num_layers", type=int, default=2, help="Number of layers for belief depth encoder"
     )
     model_args.add_argument(
-        "--bdec_priv_decoder_hidden_dim", type=int, default=32, help="Hidden dimension for privileged info decoder"
+        "--bdec_priv_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for privileged info decoder"
     )
     model_args.add_argument(
         "--bdec_depth_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for depth decoder"
@@ -107,11 +109,14 @@ def get_parser():
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
-    data_args.add_argument("--seq_len_test", type=int, help="Number of frames to take for test")
+    data_args.add_argument("--seq_len_test", type=int, default=600, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
     data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
+    data_args.add_argument("--obj_names_val", nargs="*", help="Object names to use in the validation dataset")
+    data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim"])
+    data_args.add_argument("--ds_path", type=str, help="Path to the dataset. Applies to cube_sim only.")
     return parser
 
 
