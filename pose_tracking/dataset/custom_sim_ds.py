@@ -59,8 +59,19 @@ class CustomSimDataset(Dataset):
         self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = self.load_mask(self.color_files[0])
         self.zfar = zfar
-        self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
-        self.do_erode_mask = do_erode_mask
+
+        if self.use_priv_info:
+            self.ds_no_occ = CustomSimDataset(
+                root_dir=Path(root_dir).parent / "custom_sim_textured_no_occlusion",
+                include_masks=True,
+                zfar=zfar,
+                transforms=transforms,
+                mesh_path=mesh_path,
+                cam_pose_path=cam_pose_path,
+                do_remap_pose_from_isaac=do_remap_pose_from_isaac,
+                do_erode_mask=do_erode_mask,
+                use_priv_info=False,
+            )
 
         if cam_pose_path is None:
             if os.path.exists(f"{self.root_dir}/cam_pose.txt"):
@@ -89,6 +100,32 @@ class CustomSimDataset(Dataset):
         path = self.color_files[idx]
         color = self.get_color(idx)
         depth_raw = self.get_depth(idx)
+
+        priv = None
+        if self.use_priv_info:
+            sample_no_occ = self.ds_no_occ[idx]
+            depth_no_occ = sample_no_occ["depth"]
+            mask = sample_no_occ["mask"]
+            obj_depth = (depth_no_occ).squeeze().numpy()
+            obj_depth[mask == 0] = 0
+            obj_depth_3d, _ = backproj_depth(obj_depth, intrinsics=self.K)
+            obj_depth_3d = downsample_pcl_via_voxels(obj_depth_3d, voxel_size=0.01)
+            priv = downsample_pcl_via_subsampling(obj_depth_3d, num_pts=256)
+
+        sample = {}
+
+        priv = None
+        if self.use_priv_info:
+            sample_no_occ = self.ds_no_occ[idx]
+            depth_no_occ = sample_no_occ["depth"]
+            mask = sample_no_occ["mask"]
+            obj_depth = (depth_no_occ).squeeze().numpy()
+            obj_depth[mask == 0] = 0
+            obj_depth_3d, _ = backproj_depth(obj_depth, intrinsics=self.K)
+            obj_depth_3d = downsample_pcl_via_voxels(obj_depth_3d, voxel_size=0.01)
+            priv = downsample_pcl_via_subsampling(obj_depth_3d, num_pts=256)
+
+        sample = {}
 
         if self.include_masks:
             bin_mask = self.load_mask(path)
