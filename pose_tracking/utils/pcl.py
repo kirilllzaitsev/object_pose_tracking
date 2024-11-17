@@ -22,6 +22,22 @@ def downsample_pcl_via_voxels(xyz: TensorOrArr, voxel_size: float) -> TensorOrAr
     return new_pts
 
 
+def downsample_pcl_via_subsampling(xyz: TensorOrArr, share: float = None, num_pts=None) -> TensorOrArr:
+    """Downsample point cloud by randomly subsampling a fraction of points."""
+    is_tensor = isinstance(xyz, torch.Tensor)
+    if is_tensor:
+        device = xyz.device
+        xyz = xyz.detach().cpu().numpy()
+    n_pts = len(xyz)
+    n_sample = int(n_pts * share) if share is not None else num_pts
+    ids = np.random.choice(n_pts, size=n_sample, replace=False)
+    # ids = np.linspace(0, n_pts - 1, n_sample, dtype=int)
+    new_pts = xyz[ids]
+    if is_tensor:
+        new_pts = torch.from_numpy(new_pts).to(device)
+    return new_pts
+
+
 def compute_pts_diameter(model_pts, n_sample=1000):
     if n_sample is None:
         pts = model_pts

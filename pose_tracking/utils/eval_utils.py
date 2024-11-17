@@ -154,7 +154,6 @@ def convert_exp_results_to_df(exp_results):
 
     df = df.sort_values(by="5deg5cm", ascending=False)
     df = format_metrics_df(df)
-    df.index = df.index.map(EXP_NAME_TO_FULLNAME)
     df.index.name = "Experiment Name"
     return df
 

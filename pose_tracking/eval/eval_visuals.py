@@ -36,8 +36,8 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
             include_mask=False,
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
-        model = ds.get_mesh()
-        bbox = model.bounding_box.vertices
+        model = ds.mesh
+        bbox = ds.mesh_bbox
         rgbs = []
         intrinsics = []
         poses_obj = []
@@ -67,7 +67,7 @@ def save_videos_for_obj(exp_dir, exp_name, save_dir, obj_name, intrinsics=None, 
     if intrinsics is None:
         intrinsics = np.loadtxt(preds_dir / "intrinsics.txt")
     paths = sorted(glob(str(preds_dir / "rgb" / "*.png")))
-    for path in tqdm(paths):
+    for path in tqdm(paths, leave=False, desc="Paths"):
         rgb = load_color(path)
         filename = Path(path).stem
         pred = load_pose(preds_dir / "poses" / f"{filename}.txt")

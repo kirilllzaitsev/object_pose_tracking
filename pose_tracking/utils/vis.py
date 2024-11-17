@@ -131,7 +131,7 @@ def draw_poses_on_video(
     """
     images = []
     num_frames = min(len(rgbs), len(poses_pred)) if take_n is None else take_n
-    for frame_idx in tqdm(range(num_frames), desc="Frame"):
+    for frame_idx in tqdm(range(num_frames), leave=False, desc="Frame"):
         rgb = rgbs[frame_idx]
         K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
         pose_pred = poses_pred[frame_idx]
@@ -435,7 +435,7 @@ def plot_sample_pose_dict(sample, scale=50.0, bbox=None, axs=None):
     return plot_pose(color, pose, K, bbox=bbox, axs=axs, scale=scale)
 
 
-def plot_pose(color, pose, K, bbox=None, axs=None, scale=50.0):
+def plot_pose(color, pose, K, bbox=None, axs=None, scale=0.05):
     color = adjust_img_for_plt(color)
     if axs is None:
         fig, axs = plt.subplots(1, 1, figsize=(10, 5))

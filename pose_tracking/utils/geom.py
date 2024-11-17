@@ -101,6 +101,48 @@ def backproj_depth(depth, intrinsics, instance_mask=None, do_flip_xy=True):
     return pts, idxs
 
 
+def backproj_depth_torch(depth, intrinsics, instance_mask=None, do_flip_xy=True):
+    """
+    Backproject depth for selected pixels
+    """
+    device = depth.device
+    dtype = depth.dtype
+
+    # Invert intrinsics
+    intrinsics_inv = torch.inverse(intrinsics)
+
+    # Create a valid depth mask
+    val_depth = depth > 0
+    if instance_mask is None:
+        val_mask = val_depth
+    else:
+        val_mask = torch.logical_and(instance_mask, val_depth)
+
+    # Get indices of valid pixels
+    idxs = torch.nonzero(val_mask, as_tuple=True)
+
+    # Create UV grid
+    u = idxs[1].to(dtype)
+    v = idxs[0].to(dtype)
+    ones = torch.ones_like(u, device=device, dtype=dtype)
+    uv_grid = torch.stack([u, v, ones], dim=0)  # [3, N]
+
+    # Backproject to 3D space
+    xyz = torch.matmul(intrinsics_inv, uv_grid)  # [3, N]
+    xyz = xyz.T  # [N, 3]
+
+    # Rescale by depth values
+    z = depth[idxs[0], idxs[1]]  # [N]
+    pts = xyz * (z[:, None] / xyz[:, -1:])  # Rescale using depth
+
+    # Flip x and y axes if needed
+    if do_flip_xy:
+        pts[:, 0] = -pts[:, 0]
+        pts[:, 1] = -pts[:, 1]
+
+    return pts, idxs
+
+
 def backproj_2d_to_3d_batch(pts, depth, K):
     return [backproj_2d_to_3d(pt, d, Ki) for pt, d, Ki in zip(pts, depth, K)]
 
