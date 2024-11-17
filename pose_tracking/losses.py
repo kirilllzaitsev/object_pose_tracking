@@ -2,6 +2,12 @@ import torch
 from pose_tracking.utils.geom import transform_pts_batch
 from pose_tracking.utils.misc import pick_library
 
+try:
+    from pose_tracking.chamfer_distance import ChamferDistance
+except Exception as e:
+    print(f"Failed to import a custom ChamferDistance: {e}. Loading an alternative.")
+    ChamferDistance = None
+
 
 def normalize_quaternion(quat):
     norm = torch.norm(quat, dim=-1, keepdim=True)
@@ -55,3 +61,16 @@ def compute_add_loss(pose_pred, pose_gt, points):
     lib = pick_library(points)
     dists = lib.mean(lib.abs(transform_pts_batch(pose_gt, points) - transform_pts_batch(pose_pred, points)))
     return dists
+
+
+def compute_chamfer_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    if ChamferDistance is None:
+        return torch.tensor(torch.nan)
+    chamfer_dist = ChamferDistance()
+    has_batch_dim = len(x.shape) == 3
+    if not has_batch_dim:
+        x = x.unsqueeze(0)
+        y = y.unsqueeze(0)
+    dist1, dist2 = chamfer_dist(x, y)
+    loss = (torch.mean(dist1)) + (torch.mean(dist2))
+    return loss
