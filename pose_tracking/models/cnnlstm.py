@@ -32,26 +32,6 @@ class LSTMCell(jit.ScriptModule):
         return hy, (hy, cy)
 
 
-class StateMLP(nn.Module):
-    # maps vector1 to vector2
-    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1):
-        super().__init__()
-        self.state_dim = in_dim
-        self.out_dim = out_dim
-        self.hidden_dim = hidden_dim
-        self.layers = [nn.Linear(in_dim, hidden_dim)]
-        for i in range(num_layers - 2):
-            self.layers = [nn.Linear(hidden_dim, hidden_dim)]
-        self.layers.append(nn.Linear(hidden_dim, out_dim))
-        self.layers = nn.ModuleList(self.layers)
-        self.act = nn.LeakyReLU()
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = self.act(layer(x))
-        return x
-
-
 class BeliefEncoder(nn.Module):
     def __init__(
         self,
@@ -63,23 +43,26 @@ class BeliefEncoder(nn.Module):
         belief_enc_num_layers=2,
         belief_depth_enc_num_layers=2,
         use_rnn=True,
+        dropout=0.0,
     ):
         super().__init__()
         self.state_cell = state_cell
         self.depth_latent_dim = depth_latent_dim
         self.use_rnn = use_rnn
 
-        self.belief_prior_mlp = StateMLP(
+        self.belief_prior_mlp = MLP(
             in_dim=state_cell_out_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_enc_hidden_dim,
             num_layers=belief_enc_num_layers,
+            dropout=dropout,
         )
-        self.belief_depth_mlp = StateMLP(
+        self.belief_depth_mlp = MLP(
             in_dim=state_cell_out_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_depth_enc_hidden_dim,
             num_layers=belief_depth_enc_num_layers,
+            dropout=dropout,
         )
 
     def forward(self, latent_rgb, latent_depth, hx, cx=None):
@@ -124,30 +107,34 @@ class BeliefDecoder(nn.Module):
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
         use_priv_decoder=False,
+        dropout=0.0,
     ):
         super().__init__()
         self.hidden_attn = nn.Sequential(
-            StateMLP(
+            MLP(
                 in_dim=state_dim,
                 out_dim=depth_decoder_out_dim,
                 hidden_dim=hidden_attn_hidden_dim,
                 num_layers=hidden_attn_num_layers,
+                dropout=dropout,
             ),
             nn.Sigmoid(),
         )
-        self.depth_decoder = StateMLP(
+        self.depth_decoder = MLP(
             in_dim=state_dim,
             out_dim=depth_decoder_out_dim,
             hidden_dim=depth_decoder_hidden_dim,
             num_layers=depth_decoder_num_layers,
+            dropout=dropout,
         )
         self.use_priv_decoder = use_priv_decoder
         if self.use_priv_decoder:
-            self.priv_decoder = StateMLP(
+            self.priv_decoder = MLP(
                 in_dim=state_dim,
                 out_dim=priv_decoder_out_dim,
                 hidden_dim=priv_decoder_hidden_dim,
                 num_layers=priv_decoder_num_layers,
+                dropout=dropout,
             )
 
     def forward(self, ht, depth_latent):
@@ -163,6 +150,7 @@ class BeliefDecoder(nn.Module):
         }
         if self.use_priv_decoder:
             priv_decoded = self.priv_decoder(ht)
+            priv_decoded = priv_decoded.view(-1, 256, 3)
             res["priv_decoded"] = priv_decoded
 
         return res
@@ -224,6 +212,7 @@ class RecurrentCNN(nn.Module):
         do_predict_6d_rot=False,
         use_rnn=True,
         use_obs_belief=False,
+        use_priv_decoder=False,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -242,6 +231,7 @@ class RecurrentCNN(nn.Module):
         self.do_predict_2d = do_predict_2d
         self.do_predict_6d_rot = do_predict_6d_rot
         self.use_obs_belief = use_obs_belief
+        self.use_priv_decoder = use_priv_decoder
 
         self.input_dim = depth_dim + rgb_dim
 
@@ -255,7 +245,7 @@ class RecurrentCNN(nn.Module):
             else:
                 raise ValueError("rnn_type must be 'lstm' or 'gru'")
         else:
-            self.state_cell = StateMLP(
+            self.state_cell = MLP(
                 in_dim=self.input_dim,
                 out_dim=hidden_dim,
                 hidden_dim=hidden_dim,
@@ -272,6 +262,7 @@ class RecurrentCNN(nn.Module):
                 belief_enc_num_layers=benc_belief_enc_num_layers,
                 belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
                 use_rnn=use_rnn,
+                dropout=dropout,
             )
             self.belief_decoder = BeliefDecoder(
                 state_dim=hidden_dim,
@@ -283,6 +274,8 @@ class RecurrentCNN(nn.Module):
                 priv_decoder_num_layers=priv_decoder_num_layers,
                 depth_decoder_num_layers=depth_decoder_num_layers,
                 hidden_attn_num_layers=hidden_attn_num_layers,
+                use_priv_decoder=use_priv_decoder,
+                dropout=dropout,
             )
         if do_predict_2d:
             self.t_mlp_out_dim = 2
@@ -340,6 +333,8 @@ class RecurrentCNN(nn.Module):
                     "decoder_out": decoder_out,
                 }
             )
+            if self.use_priv_decoder:
+                res['priv_decoded'] = decoder_out['priv_decoded']
         else:
             extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
 
