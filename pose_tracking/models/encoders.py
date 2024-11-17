@@ -2,7 +2,9 @@ import torch.nn as nn
 import torchvision
 
 
-def get_encoders(model_name="regnet_y_800mf", device="cpu", weights_img="imagenet", weights_depth=None):
+def get_encoders(
+    model_name="regnet_y_800mf", device="cpu", weights_img="imagenet", weights_depth=None, do_freeze=False
+):
     assert model_name in ["regnet_y_800mf", "efficientnet_b1", "efficientnet_v2_s"], model_name
     if model_name == "regnet_y_800mf":
         weights = torchvision.models.RegNet_Y_800MF_Weights.IMAGENET1K_V2
@@ -33,6 +35,17 @@ def get_encoders(model_name="regnet_y_800mf", device="cpu", weights_img="imagene
             )
     for m in [encoder_s_img, encoder_s_depth]:
         m.to(device)
+    if do_freeze:
+        to_freeze = []
+        if weights_img is not None:
+            to_freeze.append(encoder_s_img)
+        if weights_depth is not None:
+            to_freeze.append(encoder_s_depth)
+        for m in to_freeze:
+            for name, param in m.named_parameters():
+                if name.startswith("classifier") or name.startswith("fc"):
+                    continue
+                param.requires_grad = False
     return encoder_s_img, encoder_s_depth
 
 

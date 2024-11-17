@@ -213,6 +213,7 @@ class RecurrentCNN(nn.Module):
         use_rnn=True,
         use_obs_belief=False,
         use_priv_decoder=False,
+        do_freeze_encoders=False,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -304,7 +305,7 @@ class RecurrentCNN(nn.Module):
             dropout=dropout,
         )
         self.encoder_name = encoder_name
-        self.encoder_img, self.encoder_depth = get_encoders(encoder_name)
+        self.encoder_img, self.encoder_depth = get_encoders(encoder_name, do_freeze=do_freeze_encoders)
         self.hx = None
         self.cx = None
 
