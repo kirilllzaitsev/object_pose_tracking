@@ -565,8 +565,10 @@ class Trainer:
             else:
                 loss_depth = torch.tensor(0.0).to(self.device)
             loss += loss_depth
-            # loss_priv = F.mse_loss(outputs["priv_decoded"], batch_t["priv"])
-            # loss += loss_priv
+
+            if "priv_decoded" in outputs:
+                loss_priv = compute_chamfer_dist(outputs["priv_decoded"], batch_t["priv"])
+                loss += loss_priv * 0.01
 
             if do_opt_every_ts:
                 loss.backward()
@@ -576,12 +578,14 @@ class Trainer:
                 total_loss += loss
 
             seq_stats["loss"] += loss.item()
+            seq_stats["loss_depth"] += loss_depth
             if self.use_pose_loss:
                 seq_stats["loss_pose"] += loss_pose.item()
             else:
                 seq_stats["loss_rot"] += loss_rot.item()
                 seq_stats["loss_t"] += loss_t.item()
-            seq_stats["loss_depth"] += loss_depth
+            if "priv_decoded" in outputs:
+                seq_stats["loss_priv"] += loss_priv.item()
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
@@ -598,6 +602,8 @@ class Trainer:
                 self.processed_data["t_pred"].append(t_pred)
                 if self.do_predict_2d:
                     self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
+                if "priv_decoded" in outputs:
+                    self.processed_data["priv_decoded"].append(outputs["priv_decoded"])
                 self.processed_data["pose_pred"].append(pose_pred)
                 self.processed_data["pts"].append(pts)
                 self.processed_data["bbox_3d"].append(bbox_3d)

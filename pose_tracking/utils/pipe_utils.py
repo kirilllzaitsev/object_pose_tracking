@@ -26,7 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def get_model(args):
-    priv_dim = 1
+    priv_dim = 256 * 3
     latent_dim = 256  # defined by the encoders
     depth_dim = latent_dim
     rgb_dim = latent_dim
@@ -53,6 +53,8 @@ def get_model(args):
         dropout=args.dropout,
         use_rnn=not args.no_rnn,
         use_obs_belief=not args.no_obs_belief,
+        use_priv_decoder=args.use_priv_decoder,
+        do_freeze_encoders=args.do_freeze_encoders,
     )
 
     return model
