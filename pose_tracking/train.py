@@ -317,6 +317,10 @@ class Trainer:
         world_size=1,
         do_log_every_ts=False,
         do_log_every_seq=True,
+        use_ddp=False,
+        use_prev_pose_condition=False,
+        use_ddp=False,
+        use_prev_pose_condition=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -328,13 +332,15 @@ class Trainer:
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
+        self.use_ddp = use_ddp
+        self.use_prev_pose_condition = use_prev_pose_condition
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
-
+        self.use_ddp = use_ddp
+        self.use_prev_pose_condition = use_prev_pose_condition
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
-        self.use_ddp = world_size > 1
 
         self.model = model
         self.device = device
@@ -427,6 +433,8 @@ class Trainer:
         if self.do_debug:
             self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
+        prev_pose = None
+
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
                 optimizer.zero_grad()
@@ -436,9 +444,10 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
 
-            outputs = self.model(rgb, depth)
+            outputs = self.model(rgb, depth, prev_pose=prev_pose)
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
+            prev_pose = {"t": t_pred, "rot": rot_pred}
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
@@ -468,6 +477,8 @@ class Trainer:
                         ).squeeze()
                     )
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
+
+                prev_pose["center_depth"] = center_depth_pred
 
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
             if self.do_predict_6d_rot:
