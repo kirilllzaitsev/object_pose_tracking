@@ -47,6 +47,7 @@ def get_parser():
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+    train_args.add_argument("--lr_encoders", type=float, default=1e-5, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
@@ -62,6 +63,7 @@ def get_parser():
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
+    model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
@@ -113,10 +115,14 @@ def get_parser():
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
+    data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
     data_args.add_argument("--obj_names_val", nargs="*", help="Object names to use in the validation dataset")
     data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim"])
-    data_args.add_argument("--ds_path", type=str, help="Path to the dataset. Applies to cube_sim only.")
+    data_args.add_argument("--ds_folder_name", type=str, help="Name of the folder with the dataset")
+    data_args.add_argument(
+        "--mask_pixels_prob", type=float, default=0.0, help="Probability of masking pixels in RGB/depth"
+    )
     return parser
 
 
