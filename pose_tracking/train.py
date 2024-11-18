@@ -1,3 +1,4 @@
+import copy
 import os
 import shutil
 import sys
@@ -11,7 +12,13 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
-from pose_tracking.config import PROJ_DIR, YCB_MESHES_DIR, log_exception, prepare_logger
+from pose_tracking.config import (
+    DATA_DIR,
+    PROJ_DIR,
+    YCB_MESHES_DIR,
+    log_exception,
+    prepare_logger,
+)
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
@@ -112,27 +119,31 @@ def main(exp_tools: t.Optional[dict] = None):
         )
 
     transform = get_transforms()
-
-    ycbi_kwargs = dict(
-        shorter_side=None,
-        zfar=np.inf,
-        include_rgb=True,
-        include_depth=True,
-        include_gt_pose=True,
-        include_mask=True,
-        ycb_meshes_dir=YCB_MESHES_DIR,
-        transforms=transform,
-        start_frame_idx=0,
-        convert_pose_to_quat=True,
-    )
-    cube_sim_kwargs = dict(
-        root_dir=f"{args.ds_path}",
-        mesh_path=f"{args.ds_path}/mesh/cube.obj",
-        include_masks=True,
-        use_priv_info=args.use_priv_decoder,
-        convert_pose_to_quat=True,
-    )
-    ds_kwargs = ycbi_kwargs if args.ds_name == "ycbi" else cube_sim_kwargs
+    if args.ds_name == "ycbi":
+        ycbi_kwargs = dict(
+            shorter_side=None,
+            zfar=np.inf,
+            include_rgb=True,
+            include_depth=True,
+            include_gt_pose=True,
+            include_mask=True,
+            ycb_meshes_dir=YCB_MESHES_DIR,
+            transforms_rgb=transform,
+            start_frame_idx=0,
+            convert_pose_to_quat=True,
+            mask_pixels_prob=args.mask_pixels_prob,
+        )
+        ds_kwargs = ycbi_kwargs
+    else:
+        sim_ds_path = DATA_DIR / args.ds_folder_name
+        cube_sim_kwargs = dict(
+            root_dir=f"{sim_ds_path}",
+            mesh_path=f"{sim_ds_path}/mesh/cube.obj",
+            include_masks=True,
+            use_priv_info=args.use_priv_decoder,
+            convert_pose_to_quat=True,
+        )
+        ds_kwargs = cube_sim_kwargs
     full_ds = get_full_ds(
         obj_names=args.obj_names,
         ds_name=args.ds_name,
@@ -171,10 +182,20 @@ def main(exp_tools: t.Optional[dict] = None):
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(
-            train_dataset, batch_size=args.batch_size, sampler=train_sampler, collate_fn=collate_fn
+            train_dataset,
+            batch_size=args.batch_size,
+            sampler=train_sampler,
+            collate_fn=collate_fn,
+            num_workers=args.num_workers,
         )
         val_sampler = DistributedSampler(val_dataset)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler, collate_fn=collate_fn)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            sampler=val_sampler,
+            collate_fn=collate_fn,
+            num_workers=args.num_workers,
+        )
     else:
         shuffle = True if not args.do_overfit else False
         train_loader = DataLoader(
@@ -182,8 +203,11 @@ def main(exp_tools: t.Optional[dict] = None):
             batch_size=args.batch_size,
             shuffle=shuffle,
             collate_fn=collate_fn,
+            num_workers=args.num_workers,
         )
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
+        val_loader = DataLoader(
+            val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=args.num_workers
+        )
 
     history = defaultdict(lambda: defaultdict(list))
 
@@ -202,7 +226,7 @@ def main(exp_tools: t.Optional[dict] = None):
         [
             {
                 "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
-                "lr": 1e-5,
+                "lr": args.lr_encoders * np.sqrt(world_size),
             },
             {
                 "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
@@ -319,8 +343,6 @@ class Trainer:
         do_log_every_seq=True,
         use_ddp=False,
         use_prev_pose_condition=False,
-        use_ddp=False,
-        use_prev_pose_condition=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -332,12 +354,11 @@ class Trainer:
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
-        self.use_ddp = use_ddp
-        self.use_prev_pose_condition = use_prev_pose_condition
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
         self.use_prev_pose_condition = use_prev_pose_condition
+
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn

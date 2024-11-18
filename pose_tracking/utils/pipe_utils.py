@@ -58,6 +58,7 @@ def get_model(args):
         use_obs_belief=not args.no_obs_belief,
         use_priv_decoder=args.use_priv_decoder,
         do_freeze_encoders=args.do_freeze_encoders,
+        use_prev_pose_condition=args.use_prev_pose_condition,
     )
 
     return model
@@ -88,6 +89,8 @@ def get_trainer(args, model, device, writer=None, world_size=1):
         world_size=world_size,
         do_log_every_ts=args.do_log_every_ts,
         do_log_every_seq=args.do_log_every_seq,
+        use_ddp=args.use_ddp,
+        use_prev_pose_condition=args.use_prev_pose_condition,
     )
 
     return trainer
@@ -264,11 +267,10 @@ def get_full_ds(
     seq_start,
     num_samples,
     ds_kwargs,
-    ds_path=None,
 ):
     video_datasets = []
     for obj_name in obj_names:
-        ds = get_obj_ds(ds_name, ds_kwargs, obj_name, ds_path=ds_path)
+        ds = get_obj_ds(ds_name, ds_kwargs, obj_name)
         video_ds = VideoDataset(
             ds=ds,
             seq_len=seq_len,
@@ -285,11 +287,10 @@ def get_full_ds(
     return full_ds
 
 
-def get_obj_ds(ds_name, ds_kwargs, obj_name, ds_path=None):
+def get_obj_ds(ds_name, ds_kwargs, obj_name):
     if ds_name == "ycbi":
         ds = YCBineoatDataset(video_dir=YCBINEOAT_SCENE_DIR / obj_name, **ds_kwargs)
     elif ds_name == "cube_sim":
-        assert ds_path is not None, "ds_path must be provided for cube_sim"
         ds = CustomSimDataset(
             obj_name=obj_name,
             **ds_kwargs,
