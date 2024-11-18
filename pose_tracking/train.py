@@ -145,24 +145,21 @@ def main(exp_tools: t.Optional[dict] = None):
     scene_len = len(full_ds)
     logger.info(f"Scene length: {scene_len}")
 
-    if args.obj_names_val:
-        train_dataset = full_ds
-        val_dataset = get_full_ds(
-            obj_names=args.obj_names_val,
-            ds_name=args.ds_name,
-            seq_len=args.seq_len,
-            seq_step=args.seq_step,
-            seq_start=args.seq_start,
-            num_samples=min(args.num_samples, 400),
-            ds_kwargs=ds_kwargs,
-        )
-        logger.info(f"Using {args.obj_names_val=} for validation")
-    else:
-        train_share = 1.0 if args.do_overfit else 0.9
-        train_len = int(train_share * scene_len)
-        train_dataset = torch.utils.data.Subset(full_ds, range(train_len))
-        val_dataset = torch.utils.data.Subset(full_ds, range(train_len, scene_len))
-        logger.info("Using parts of train videos for validation")
+    train_dataset = full_ds
+
+    val_ds_kwargs = copy.deepcopy(ds_kwargs)
+    val_ds_kwargs.pop("mask_pixels_prob")
+    val_dataset = get_full_ds(
+        obj_names=args.obj_names_val,
+        ds_name=args.ds_name,
+        seq_len=args.seq_len,
+        seq_step=args.seq_step,
+        seq_start=None,
+        num_samples=min(args.num_samples, 400),
+        ds_kwargs=val_ds_kwargs,
+    )
+
+    logger.info(f"Using {args.obj_names_val=} for validation")
 
     if args.do_overfit:
         val_dataset = train_dataset

@@ -117,7 +117,12 @@ def get_parser():
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
-    data_args.add_argument("--obj_names_val", nargs="*", help="Object names to use in the validation dataset")
+    data_args.add_argument(
+        "--obj_names_val",
+        nargs="*",
+        default=["mustard_easy_00_02"],
+        help="Object names to use in the validation dataset",
+    )
     data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim"])
     data_args.add_argument("--ds_folder_name", type=str, help="Name of the folder with the dataset")
     data_args.add_argument(
