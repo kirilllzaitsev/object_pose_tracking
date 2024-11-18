@@ -357,21 +357,21 @@ class RecurrentCNN(nn.Module):
         else:
             extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
 
-        if self.use_prev_pose_condition and prev_pose is None:
-            prev_pose = {
-                "t": torch.zeros(latent_rgb.size(0), self.t_mlp_out_dim, device=latent_rgb.device),
-                "rot": torch.zeros(latent_rgb.size(0), self.rot_mlp_out_dim, device=latent_rgb.device),
-            }
+        if self.use_prev_pose_condition:
+            if prev_pose is None:
+                prev_pose = {
+                    "t": torch.zeros(latent_rgb.size(0), self.t_mlp_out_dim, device=latent_rgb.device),
+                    "rot": torch.zeros(latent_rgb.size(0), self.rot_mlp_out_dim, device=latent_rgb.device),
+                }
             if self.do_predict_2d:
                 prev_pose["center_depth"] = torch.zeros(
                     latent_rgb.size(0), self.depth_mlp_out_dim, device=latent_rgb.device
                 )
-        if prev_pose is None:
-            t_in = extracted_obs
-            rot_in = extracted_obs
-        else:
             t_in = torch.cat([extracted_obs, prev_pose["t"]], dim=1)
             rot_in = torch.cat([extracted_obs, prev_pose["rot"]], dim=1)
+        else:
+            t_in = extracted_obs
+            rot_in = extracted_obs
 
         t = self.t_mlp(t_in)
         rot = self.rot_mlp(rot_in)
