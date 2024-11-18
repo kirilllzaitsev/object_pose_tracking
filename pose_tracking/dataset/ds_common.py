@@ -2,6 +2,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from pose_tracking.dataset.transforms import mask_pixels
 from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 
 
@@ -13,17 +14,24 @@ def get_ds_sample(
     mask=None,
     mask_visib=None,
     intrinsics=None,
-    transforms=None,
+    transforms_rgb=None,
     priv=None,
     convert_pose_to_quat=False,
+    mask_pixels_prob=0.0,
+    pixels_masked_max_percent=0.1,
 ):
-    if transforms is None:
+    if mask_pixels_prob > 0:
+        color = mask_pixels(color, p=mask_pixels_prob, pixels_masked_max_percent=pixels_masked_max_percent)
+
+    if transforms_rgb is None:
         rgb = torch.from_numpy(color).permute(2, 0, 1)
     else:
-        sample = transforms(image=color)
+        sample = transforms_rgb(image=color)
         rgb = sample["image"]
 
-    rgb = rgb.float() / 255.0
+    rgb = rgb.float()
+    if rgb.max() > 1:
+        rgb /= 255.0
 
     sample = {
         "rgb": rgb,
@@ -31,6 +39,8 @@ def get_ds_sample(
     }
     if depth_m is not None:
         depth = from_numpy(depth_m)
+        if mask_pixels_prob > 0:
+            depth = mask_pixels(depth, p=mask_pixels_prob, pixels_masked_max_percent=pixels_masked_max_percent)
         if depth.ndim == 2:
             depth = depth.unsqueeze(0)
         sample["depth"] = depth
@@ -63,7 +73,7 @@ def from_numpy(x):
     return torch.from_numpy(x).float()
 
 
-def process_raw_sample(sample, transforms=None, convert_pose_to_quat=False):
+def process_raw_sample(sample, *args, **kwargs):
     ds_sample = get_ds_sample(
         sample["rgb"],
         rgb_path=sample["rgb_path"],
@@ -71,9 +81,10 @@ def process_raw_sample(sample, transforms=None, convert_pose_to_quat=False):
         pose=sample.get("pose"),
         mask=sample.get("mask"),
         intrinsics=sample.get("intrinsics"),
-        transforms=transforms,
-        convert_pose_to_quat=convert_pose_to_quat,
         priv=sample.get("priv"),
+        mask_visib=sample.get("mask_visib"),
+        *args,
+        **kwargs,
     )
     # add keys present in sample but not in ds_sample
     for k, v in sample.items():
