@@ -36,10 +36,12 @@ class YCBineoatDataset(Dataset):
         include_xyz_map=False,
         include_occ_mask=False,
         include_gt_pose=True,
-        transforms=None,
+        transforms_rgb=None,
         start_frame_idx=0,
+        end_frame_idx=None,
         num_mesh_pts=2000,
         convert_pose_to_quat=False,
+        mask_pixels_prob=0.0,
     ):
         self.video_dir = video_dir
         self.downscale = downscale
@@ -51,8 +53,9 @@ class YCBineoatDataset(Dataset):
         self.include_occ_mask = include_occ_mask
         self.include_gt_pose = include_gt_pose
         self.zfar = zfar
-        self.transforms = transforms
+        self.transforms_rgb = transforms_rgb
         self.convert_pose_to_quat = convert_pose_to_quat
+        self.mask_pixels_prob = mask_pixels_prob
 
         self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
 
@@ -72,9 +75,11 @@ class YCBineoatDataset(Dataset):
 
         self.gt_pose_files = sorted(glob.glob(f"{self.video_dir}/annotated_poses/*"))
 
-        self.color_files = self.color_files[start_frame_idx:]  # to bypass still frames
-        self.id_strs = self.id_strs[start_frame_idx:]
-        self.gt_pose_files = self.gt_pose_files[start_frame_idx:]
+        self.start_frame_idx = start_frame_idx
+        self.end_frame_idx = end_frame_idx or len(self.color_files)
+        self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
+        self.id_strs = self.id_strs[self.start_frame_idx : self.end_frame_idx]
+        self.gt_pose_files = self.gt_pose_files[self.start_frame_idx : self.end_frame_idx]
 
         self.num_mesh_pts = num_mesh_pts
         if ycb_meshes_dir is not None:
@@ -111,7 +116,12 @@ class YCBineoatDataset(Dataset):
         sample["mesh_diameter"] = self.mesh_diameter
         sample["obj_name"] = self.obj_name
 
-        sample = process_raw_sample(sample, transforms=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat)
+        sample = process_raw_sample(
+            sample,
+            transforms_rgb=self.transforms_rgb,
+            convert_pose_to_quat=self.convert_pose_to_quat,
+            mask_pixels_prob=self.mask_pixels_prob,
+        )
 
         return sample
 
