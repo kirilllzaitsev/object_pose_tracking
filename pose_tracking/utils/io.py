@@ -114,7 +114,7 @@ def load_depth(path, wh=None, zfar=np.inf, do_convert_to_m=True):
 
 
 def resize_img(depth, wh):
-    return cv2.resize(depth, (wh[0], wh[1]), interpolation=cv2.INTER_NEAREST)
+    return cv2.resize(depth, (wh[1], wh[0]), interpolation=cv2.INTER_NEAREST)
 
 
 def load_color(path, wh=None):

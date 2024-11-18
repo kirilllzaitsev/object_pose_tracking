@@ -58,7 +58,7 @@ class HO3DDataset(torch.utils.data.Dataset):
             rgb_path=path,
             mask=bin_mask,
             intrinsics=self.K,
-            transforms=self.transforms,
+            transforms_rgb=self.transforms,
         )
         return sample
 

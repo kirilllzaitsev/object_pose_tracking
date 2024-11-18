@@ -81,7 +81,7 @@ class CustomDataset(Dataset):
             mask=mask,
             pose=pose,
             intrinsics=self.K,
-            transforms=self.transforms,
+            transforms_rgb=self.transforms,
         )
 
         return sample
