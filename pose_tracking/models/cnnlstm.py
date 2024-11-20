@@ -17,7 +17,8 @@ class LSTMCell(jit.ScriptModule):
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
 
     @jit.script_method
-    def forward(self, input, hx, cx):
+    def forward(self, input, state):
+        hx, cx = state
         gates = torch.mm(input, self.weight_ih.t()) + self.bias_ih + torch.mm(hx, self.weight_hh.t()) + self.bias_hh
         ingate, forgetgate, cellgate, outgate = gates.chunk(4, 1)
 
@@ -70,14 +71,22 @@ class BeliefEncoder(nn.Module):
         if self.use_rnn:
             if cx is None:
                 cell_out = self.state_cell(latent_obs, hx)
-                cx_new = None
             else:
-                cell_out = self.state_cell(latent_obs, hx, cx)
-                cx_new = cell_out["cell_state"]
+                cell_out = self.state_cell(latent_obs, (hx, cx))
         else:
             cell_out = self.state_cell(latent_obs)
+
+        if isinstance(cell_out, dict):
+            hx_new = cell_out["hidden_state"]
+            cx_new = cell_out.get("cell_state")
+        elif len(cell_out) == 2:
+            hx_new = cell_out[0]
+            cx_new = cell_out[1]
+        else:
+            hx_new = cell_out
             cx_new = None
-        prior_belief = cell_out["hidden_state"] if isinstance(cell_out, dict) else cell_out
+
+        prior_belief = hx_new
         prior_belief_encoded = self.belief_prior_mlp(prior_belief)
         prior_belief_depth_encoded = self.belief_depth_mlp(prior_belief)
         latent_depth_gated = latent_depth * torch.sigmoid(prior_belief_depth_encoded)
@@ -89,7 +98,7 @@ class BeliefEncoder(nn.Module):
             "prior_belief_encoded": prior_belief_encoded,
             "prior_belief_depth_encoded": prior_belief_depth_encoded,
             "latent_depth_gated": latent_depth_gated,
-            "hx": prior_belief,
+            "hx": hx_new,
             "cx": cx_new,
         }
 
@@ -243,6 +252,8 @@ class RecurrentCNN(nn.Module):
 
         if use_rnn:
             if rnn_type == "lstm":
+                self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
+            elif rnn_type == "lstm_custom":
                 self.state_cell = LSTMCell(self.input_dim, hidden_dim)
             elif rnn_type == "gru":
                 self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)

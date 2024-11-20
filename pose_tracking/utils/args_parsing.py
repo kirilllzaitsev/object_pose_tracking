@@ -68,7 +68,7 @@ def get_parser():
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
     model_args.add_argument(
-        "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom"]
+        "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
     )
     model_args.add_argument(
         "--encoder_name", type=str, default="regnet_y_800mf", help="Encoder name for both RGB and depth"
