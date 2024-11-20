@@ -118,7 +118,7 @@ def main(exp_tools: t.Optional[dict] = None):
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
         )
 
-    transform = get_transforms()
+    transform = get_transforms(args.transform_names, transform_prob=args.transform_prob)
     if args.ds_name == "ycbi":
         ycbi_kwargs = dict(
             shorter_side=None,
@@ -164,9 +164,9 @@ def main(exp_tools: t.Optional[dict] = None):
         obj_names=args.obj_names_val,
         ds_name=args.ds_name,
         seq_len=args.seq_len,
-        seq_step=args.seq_step,
+        seq_step=1,
         seq_start=None,
-        num_samples=min(args.num_samples, 400),
+        num_samples=min(args.num_samples, 500),
         ds_kwargs=val_ds_kwargs,
     )
 
@@ -235,9 +235,7 @@ def main(exp_tools: t.Optional[dict] = None):
         ],
         weight_decay=args.weight_decay,
     )
-    lr_scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma, verbose=False
-    )
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma)
 
     trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size)
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
@@ -473,7 +471,7 @@ class Trainer:
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
                 r2 = rot_pred[:, 3:] / torch.norm(rot_pred[:, 3:], dim=1, keepdim=True)
-                r3 = torch.cross(r1, r2)
+                r3 = torch.cross(r1, r2, dim=1)
                 rot_pred = torch.cat([r1, r2, r3], dim=1).view(-1, 3, 3)
 
             img_size = rgb.shape[-2:]

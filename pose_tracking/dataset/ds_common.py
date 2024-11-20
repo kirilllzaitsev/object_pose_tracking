@@ -20,9 +20,6 @@ def get_ds_sample(
     mask_pixels_prob=0.0,
     pixels_masked_max_percent=0.1,
 ):
-    if mask_pixels_prob > 0:
-        color = mask_pixels(color, p=mask_pixels_prob, pixels_masked_max_percent=pixels_masked_max_percent)
-
     if transforms_rgb is None:
         rgb = torch.from_numpy(color).permute(2, 0, 1)
     else:
