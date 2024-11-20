@@ -27,16 +27,22 @@ class VideoDataset(Dataset):
         seq = []
         timesteps = self.seq_len
         seq_start = self.seq_start
+        seq_step = self.seq_step
+
+        if not seq_step:
+            seq_step = torch.randint(1, 7, (1,)).item()
+
         if seq_start is None:
             seq_start = torch.randint(
                 0,
-                max(1, len(self.ds) + 1 - timesteps * self.seq_step),
+                max(1, len(self.ds) + 1 - timesteps * seq_step),
                 (1,),
             ).item()
-        assert self.seq_step > 0, f"{self.seq_step=}"
+
+        assert seq_step > 0, f"{seq_step=}"
 
         for t in range(timesteps):
-            frame_idx = seq_start + t * self.seq_step
+            frame_idx = seq_start + t * seq_step
             sample = self.ds[frame_idx]
             seq.append(sample)
         return seq
