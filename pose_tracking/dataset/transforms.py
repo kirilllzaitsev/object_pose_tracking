@@ -4,13 +4,28 @@ from albumentations import Compose, Normalize
 from albumentations.pytorch.transforms import ToTensorV2
 
 
-def get_transforms(use_norm=False):
+def get_transforms(transform_names=None, transform_prob=0.75):
+    transform_names = transform_names or []
     ts = []
-    ts.append(ToTensorV2())
-    if use_norm:
+    if "jitter" in transform_names:
+        ts.append(A.ColorJitter(p=0.5))
+    if "iso" in transform_names:
+        ts.append(A.ISONoise(p=0.25))
+    if "brightness" in transform_names:
+        ts.append(A.RandomBrightnessContrast(p=0.75, brightness_limit=(-0.6, 0.0), contrast_limit=(-0.5, 0.3)))
+    if "blur" in transform_names:
+        ts.append(A.Blur(p=0.1, blur_limit=(3, 9)))
+    if "motion_blur" in transform_names:
+        ts.append(A.MotionBlur(p=0.2, blur_limit=(3, 25)))
+    if "gamma" in transform_names:
+        ts.append(A.RandomGamma(p=0.1, gamma_limit=(15, 65)))
+    if "hue" in transform_names:
+        ts.append(A.HueSaturationValue(p=0.1, val_shift_limit=(-100, -40)))
+    if "norm" in transform_names:
         norm = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ts.append(norm)
-    return Compose(ts)
+    rgb_transforms = Compose(ts, p=transform_prob)
+    return Compose([rgb_transforms, ToTensorV2()])
 
 
 def mask_pixels(img, p=0.5, pixels_masked_max_percent=0.1):
