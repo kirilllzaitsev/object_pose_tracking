@@ -79,7 +79,7 @@ class BeliefEncoder(nn.Module):
         if isinstance(cell_out, dict):
             hx_new = cell_out["hidden_state"]
             cx_new = cell_out.get("cell_state")
-        elif len(cell_out) == 2:
+        elif len(cell_out) == 2 and len(cell_out[0].shape) == 2:
             hx_new = cell_out[0]
             cx_new = cell_out[1]
         else:
@@ -217,7 +217,7 @@ class RecurrentCNN(nn.Module):
         dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
-        do_predict_2d=False,
+        do_predict_2d_t=False,
         do_predict_6d_rot=False,
         use_rnn=True,
         use_obs_belief=False,
@@ -240,7 +240,7 @@ class RecurrentCNN(nn.Module):
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
         self.dropout = dropout
-        self.do_predict_2d = do_predict_2d
+        self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.use_obs_belief = use_obs_belief
         self.use_priv_decoder = use_priv_decoder
@@ -295,7 +295,7 @@ class RecurrentCNN(nn.Module):
                 use_priv_decoder=use_priv_decoder,
                 dropout=dropout,
             )
-        if do_predict_2d:
+        if do_predict_2d_t:
             self.t_mlp_out_dim = 2
             self.depth_mlp_in_dim = depth_dim + rgb_dim
             self.depth_mlp_out_dim = 1
@@ -323,7 +323,7 @@ class RecurrentCNN(nn.Module):
             out_dim=self.t_mlp_out_dim,
             hidden_dim=hidden_dim,
             num_layers=rt_mlps_num_layers,
-            act_out=nn.Sigmoid() if do_predict_2d else None,  # normalized coords
+            act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
             dropout=dropout,
         )
         self.rot_mlp = MLP(
@@ -374,7 +374,7 @@ class RecurrentCNN(nn.Module):
                     "t": torch.zeros(latent_rgb.size(0), self.t_mlp_out_dim, device=latent_rgb.device),
                     "rot": torch.zeros(latent_rgb.size(0), self.rot_mlp_out_dim, device=latent_rgb.device),
                 }
-            if self.do_predict_2d:
+            if self.do_predict_2d_t:
                 prev_pose["center_depth"] = torch.zeros(
                     latent_rgb.size(0), self.depth_mlp_out_dim, device=latent_rgb.device
                 )
@@ -396,8 +396,8 @@ class RecurrentCNN(nn.Module):
             }
         )
 
-        if self.do_predict_2d:
-            if prev_pose is not None:
+        if self.do_predict_2d_t:
+            if self.use_prev_pose_condition:
                 depth_in = torch.cat([extracted_obs, prev_pose["center_depth"]], dim=1)
             else:
                 depth_in = extracted_obs

@@ -45,7 +45,7 @@ def get_model(args):
         benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
         bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
         encoder_name=args.encoder_name,
-        do_predict_2d=args.do_predict_2d,
+        do_predict_2d_t=args.do_predict_2d_t,
         do_predict_6d_rot=args.do_predict_6d_rot,
         benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
         benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
@@ -70,7 +70,6 @@ def get_trainer(args, model, device, writer=None, world_size=1):
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
     use_pose_loss = args.pose_loss_name in ["add"]
-    assert not (use_pose_loss and args.do_predict_2d), "tmp:pose loss implemented only for direct 3d"
     criterion_pose = compute_add_loss if use_pose_loss else None
 
     trainer = Trainer(
@@ -82,7 +81,7 @@ def get_trainer(args, model, device, writer=None, world_size=1):
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
         writer=writer,
-        do_predict_2d=args.do_predict_2d,
+        do_predict_2d_t=args.do_predict_2d_t,
         do_predict_6d_rot=args.do_predict_6d_rot,
         use_rnn=not args.no_rnn,
         use_obs_belief=not args.no_obs_belief,

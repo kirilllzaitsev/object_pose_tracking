@@ -57,9 +57,10 @@ def get_parser():
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
-        "--do_predict_2d", action="store_true", help="Predict object 2D center and depth separately"
+        "--do_predict_2d_t", action="store_true", help="Predict object 2D center and depth separately"
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
+    model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")

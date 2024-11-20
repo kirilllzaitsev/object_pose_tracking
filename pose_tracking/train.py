@@ -332,7 +332,7 @@ class Trainer:
         criterion_pose=None,
         writer=None,
         do_debug=False,
-        do_predict_2d=False,
+        do_predict_2d_t=False,
         do_predict_6d_rot=False,
         use_rnn=True,
         use_obs_belief=True,
@@ -347,7 +347,7 @@ class Trainer:
         ), "Either pose or rot & trans criteria must be provided"
 
         self.do_debug = do_debug
-        self.do_predict_2d = do_predict_2d
+        self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
@@ -480,7 +480,7 @@ class Trainer:
             rot_gt = pose_gt[:, 3:]
             intrinsics = batch_t["intrinsics"]
 
-            if self.do_predict_2d:
+            if self.do_predict_2d_t:
                 # 3d t_pred will be used only for metrics
                 t_pred_2d_denorm = t_pred.detach().clone()
                 t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
@@ -513,7 +513,7 @@ class Trainer:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
             else:
-                if self.do_predict_2d:
+                if self.do_predict_2d_t:
                     t_gt_2d = cam_to_2d(t_gt.unsqueeze(1), intrinsics).squeeze(1)
                     t_gt_2d_norm = t_gt_2d.clone()
                     t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
@@ -599,7 +599,7 @@ class Trainer:
                 self.processed_data["depth"].append(depth)
                 self.processed_data["rot_pred"].append(rot_pred)
                 self.processed_data["t_pred"].append(t_pred)
-                if self.do_predict_2d:
+                if self.do_predict_2d_t:
                     self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
                 if "priv_decoded" in outputs:
                     self.processed_data["priv_decoded"].append(outputs["priv_decoded"])

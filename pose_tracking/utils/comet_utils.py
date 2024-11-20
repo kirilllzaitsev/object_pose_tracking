@@ -18,7 +18,7 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
     if os.path.exists("/home/kirillz"):
         extra_tags.append("e_remote")
     elif os.path.exists("/cluster"):
-        extra_tags.append("e_euler")
+        extra_tags.append("e_eu")
     else:
         extra_tags.append("e_local")
     for k, v in vars(args).items():
@@ -34,11 +34,13 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
     for k in []:
         tag_prefix = get_tag_pref(k, args_to_group_map)
         extra_tags.append(f"{tag_prefix}{getattr(args, k)}")
+    if not args.no_rnn:
+        extra_tags.append(f"m_rnn_type_{args.rnn_type}")
 
     tags_to_log = extra_tags
     if len(args.exp_tags) > 0 and args.exp_tags[0] != "":
-        # ot=other tags
-        tag_prefix = "ot_"
+        # et=exp tags
+        tag_prefix = "et_"
         tags_to_log += [f"{tag_prefix}{x}" for x in args.exp_tags]
     if args.exp_name not in ["", "test"]:
         # en=exp_name
