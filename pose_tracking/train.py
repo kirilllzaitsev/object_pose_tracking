@@ -28,7 +28,12 @@ from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.common import print_args
-from pose_tracking.utils.geom import backproj_2d_to_3d, cam_to_2d, rotate_pts_batch
+from pose_tracking.utils.geom import (
+    backproj_2d_to_3d,
+    cam_to_2d,
+    egocentric_delta_pose_to_pose,
+    rotate_pts_batch,
+)
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
@@ -45,6 +50,10 @@ from pose_tracking.utils.pipe_utils import (
     save_results,
 )
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
+from pose_tracking.utils.rotation_conversions import (
+    matrix_to_quaternion,
+    quaternion_to_matrix,
+)
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
@@ -341,6 +350,7 @@ class Trainer:
         do_log_every_seq=True,
         use_ddp=False,
         use_prev_pose_condition=False,
+        do_predict_rel_pose=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -356,6 +366,7 @@ class Trainer:
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
         self.use_prev_pose_condition = use_prev_pose_condition
+        self.do_predict_rel_pose = do_predict_rel_pose
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -463,10 +474,15 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
 
+            if prev_pose is None and self.do_predict_rel_pose:
+                assert (
+                    not self.do_predict_6d_rot and not self.do_predict_2d_t
+                ), "Relative pose prediction is not supported with 6d rot or 2d t"
+                prev_pose = {"t": pose_gt[:, :3], "rot": pose_gt[:, 3:]}
+
             outputs = self.model(rgb, depth, prev_pose=prev_pose)
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
-            prev_pose = {"t": t_pred, "rot": rot_pred}
 
             if self.do_predict_6d_rot:
                 r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
@@ -497,8 +513,6 @@ class Trainer:
                     )
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
-                prev_pose["center_depth"] = center_depth_pred
-
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
             if self.do_predict_6d_rot:
                 pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
@@ -508,6 +522,24 @@ class Trainer:
                 pose_pred = torch.stack(
                     [convert_pose_quaternion_to_matrix(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
                 )
+
+            if self.do_predict_rel_pose:
+                # upd prev_pose with pose_pred
+                # new_rot = pose_pred[:, :3, :3] @ quaternion_to_matrix(prev_pose["rot"])[:, :3, :3]
+                # new_t = torch.bmm(pose_pred[:, :3, :3], prev_pose["t"].unsqueeze(-1)).squeeze(-1) + pose_pred[:, :3, 3]
+                # pose_pred[:, :3, :3] = new_rot
+                # pose_pred[:, :3, 3] = new_t
+                prev_pose_mat = torch.stack(
+                    [
+                        convert_pose_quaternion_to_matrix(rt)
+                        for rt in torch.cat([prev_pose["t"], prev_pose["rot"]], dim=1)
+                    ]
+                )
+                pose_pred = egocentric_delta_pose_to_pose(
+                    prev_pose_mat, trans_delta=pose_pred[:, :3, 3], rot_mat_delta=pose_pred[:, :3, :3]
+                )
+                new_t = pose_pred[:, :3, 3]
+                new_rot = pose_pred[:, :3, :3]
 
             if self.use_pose_loss:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
@@ -586,9 +618,19 @@ class Trainer:
             if "priv_decoded" in outputs:
                 seq_stats["loss_priv"] += loss_priv.item()
 
+            if self.do_predict_rel_pose:
+                new_rot_quat = matrix_to_quaternion(new_rot)
+                prev_pose = {"t": new_t, "rot": new_rot_quat}
+            else:
+                prev_pose = {"t": t_pred, "rot": rot_pred}
+                if self.do_predict_2d_t:
+                    prev_pose["center_depth"] = center_depth_pred
+            prev_pose = {k: v.detach() for k, v in prev_pose.items()}
+
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                 save_results(batch_t, t_pred, rot_pred, preds_dir)
+
             if self.do_debug:
                 # add everything to processed_data
                 self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
