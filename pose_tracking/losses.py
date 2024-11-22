@@ -1,6 +1,7 @@
 import torch
 from pose_tracking.utils.geom import transform_pts_batch
 from pose_tracking.utils.misc import pick_library
+from torch.nn import functional as F
 
 try:
     from pose_tracking.chamfer_distance import ChamferDistance
@@ -74,3 +75,26 @@ def compute_chamfer_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     dist1, dist2 = chamfer_dist(x, y)
     loss = (torch.mean(dist1)) + (torch.mean(dist2))
     return loss
+
+
+def kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs, cr=4 / 3):
+    # LCR = Smooth`(CR^2 − ||c − a||^2||d − b||^2/||c − b||^2||d − a||^2 ),
+    # where a, b, c, d are arbitrary four collinear kpts
+
+    if len(bbox_2d_kpts_collinear_idxs.shape) > 1:
+        lcr = torch.tensor(0.0, device=kpts_pred.device)
+        if len(bbox_2d_kpts_collinear_idxs.shape) == 3:
+            for bidx in range(bbox_2d_kpts_collinear_idxs.shape[0]):
+                lcr += kpt_cross_ratio_loss(kpts_pred[bidx], bbox_2d_kpts_collinear_idxs[bidx])
+        else:
+            for idx_quad in bbox_2d_kpts_collinear_idxs:
+                lcr += kpt_cross_ratio_loss(kpts_pred, idx_quad)
+        return lcr
+
+    a, b, c, d = kpts_pred[bbox_2d_kpts_collinear_idxs]
+    cr_gt = torch.tensor(cr**2, device=kpts_pred.device)
+    lcr = F.smooth_l1_loss(
+        (torch.norm(c - a) ** 2 * torch.norm(d - b) ** 2) / (torch.norm(c - b) ** 2 * torch.norm(d - a) ** 2),
+        cr_gt,
+    )
+    return lcr
