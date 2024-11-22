@@ -32,6 +32,7 @@ from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
     egocentric_delta_pose_to_pose,
+    pose_to_egocentric_delta_pose,
     rot_mat_from_6d,
     rotate_pts_batch,
 )
@@ -466,8 +467,9 @@ class Trainer:
         if self.do_debug:
             self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
-        abs_prev_pose = None
-        prev_model_out = None
+        abs_prev_pose = None  # the processed ouput of the model that matches model's expected format
+        prev_model_out = None  # the raw ouput of the model
+        prev_gt_mat = None  # prev gt in matrix form
 
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
@@ -484,7 +486,7 @@ class Trainer:
                 ), "Relative pose prediction is not supported with 6d rot or 2d t"
                 abs_prev_pose = {"t": pose_gt[:, :3], "rot": pose_gt[:, 3:]}
 
-            outputs = self.model(rgb, depth, prev_pose=abs_prev_pose)
+            outputs = self.model(rgb, depth, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out)
             prev_model_out = {"t": outputs["t"], "rot": outputs["rot"]}
 
             rot_pred, t_pred = outputs["rot"], outputs["t"]
@@ -516,6 +518,7 @@ class Trainer:
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
+            prev_gt_mat = pose_gt_mat
             if self.do_predict_6d_rot:
                 pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
                 pose_pred[:, :3, :3] = rot_pred
@@ -526,11 +529,6 @@ class Trainer:
                 )
 
             if self.do_predict_rel_pose:
-                # upd prev_pose with pose_pred
-                # abs_rot = pose_pred[:, :3, :3] @ quaternion_to_matrix(prev_pose["rot"])[:, :3, :3]
-                # abs_t = torch.bmm(pose_pred[:, :3, :3], prev_pose["t"].unsqueeze(-1)).squeeze(-1) + pose_pred[:, :3, 3]
-                # pose_pred[:, :3, :3] = abs_rot
-                # pose_pred[:, :3, 3] = abs_t
                 prev_pose_mat = torch.stack(
                     [
                         convert_pose_quaternion_to_matrix(rt)
@@ -538,18 +536,18 @@ class Trainer:
                     ]
                 )
                 pose_pred = egocentric_delta_pose_to_pose(
-                    prev_pose_mat, trans_delta=pose_pred[:, :3, 3], rot_mat_delta=pose_pred[:, :3, :3]
+                    prev_pose_mat,
+                    trans_delta=pose_pred[:, :3, 3],
+                    rot_mat_delta=pose_pred[:, :3, :3],
+                    do_couple_rot_t=False,
                 )
-                abs_t = pose_pred[:, :3, 3]
-                abs_rot = pose_pred[:, :3, :3]
+
+            # -- pose_pred is abs, t_pred/rot_pred can be rel or abs
 
             if self.use_pose_loss:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
             else:
-                if self.do_predict_rel_pose:
-                    t_gt_rel, rot_gt_rel = pose_to_egocentric_delta_pose(pose_gt_mat, prev_gt_mat)
-                    rot_gt_rel = matrix_to_quaternion(rot_gt_rel)
                 if self.do_predict_rel_pose:
                     t_gt_rel, rot_gt_rel = pose_to_egocentric_delta_pose(pose_gt_mat, prev_gt_mat)
                     rot_gt_rel = matrix_to_quaternion(rot_gt_rel)
@@ -561,20 +559,14 @@ class Trainer:
 
                     t_pred_2d = outputs["t"]
                     loss_t_2d = torch.abs(t_pred_2d - t_gt_2d_norm).mean()
+                    loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
+
+                    loss_t = loss_t_2d + loss_center_depth
                 else:
                     if self.do_predict_rel_pose:
                         loss_t = self.criterion_trans(t_pred, t_gt_rel)
                     else:
                         loss_t = self.criterion_trans(t_pred, t_gt)
-                    loss_t = loss_t_2d + loss_center_depth
-                else:
-                    if self.do_predict_rel_pose:
-                        loss_t = self.criterion_trans(t_pred, t_gt_rel)
-                else:
-                    if self.do_predict_rel_pose:
-                        loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
-                    else:
-                        loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 if self.do_predict_6d_rot:
                     loss_rot = torch.abs(
                         rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
@@ -651,8 +643,8 @@ class Trainer:
                 seq_stats["loss_cr"] += loss_cr.item()
 
             if self.do_predict_rel_pose:
-                abs_rot_quat = matrix_to_quaternion(abs_rot)
-                abs_prev_pose = {"t": abs_t, "rot": abs_rot_quat}
+                abs_rot_quat = matrix_to_quaternion(pose_pred[:, :3, :3])
+                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_rot_quat}
             else:
                 abs_prev_pose = {"t": t_pred, "rot": rot_pred}
                 if self.do_predict_2d_t:
@@ -678,12 +670,14 @@ class Trainer:
                 if "priv_decoded" in outputs:
                     self.processed_data["priv_decoded"].append(outputs["priv_decoded"])
                 self.processed_data["pose_pred"].append(pose_pred)
+                self.processed_data["abs_prev_pose"].append(abs_prev_pose)
                 self.processed_data["pts"].append(pts)
                 self.processed_data["bbox_3d"].append(bbox_3d)
                 self.processed_data["diameter"].append(diameter)
                 self.processed_data["loss"].append(loss)
                 self.processed_data["m_batch"].append(m_batch)
                 self.processed_data["loss_depth"].append(loss_depth)
+                self.processed_data["prev_model_out"].append(prev_model_out)
                 if self.use_pose_loss:
                     self.processed_data["loss_pose"].append(loss_pose)
                 else:

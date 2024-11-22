@@ -186,10 +186,13 @@ def pose_to_egocentric_delta_pose(A_in_cam, B_in_cam):
     return trans_delta, rot_mat_delta
 
 
-def egocentric_delta_pose_to_pose(A_in_cam, trans_delta, rot_mat_delta):
+def egocentric_delta_pose_to_pose(A_in_cam, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
     B_in_cam = torch.eye(4, dtype=torch.float, device=A_in_cam.device)[None].expand(len(A_in_cam), -1, -1).contiguous()
-    B_in_cam[:, :3, 3] = A_in_cam[:, :3, 3] + trans_delta
+    if do_couple_rot_t:
+        B_in_cam[:, :3, 3] = torch.bmm(rot_mat_delta, A_in_cam[:, :3, 3].unsqueeze(-1)).squeeze(-1) + trans_delta
+    else:
+        B_in_cam[:, :3, 3] = A_in_cam[:, :3, 3] + trans_delta
     B_in_cam[:, :3, :3] = rot_mat_delta @ A_in_cam[:, :3, :3]
     return B_in_cam
 
