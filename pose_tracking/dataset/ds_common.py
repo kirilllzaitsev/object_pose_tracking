@@ -86,6 +86,8 @@ def process_raw_sample(sample, *args, **kwargs):
     # add keys present in sample but not in ds_sample
     for k, v in sample.items():
         if k not in ds_sample:
+            if v is not None and not ("path" in k or "name" in k) and not isinstance(v, torch.Tensor):
+                v = torch.tensor(v)
             ds_sample[k] = v
     return ds_sample
 
@@ -106,4 +108,13 @@ def seq_collate_fn(batch):
     new_b = []
     for i in range(len(batch[0])):
         new_b.append(dict_collate_fn([d[i] for d in batch]))
+    return new_b
+
+
+def batch_seq_collate_fn(batch):
+    # result is a tensor of size batch_size with dicts having values of size seq_len x ...
+    new_b = []
+    for i in range(len(batch)):
+        new_b.append(dict_collate_fn(batch[i]))
+    new_b = dict_collate_fn(new_b)
     return new_b

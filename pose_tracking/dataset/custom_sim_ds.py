@@ -151,7 +151,9 @@ class CustomSimDataset(Dataset):
         sample["obj_name"] = self.obj_name
         sample["priv"] = priv
 
-        sample = process_raw_sample(sample, transforms=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat)
+        sample = process_raw_sample(
+            sample, transforms_rgb=self.transforms, convert_pose_to_quat=self.convert_pose_to_quat
+        )
 
         return sample
 
