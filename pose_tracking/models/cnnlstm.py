@@ -224,6 +224,7 @@ class RecurrentCNN(nn.Module):
         use_priv_decoder=False,
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
+        do_predict_kpts=False,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -247,6 +248,7 @@ class RecurrentCNN(nn.Module):
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
         self.use_prev_pose_condition = use_prev_pose_condition
+        self.do_predict_kpts = do_predict_kpts
 
         self.input_dim = depth_dim + rgb_dim
 
@@ -333,6 +335,18 @@ class RecurrentCNN(nn.Module):
             num_layers=rt_mlps_num_layers,
             dropout=dropout,
         )
+
+        if self.do_predict_kpts:
+            self.kpts_mlp_in_dim = depth_dim + rgb_dim
+            self.kpts_mlp_out_dim = (8 + 24) * 2
+            self.kpts_mlp = MLP(
+                in_dim=self.kpts_mlp_in_dim,
+                out_dim=self.kpts_mlp_out_dim,
+                hidden_dim=hidden_dim,
+                num_layers=rt_mlps_num_layers,
+                dropout=dropout,
+            )
+
         self.encoder_name = encoder_name
         self.encoder_img, self.encoder_depth = get_encoders(encoder_name, do_freeze=do_freeze_encoders)
         self.hx = None
@@ -403,5 +417,10 @@ class RecurrentCNN(nn.Module):
                 depth_in = extracted_obs
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
+
+        if self.do_predict_kpts:
+            kpts = self.kpts_mlp(extracted_obs)
+            kpts = kpts.view(-1, 8 + 24, 2)
+            res["kpts"] = kpts
 
         return res
