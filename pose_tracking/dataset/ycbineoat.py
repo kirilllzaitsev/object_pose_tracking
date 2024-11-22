@@ -12,7 +12,12 @@ from bop_toolkit_lib.inout import load_depth
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
-from pose_tracking.utils.geom import backproj_depth
+from pose_tracking.utils.geom import (
+    backproj_depth,
+    convert_3d_bbox_to_2d,
+    interpolate_bbox_edges,
+    world_to_2d,
+)
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
@@ -22,7 +27,6 @@ class YCBineoatDataset(Dataset):
 
     ds_name = "ycbi"
 
-    # https://github.com/NVlabs/FoundationPose/blob/main/datareader.py#L57
     def __init__(
         self,
         video_dir,
@@ -36,6 +40,7 @@ class YCBineoatDataset(Dataset):
         include_xyz_map=False,
         include_occ_mask=False,
         include_gt_pose=True,
+        include_bbox_2d=True,
         transforms_rgb=None,
         start_frame_idx=0,
         end_frame_idx=None,
@@ -52,6 +57,7 @@ class YCBineoatDataset(Dataset):
         self.include_xyz_map = include_xyz_map
         self.include_occ_mask = include_occ_mask
         self.include_gt_pose = include_gt_pose
+        self.include_bbox_2d = include_bbox_2d
         self.zfar = zfar
         self.transforms_rgb = transforms_rgb
         self.convert_pose_to_quat = convert_pose_to_quat
@@ -115,6 +121,14 @@ class YCBineoatDataset(Dataset):
         sample["mesh_bbox"] = self.mesh_bbox
         sample["mesh_diameter"] = self.mesh_diameter
         sample["obj_name"] = self.obj_name
+
+        if self.include_bbox_2d:
+            sample["bbox_2d"] = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
+            ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
+            sample["bbox_2d_kpts"] = world_to_2d(ibbs_res["all_points"], K=self.K, rt=sample["pose"])
+            # normalize bbox_2d_kpts to [0, 1]
+            sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
+            sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
 
         sample = process_raw_sample(
             sample,
