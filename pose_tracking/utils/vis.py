@@ -161,11 +161,18 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
 
 
 def draw_2d_bbox_pil(img_PIL, bbox, color="red", width=3):
+    img_PIL = Image.fromarray(adjust_img_for_plt(img_PIL))
     draw = ImageDraw.Draw(img_PIL)
+    if bbox.shape == (4, 2):
+        bbox_xy_bl = bbox[0]
+        bbox_xy_ur = bbox[2]
+    else:
+        bbox_xy_bl = bbox[:2]
+        bbox_xy_ur = bbox[2:]
     draw.rectangle(
         (
-            (bbox[0], bbox[1]),
-            (bbox[2], bbox[3]),
+            (bbox_xy_bl[0], bbox_xy_bl[1]),
+            (bbox_xy_ur[0], bbox_xy_ur[1]),
         ),
         outline=color,
         width=width,
@@ -486,3 +493,10 @@ def draw_pose_contour(cvImg, mesh, intrinsic, obj_openCV_pose, color, thickness=
     contours, _ = cv2.findContours(validMap, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
     cvImg = cv2.drawContours(cvImg, contours, -1, color, thickness)
     return rendered_color, cvImg
+
+
+def plot_bbox_2d(bbox_2d, color="r"):
+    plt.plot(bbox_2d[[0, 1], 0], bbox_2d[[0, 1], 1], color)
+    plt.plot(bbox_2d[[1, 2], 0], bbox_2d[[1, 2], 1], color)
+    plt.plot(bbox_2d[[2, 3], 0], bbox_2d[[2, 3], 1], color)
+    plt.plot(bbox_2d[[3, 0], 0], bbox_2d[[3, 0], 1], color)

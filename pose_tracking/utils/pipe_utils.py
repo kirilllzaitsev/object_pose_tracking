@@ -118,7 +118,12 @@ def create_tools(args: argparse.Namespace) -> dict:
     exp = create_tracking_exp(args, project_name=PROJ_NAME)
     args.comet_exp_name = exp.name  # automatically assigned by Comet
     now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    exp_name = args.comet_exp_name or f"{args.exp_name}/{now}"
+    if args.comet_exp_name:
+        exp_name = args.comet_exp_name
+    else:
+        exp_name = f"{args.exp_name}/{now}"
+        if len(args.exp_tags) > 0:
+            exp_name = f"{exp_name}_{'_'.join(args.exp_tags)}"
     logdir = f"{ARTIFACTS_DIR}/{exp_name}"
     os.makedirs(logdir, exist_ok=True)
     preds_base_dir = f"{logdir}/preds"
