@@ -601,6 +601,15 @@ class Trainer:
                 loss_priv = compute_chamfer_dist(outputs["priv_decoded"], batch_t["priv"])
                 loss += loss_priv * 0.01
 
+            if self.do_predict_kpts:
+                kpts_pred = outputs["kpts"]
+                kpts_gt = batch_t["bbox_2d_kpts"].float()
+                loss_kpts = F.huber_loss(kpts_pred, kpts_gt)
+                bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
+                loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
+                loss += loss_kpts
+                loss += loss_cr * 0.01
+
             if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -617,6 +626,9 @@ class Trainer:
                 seq_stats["loss_t"] += loss_t.item()
             if "priv_decoded" in outputs:
                 seq_stats["loss_priv"] += loss_priv.item()
+            if self.do_predict_kpts:
+                seq_stats["loss_kpts"] += loss_kpts.item()
+                seq_stats["loss_cr"] += loss_cr.item()
 
             if self.do_predict_rel_pose:
                 new_rot_quat = matrix_to_quaternion(new_rot)
@@ -626,6 +638,7 @@ class Trainer:
                 if self.do_predict_2d_t:
                     prev_pose["center_depth"] = center_depth_pred
             prev_pose = {k: v.detach() for k, v in prev_pose.items()}
+            prev_model_out = {"t": outputs["t"], "rot": outputs["rot"]}
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
