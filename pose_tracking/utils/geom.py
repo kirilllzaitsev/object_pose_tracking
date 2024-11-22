@@ -54,6 +54,18 @@ def cam_to_2d(pts, K):
     return new_pts.T
 
 
+def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
+    pose = np.eye(4) if pose is None else pose
+    bbox_2d = world_to_2d(bbox, intrinsics, rt=pose)
+    u, v = bbox_2d[:, 0].astype(int), bbox_2d[:, 1].astype(int)
+    h, w = hw
+    x_min, y_min = np.min(u), np.min(v)
+    x_max, y_max = np.max(u), np.max(v)
+    x_min, y_min, x_max, y_max = max(0, x_min), max(0, y_min), min(w, x_max), min(h, y_max)
+    bbox_2d = np.array([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])
+    return bbox_2d
+
+
 def get_inv_pose(pose=None, rot=None, t=None):
     if pose is not None:
         assert rot is None and t is None
