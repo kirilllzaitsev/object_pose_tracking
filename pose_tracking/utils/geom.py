@@ -473,3 +473,68 @@ def zoom_in(im, c, s, res, channel=3, interpolate=cv2.INTER_LINEAR):
     c_w = 0.5 * (l + r)
     s = s
     return im_resize, c_h, c_w, s
+
+
+def interpolate_bbox_edges(corners, num_points=24):
+    """
+    Interpolate points uniformly between corners of a 3D bounding box.
+
+    Args:
+        corners: Array of shape (8, 3), representing the 8 corners of the bbox.
+        num_points: Total number of interpolated points to generate.
+
+    Returns:
+        Array of shape (num_points, 3), containing the interpolated points.
+    """
+    # Define the 12 edges of the 3D bounding box by corner indices
+    edges = [
+        (0, 1),
+        (1, 3),
+        (3, 2),
+        (2, 0),  # Left face
+        (4, 5),
+        (5, 7),
+        (7, 6),
+        (6, 4),  # Right face
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),  # Vertical edges
+    ]
+    kpt_idxs = list(range(8))
+    kpt_count = len(kpt_idxs)
+    kpt_idx = kpt_count
+    collinear_quad_idxs = []
+
+    # Calculate number of points per edge (24 / 12 = 2 points per edge)
+    points_per_edge = num_points // len(edges)
+    interpolated_points = []
+
+    for start, end in edges:
+        # Get start and end corners of the edge
+        p1 = corners[start]
+        p2 = corners[end]
+        p1_idx = start
+        p2_idx = end
+
+        # Interpolate points between p1 and p2
+        t_vals = np.linspace(0, 1, points_per_edge + 2)[1:-1]  # Exclude exact corners
+        edge_points = [(1 - t) * p1 + t * p2 for t in t_vals]
+        edge_idxs = [p1_idx]
+        for edge_pt in edge_points:
+            kpt_idxs.append(kpt_idx)
+            edge_idxs.append(kpt_idx)
+            kpt_idx = len(kpt_idxs)
+        edge_idxs.append(p2_idx)
+
+        interpolated_points.extend(edge_points)
+        collinear_quad_idxs.append(edge_idxs)
+
+    all_points = np.concatenate([corners, interpolated_points])
+
+    return {
+        "interpolated_points": np.array(interpolated_points),
+        "collinear_quad_idxs": collinear_quad_idxs,
+        "kpt_idxs": kpt_idxs,
+        "all_points": all_points,
+    }
