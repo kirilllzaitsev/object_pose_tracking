@@ -1,5 +1,6 @@
 import argparse
 import glob
+import json
 import os
 import re
 import typing as t
@@ -120,7 +121,7 @@ def load_artifacts_from_comet(
         assert exp_api is not None, f"Experiment {exp_name} not found"
         if args_not_exist:
             try:
-                asset_id = [x for x in exp_api.get_asset_list(asset_type="all") if args_filename in x["fileName"]][0][
+                asset_id = [x for x in exp_api.get_asset_list(asset_type="all") if f"{args_filename}.yaml" in x["fileName"]][0][
                     "assetId"
                 ]
                 api.download_experiment_asset(
@@ -131,7 +132,7 @@ def load_artifacts_from_comet(
             except IndexError:
                 print(f"No args found with name {args_filename}")
                 args_file_path = None
-        elif weights_not_exist or include_session:
+        if weights_not_exist or include_session:
             if use_epoch and epoch is None:
                 epoch = get_latest_ckpt_epoch(exp_name)
                 artifact_name = f"{model_artifact_name}_{epoch}"
@@ -151,6 +152,8 @@ def load_artifacts_from_comet(
                     except IndexError:
                         print(f"No session found with name {session_artifact_name}")
                         session_checkpoint_path = None
+    assert os.path.exists(model_checkpoint_path), f"Model checkpoint not found at {model_checkpoint_path}"
+    assert os.path.exists(args_file_path), f"Args file not found at {args_file_path}"
     results = {
         "checkpoint_path": model_checkpoint_path,
     }
@@ -168,6 +171,25 @@ def load_asset(exp_api, assetId, save_path):
             f.write(chunk)
     return save_path
 
+
+def load_metrics_from_comet(
+    exp_name: str,
+    save_name: str="metrics.json",
+    api: t.Optional[API] = None,
+):
+    if api is None:
+        api = API(api_key=os.environ["COMET_API_KEY"])
+    exp_api = api.get(
+        workspace=COMET_WORKSPACE,
+        project_name=PROJ_NAME,
+        experiment=exp_name,
+    )
+    metrics = exp_api.get_metrics()
+    save_path = f"{ARTIFACTS_DIR}/{exp_name}/{save_name}"
+    with open(save_path, "w") as f:
+        json.dump(metrics, f)
+    return save_path
+    
 
 def log_args(exp: comet_ml.Experiment, args: argparse.Namespace, save_path: str) -> None:
     """Logs the args to the experiment and saves them to a file."""
