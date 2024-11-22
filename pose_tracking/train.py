@@ -547,6 +547,12 @@ class Trainer:
                 loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
                 loss = loss_pose.clone()
             else:
+                if self.do_predict_rel_pose:
+                    t_gt_rel, rot_gt_rel = pose_to_egocentric_delta_pose(pose_gt_mat, prev_gt_mat)
+                    rot_gt_rel = matrix_to_quaternion(rot_gt_rel)
+                if self.do_predict_rel_pose:
+                    t_gt_rel, rot_gt_rel = pose_to_egocentric_delta_pose(pose_gt_mat, prev_gt_mat)
+                    rot_gt_rel = matrix_to_quaternion(rot_gt_rel)
                 if self.do_predict_2d_t:
                     t_gt_2d = cam_to_2d(t_gt.unsqueeze(1), intrinsics).squeeze(1)
                     t_gt_2d_norm = t_gt_2d.clone()
@@ -555,17 +561,29 @@ class Trainer:
 
                     t_pred_2d = outputs["t"]
                     loss_t_2d = torch.abs(t_pred_2d - t_gt_2d_norm).mean()
-                    loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
-
+                else:
+                    if self.do_predict_rel_pose:
+                        loss_t = self.criterion_trans(t_pred, t_gt_rel)
+                    else:
+                        loss_t = self.criterion_trans(t_pred, t_gt)
                     loss_t = loss_t_2d + loss_center_depth
                 else:
-                    loss_t = self.criterion_trans(t_pred, t_gt)
+                    if self.do_predict_rel_pose:
+                        loss_t = self.criterion_trans(t_pred, t_gt_rel)
+                else:
+                    if self.do_predict_rel_pose:
+                        loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
+                    else:
+                        loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 if self.do_predict_6d_rot:
                     loss_rot = torch.abs(
                         rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
                     ).mean()
                 else:
-                    loss_rot = self.criterion_rot(rot_pred, rot_gt)
+                    if self.do_predict_rel_pose:
+                        loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
+                    else:
+                        loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 loss = loss_rot + loss_t
 
             bbox_3d = batch_t["mesh_bbox"]
