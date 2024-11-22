@@ -538,3 +538,27 @@ def interpolate_bbox_edges(corners, num_points=24):
         "kpt_idxs": kpt_idxs,
         "all_points": all_points,
     }
+
+
+def rot_mat_from_6d(poses):
+    """
+    Computes rotation matrix from 6D continuous space according to the parametrisation proposed in
+    On the Continuity of Rotation Representations in Neural Networks
+    https://arxiv.org/pdf/1812.07035.pdf
+    :param poses: [B, 6]
+    :return: R: [B, 3, 3]
+    """
+
+    x_raw = poses[:, 0:3]
+    y_raw = poses[:, 3:6]
+
+    x = x_raw / torch.norm(x_raw, dim=1, keepdim=True)
+    z = torch.cross(x, y_raw, dim=1)
+    z = z / torch.norm(z, dim=1, keepdim=True)
+    y = torch.cross(z, x, dim=1)
+
+    x = x.view(-1, 3, 1)
+    y = y.view(-1, 3, 1)
+    z = z.view(-1, 3, 1)
+    matrix = torch.cat((x, y, z), 2)
+    return matrix

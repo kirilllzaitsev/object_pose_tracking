@@ -20,10 +20,10 @@ from pose_tracking.config import (
     prepare_logger,
 )
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
-from pose_tracking.dataset.ds_common import seq_collate_fn
+from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import VideoDataset
-from pose_tracking.losses import compute_chamfer_dist
+from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
@@ -32,6 +32,7 @@ from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
     egocentric_delta_pose_to_pose,
+    rot_mat_from_6d,
     rotate_pts_batch,
 )
 from pose_tracking.utils.misc import set_seed
@@ -187,7 +188,7 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
 
-    collate_fn = seq_collate_fn
+    collate_fn = seq_collate_fn if args.model_name == "cnnlstm" else batch_seq_collate_fn
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(
@@ -351,6 +352,7 @@ class Trainer:
         use_ddp=False,
         use_prev_pose_condition=False,
         do_predict_rel_pose=False,
+        do_predict_kpts=False,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -367,6 +369,7 @@ class Trainer:
         self.use_ddp = use_ddp
         self.use_prev_pose_condition = use_prev_pose_condition
         self.do_predict_rel_pose = do_predict_rel_pose
+        self.do_predict_kpts = do_predict_kpts
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -487,10 +490,7 @@ class Trainer:
             rot_pred, t_pred = outputs["rot"], outputs["t"]
 
             if self.do_predict_6d_rot:
-                r1 = rot_pred[:, :3] / torch.norm(rot_pred[:, :3], dim=1, keepdim=True)
-                r2 = rot_pred[:, 3:] / torch.norm(rot_pred[:, 3:], dim=1, keepdim=True)
-                r3 = torch.cross(r1, r2, dim=1)
-                rot_pred = torch.cat([r1, r2, r3], dim=1).view(-1, 3, 3)
+                rot_pred = rot_mat_from_6d(rot_pred)
 
             img_size = rgb.shape[-2:]
             h, w = img_size
@@ -687,6 +687,26 @@ class Trainer:
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
+
+
+class TrainerVideopose(Trainer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def loader_forward(
+        self,
+        loader,
+        *,
+        optimizer=None,
+        save_preds=False,
+        preds_dir=None,
+        stage="train",
+    ):
+        if stage == "train":
+            self.train_epoch_count += 1
+        running_stats = defaultdict(float)
+        return running_stats
 
 
 if __name__ == "__main__":
