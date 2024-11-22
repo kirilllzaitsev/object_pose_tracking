@@ -87,33 +87,6 @@ def metrics_all_per_obj_to_df(metrics_all_per_obj, id_to_name):
     return df
 
 
-def format_metrics_df(df):
-    cols_rename = {
-        "add": "ADD",
-        "adds": "ADDS",
-        "miou": "mIoU",
-        "r_err": "Rot error, deg",
-        "t_err": "T error, mm",
-        "5deg5cm": "5deg5cm",
-        "2deg2cm": "2deg2cm",
-        "add10": "ADD10",
-        "adds10": "ADDS10",
-        "valid_miou_frac": "mIoU > 25% frac",
-        "num_samples": "#samples",
-        "add_auc": "ADD AUC",
-        "adds_auc": "ADDS AUC",
-        "t_err_auc": "T error AUC",
-        "loss": "Loss",
-        "loss_pose": "Pose loss",
-        "loss_depth": "Depth loss",
-        "loss_rot": "Rot loss",
-        "loss_t": "T loss",
-    }
-    df = df.rename(columns=cols_rename)
-    df = df.round(5)
-    return df
-
-
 def save_df(df, path):
     create_dir(path)
     df.to_csv(path, index=True)
@@ -138,7 +111,7 @@ def get_preds_path_benchmark(model_name, obj_name, ds_name=None):
     return preds_path
 
 
-def convert_exp_results_to_df(exp_results):
+def convert_exp_results_to_df(exp_results, index_name="Experiment Name"):
     df = pd.DataFrame(exp_results).T
     cols_to_drop = ["miou", "add10", "adds10", "loss_pose"]
     df = df.drop(columns=cols_to_drop, errors="ignore")
@@ -146,7 +119,8 @@ def convert_exp_results_to_df(exp_results):
     # report col and index of nan
     nan_locations = df.isna().stack()[lambda x: x].index.tolist()
     nan_df = pd.DataFrame(nan_locations, columns=["Index", "Column"])
-    print(nan_df)
+    if len(nan_df) > 0:
+        print(nan_df)
 
     loss_columns = [col for col in df.columns if "loss" in col]
     other_columns = [col for col in df.columns if "loss" not in col]
@@ -154,7 +128,7 @@ def convert_exp_results_to_df(exp_results):
 
     df = df.sort_values(by="5deg5cm", ascending=False)
     df = format_metrics_df(df)
-    df.index.name = "Experiment Name"
+    df.index.name = index_name
     return df
 
 

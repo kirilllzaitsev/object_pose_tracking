@@ -1,6 +1,7 @@
 import copy
 
 import numpy as np
+import torch
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.geom import transform_pts, world_to_cam
 from pose_tracking.utils.trimesh_utils import get_posed_model_pts
@@ -45,14 +46,27 @@ def calc_metrics(
         pred_rt[:3, 3] *= 1000
         gt_rt = copy.deepcopy(gt_rt)
         gt_rt[:3, 3] *= 1000
-    add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
-    adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
-    res = {
-        "add": add,
-        "adds": adds,
-    }
+    res = {}
+    try:
+        add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
+        adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
+        res.update(
+            {
+                "add": add,
+                "adds": adds,
+            }
+        )
+    except Exception as e:
+        print(f"Error calculating ADD/ADDS: {e}\nInputs:\n{pred_rt=},\n{gt_rt=},\n{pts=},\n{model}")
+        res.update(
+            {
+                "add": torch.nan,
+                "adds": torch.nan,
+            }
+        )
     if use_miou:
         assert bbox_3d is not None
+        bbox_3d = cast_to_numpy(bbox_3d)
         miou = calc_3d_iou_new(
             pred_rt,
             gt_rt,
@@ -67,6 +81,7 @@ def calc_metrics(
     res.update(rt_errors)
 
     if diameter is not None:
+        diameter = cast_to_numpy(diameter)
         thresh = diameter * 0.1
         res["add10"] = add < thresh
         res["adds10"] = adds < thresh

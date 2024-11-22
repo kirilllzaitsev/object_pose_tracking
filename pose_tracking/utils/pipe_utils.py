@@ -19,6 +19,7 @@ from pose_tracking.utils.comet_utils import (
     log_args,
     log_ckpt_to_exp,
     log_params_to_exp,
+    log_pkg_code,
     log_tags,
 )
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy
@@ -29,50 +30,60 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def get_model(args):
-    priv_dim = 256 * 3
-    latent_dim = 256  # defined by the encoders
-    depth_dim = latent_dim
-    rgb_dim = latent_dim
-    model = RecurrentCNN(
-        depth_dim=depth_dim,
-        rgb_dim=rgb_dim,
-        hidden_dim=args.hidden_dim,
-        rnn_type=args.rnn_type,
-        bdec_priv_decoder_out_dim=priv_dim,
-        bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
-        benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
-        benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
-        bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
-        encoder_name=args.encoder_name,
-        do_predict_2d_t=args.do_predict_2d_t,
-        do_predict_6d_rot=args.do_predict_6d_rot,
-        benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
-        benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
-        priv_decoder_num_layers=args.priv_decoder_num_layers,
-        depth_decoder_num_layers=args.depth_decoder_num_layers,
-        hidden_attn_num_layers=args.hidden_attn_num_layers,
-        rt_mlps_num_layers=args.rt_mlps_num_layers,
-        dropout=args.dropout,
-        use_rnn=not args.no_rnn,
-        use_obs_belief=not args.no_obs_belief,
-        use_priv_decoder=args.use_priv_decoder,
-        do_freeze_encoders=args.do_freeze_encoders,
-        use_prev_pose_condition=args.use_prev_pose_condition,
-    )
+    if args.model_name == "videopose":
+        from videopose.arguments import parse_args
+        from videopose.models.model import VideoPose
+
+        args = parse_args()
+        # args.backbone = "transformer"
+        model = VideoPose(args)
+    else:
+        priv_dim = 256 * 3
+        latent_dim = 256  # defined by the encoders
+        depth_dim = latent_dim
+        rgb_dim = latent_dim
+        model = RecurrentCNN(
+            depth_dim=depth_dim,
+            rgb_dim=rgb_dim,
+            hidden_dim=args.hidden_dim,
+            rnn_type=args.rnn_type,
+            bdec_priv_decoder_out_dim=priv_dim,
+            bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
+            bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
+            benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
+            benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
+            bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
+            encoder_name=args.encoder_name,
+            do_predict_2d_t=args.do_predict_2d_t,
+            do_predict_6d_rot=args.do_predict_6d_rot,
+            benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
+            benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
+            priv_decoder_num_layers=args.priv_decoder_num_layers,
+            depth_decoder_num_layers=args.depth_decoder_num_layers,
+            hidden_attn_num_layers=args.hidden_attn_num_layers,
+            rt_mlps_num_layers=args.rt_mlps_num_layers,
+            dropout=args.dropout,
+            use_rnn=not args.no_rnn,
+            use_obs_belief=not args.no_obs_belief,
+            use_priv_decoder=args.use_priv_decoder,
+            do_freeze_encoders=args.do_freeze_encoders,
+            use_prev_pose_condition=args.use_prev_pose_condition,
+            do_predict_kpts=args.do_predict_kpts,
+        )
 
     return model
 
 
 def get_trainer(args, model, device, writer=None, world_size=1):
-    from pose_tracking.train import Trainer
+    from pose_tracking.train import Trainer, TrainerVideopose
 
     criterion_trans = nn.MSELoss()
     criterion_rot = geodesic_loss
     use_pose_loss = args.pose_loss_name in ["add"]
     criterion_pose = compute_add_loss if use_pose_loss else None
 
-    trainer = Trainer(
+    trainer_cls = TrainerVideopose if args.model_name == "videopose" else Trainer
+    trainer = trainer_cls(
         model=model,
         device=device,
         hidden_dim=args.hidden_dim,
@@ -90,6 +101,8 @@ def get_trainer(args, model, device, writer=None, world_size=1):
         do_log_every_seq=args.do_log_every_seq,
         use_ddp=args.use_ddp,
         use_prev_pose_condition=args.use_prev_pose_condition,
+        do_predict_rel_pose=args.do_predict_rel_pose,
+        do_predict_kpts=args.do_predict_kpts,
     )
 
     return trainer
@@ -168,6 +181,7 @@ def log_exp_meta(args, save_args, logdir, exp, args_to_group_map=None):
         "args",
     )
     log_tags(args, exp, args_to_group_map=args_to_group_map)
+    log_pkg_code(exp)
 
     if save_args:
         log_args(exp, args, f"{logdir}/args.yaml")
@@ -301,7 +315,7 @@ def get_obj_ds(ds_name, ds_kwargs, obj_name):
 
 def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")
-    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t", "loss_priv"]
+    LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t", "loss_priv", "loss_kpts", "loss_cr"]
     ERROR_METRICS = ["r_err", "t_err"]
     ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
 

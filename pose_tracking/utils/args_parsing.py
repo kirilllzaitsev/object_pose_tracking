@@ -61,12 +61,16 @@ def get_parser():
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
+    model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
+    )
+    model_args.add_argument(
+        "--model_name", type=str, default="cnnlstm", help="Model name", choices=["cnnlstm", "videopose"]
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
@@ -183,6 +187,8 @@ def fix_outdated_args(args):
         args.obj_names = [args.obj_name]
     if noattr("args_path"):
         args.args_path = None
+    if noattr("do_predict_2d_t"):
+        args.do_predict_2d_t = args.do_predict_2d
 
     # for all args present in parser but not in args, set them to their default values
     for group in parser._action_groups:
