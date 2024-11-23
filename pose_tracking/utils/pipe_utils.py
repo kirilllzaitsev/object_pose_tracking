@@ -323,7 +323,7 @@ def print_stats(train_stats, logger, stage):
     logger.info(f"## {stage.upper()} ##")
     LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t", "loss_priv", "loss_kpts", "loss_cr"]
     ERROR_METRICS = ["r_err", "t_err"]
-    ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm"]
+    ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm", "nan_count"]
 
     for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
         msg = []

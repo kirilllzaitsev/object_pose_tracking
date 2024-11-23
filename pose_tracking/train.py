@@ -600,6 +600,7 @@ class Trainer:
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
+            seq_metrics["nan_count"] += 1 if any(np.isnan(v) for v in m_batch_avg.values()) else 0
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -697,6 +698,8 @@ class Trainer:
             seq_stats[k] = v / len(batched_seq)
         for k, v in seq_metrics.items():
             seq_metrics[k] = v / len(batched_seq)
+        if seq_metrics["nan_count"] == 0:
+            seq_metrics.pop("nan_count")
 
         return {
             "losses": seq_stats,

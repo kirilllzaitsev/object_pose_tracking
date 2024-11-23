@@ -24,7 +24,7 @@ def calc_metrics(
     log_fn=print,
 ):
     """
-    Calculate required metrics for pose estimation.
+    Calculate required metrics for pose estimation. Metric units are mm and degrees.
     Args:
         pred_rt: predicted pose
         gt_rt: ground truth pose
@@ -92,6 +92,8 @@ def calc_metrics(
 
     if diameter is not None:
         diameter = cast_to_numpy(diameter)
+        if is_meters:
+            diameter *= 1000
         thresh = diameter * 0.1
         res["add10"] = add < thresh
         res["adds10"] = adds < thresh
