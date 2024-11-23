@@ -248,7 +248,7 @@ def main(exp_tools: t.Optional[dict] = None):
     )
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma)
 
-    trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size)
+    trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size, logger=logger)
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model.module if args.use_ddp else model,
@@ -354,6 +354,7 @@ class Trainer:
         use_prev_pose_condition=False,
         do_predict_rel_pose=False,
         do_predict_kpts=False,
+        logger=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -365,6 +366,7 @@ class Trainer:
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
+        self.logger = logger
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
@@ -591,6 +593,7 @@ class Trainer:
                     bbox_3d=bbox_3d[sample_idx],
                     diameter=diameter[sample_idx],
                     is_meters=True,
+                    log_fn=print if self.logger is None else self.logger.warning,
                 )
                 for k, v in m_sample.items():
                     m_batch[k].append(v)

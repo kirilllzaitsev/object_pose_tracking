@@ -62,7 +62,7 @@ def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     x_min, y_min = np.min(u), np.min(v)
     x_max, y_max = np.max(u), np.max(v)
     x_min, y_min, x_max, y_max = max(0, x_min), max(0, y_min), min(w, x_max), min(h, y_max)
-    bbox_2d = np.array([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])
+    bbox_2d = np.array([[x_min, y_min], [x_max, y_max]])
     return bbox_2d
 
 

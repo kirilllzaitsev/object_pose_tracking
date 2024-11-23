@@ -74,7 +74,7 @@ def get_model(args):
     return model
 
 
-def get_trainer(args, model, device, writer=None, world_size=1):
+def get_trainer(args, model, device, writer=None, world_size=1, logger=None):
     from pose_tracking.train import Trainer, TrainerVideopose
 
     criterion_trans = nn.MSELoss()
@@ -103,6 +103,7 @@ def get_trainer(args, model, device, writer=None, world_size=1):
         use_prev_pose_condition=args.use_prev_pose_condition,
         do_predict_rel_pose=args.do_predict_rel_pose,
         do_predict_kpts=args.do_predict_kpts,
+        logger=logger,
     )
 
     return trainer
