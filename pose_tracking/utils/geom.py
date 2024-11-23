@@ -179,22 +179,29 @@ def backproj_2d_to_3d(pts, depth, K):
     return pts.T
 
 
-def pose_to_egocentric_delta_pose(A_in_cam, B_in_cam):
+def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
     """Extract r and t deltas from two poses in the same frame"""
-    trans_delta = B_in_cam[:, :3, 3] - A_in_cam[:, :3, 3]
-    rot_mat_delta = B_in_cam[:, :3, :3] @ A_in_cam[:, :3, :3].permute(0, 2, 1)
+    trans_delta = cur_pose_mat[:, :3, 3] - prev_pose_mat[:, :3, 3]
+    rot_mat_delta = cur_pose_mat[:, :3, :3] @ prev_pose_mat[:, :3, :3].permute(0, 2, 1)
     return trans_delta, rot_mat_delta
 
 
-def egocentric_delta_pose_to_pose(A_in_cam, trans_delta, rot_mat_delta, do_couple_rot_t=False):
+def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
-    B_in_cam = torch.eye(4, dtype=torch.float, device=A_in_cam.device)[None].expand(len(A_in_cam), -1, -1).contiguous()
+    cur_pose_mat = (
+        torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)[None]
+        .expand(len(prev_pose_mat), -1, -1)
+        .contiguous()
+    )
     if do_couple_rot_t:
-        B_in_cam[:, :3, 3] = torch.bmm(rot_mat_delta, A_in_cam[:, :3, 3].unsqueeze(-1)).squeeze(-1) + trans_delta
+        # both deltas are in the global frame
+        cur_pose_mat[:, :3, 3] = (
+            torch.bmm(rot_mat_delta, prev_pose_mat[:, :3, 3].unsqueeze(-1)).squeeze(-1) + trans_delta
+        )
     else:
-        B_in_cam[:, :3, 3] = A_in_cam[:, :3, 3] + trans_delta
-    B_in_cam[:, :3, :3] = rot_mat_delta @ A_in_cam[:, :3, :3]
-    return B_in_cam
+        cur_pose_mat[:, :3, 3] = prev_pose_mat[:, :3, 3] + trans_delta
+    cur_pose_mat[:, :3, :3] = rot_mat_delta @ prev_pose_mat[:, :3, :3]
+    return cur_pose_mat
 
 
 def to_homo(pts):

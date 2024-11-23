@@ -628,7 +628,7 @@ class Trainer:
 
             if do_opt_every_ts:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -691,7 +691,7 @@ class Trainer:
         if do_opt_in_the_end:
             total_loss /= len(batched_seq)
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
             optimizer.step()
 
         for k, v in seq_stats.items():

@@ -81,6 +81,7 @@ def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
     @bbox: (2,3) min/max
     @line_color: RGB
     """
+    bbox = cast_to_numpy(bbox)
     min_xyz = bbox.min(axis=0)
     xmin, ymin, zmin = min_xyz
     max_xyz = bbox.max(axis=0)
