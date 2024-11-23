@@ -10,9 +10,9 @@ except Exception as e:
     ChamferDistance = None
 
 
-def normalize_quaternion(quat):
+def normalize_quaternion(quat, eps=1e-7):
     norm = torch.norm(quat, dim=-1, keepdim=True)
-    return quat / norm
+    return quat / (norm + eps)
 
 
 def geodesic_loss(pred_quat, true_quat):
@@ -26,17 +26,24 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
-def quat_loss(pred_quat, true_quat, eps=1e-7):
-    gt = true_quat
-
-    est = normalize_quaternion(pred_quat)
-    inn_prod = torch.mm(est, gt.t())
+def videopose_loss(pred_quat, true_quat, eps=1e-7):
+    # https://github.com/ApoorvaBeedu/VideoPose/models/loss.py
+    pred_quat = normalize_quaternion(pred_quat)
+    true_quat = normalize_quaternion(true_quat)
+    inn_prod = torch.mm(pred_quat, true_quat.t())
     inn_prod = inn_prod.diag()
 
     quat_loss = 1 - (inn_prod).abs().mean()
     quat_reg_loss = (1 - pred_quat.norm(dim=1).mean()).abs()
 
     return quat_loss, quat_reg_loss
+
+
+def geodesic_loss_mat(pred_rot, true_rot):
+    R_diffs = pred_rot @ true_rot.permute(0, 2, 1)
+    traces = R_diffs.diagonal(dim1=-2, dim2=-1).sum(-1)
+    dists = torch.acos(torch.clamp((traces - 1) / 2, -1, 1))
+    return torch.mean(dists)
 
 
 def compute_adds_loss(pose_pred, pose_gt, points):
