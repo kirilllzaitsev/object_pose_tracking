@@ -1,6 +1,7 @@
 import torch
 from pose_tracking.utils.geom import transform_pts_batch
 from pose_tracking.utils.misc import pick_library
+from torch import nn
 from torch.nn import functional as F
 
 try:
@@ -105,3 +106,57 @@ def kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs, cr=4 / 3):
         cr_gt,
     )
     return lcr
+
+
+def get_t_loss(t_loss_name):
+    if t_loss_name == "mse":
+        criterion_trans = nn.MSELoss()
+    elif t_loss_name == "mae":
+        criterion_trans = nn.L1Loss()
+    elif t_loss_name == "huber":
+        criterion_trans = nn.SmoothL1Loss()
+    elif t_loss_name == "huber_norm":
+        huber = get_t_loss("huber")
+
+        def huber_norm_loss(pred, true):
+            pred = pred / pred.norm(dim=-1, keepdim=True)
+            true = true / true.norm(dim=-1, keepdim=True)
+            return huber(pred, true)
+
+        criterion_trans = huber_norm_loss
+    elif t_loss_name == "angle":
+        huber = get_t_loss("huber")
+
+        def huber_angle_loss(pred, true):
+            angle = torch.acos(
+                torch.clamp(torch.sum(pred * true, dim=-1) / (pred.norm(dim=-1) * true.norm(dim=-1)), -1, 1)
+            )
+            return huber(angle, torch.zeros_like(angle))
+
+        criterion_trans = huber_angle_loss
+    elif t_loss_name == "mixed":
+        huber = get_t_loss("huber")
+        huber_norm = get_t_loss("huber_norm")
+        huber_angle = get_t_loss("angle")
+
+        def mixed_loss(pred, true):
+            return huber(pred, true) + huber_norm(pred, true) + huber_angle(pred, true)
+
+        criterion_trans = mixed_loss
+    else:
+        raise ValueError(f"Unknown translation loss name: {t_loss_name}")
+    return criterion_trans
+
+
+def get_rot_loss(rot_loss_name):
+    if rot_loss_name == "geodesic":
+        criterion_rot = geodesic_loss
+    elif rot_loss_name == "mse":
+        criterion_rot = nn.MSELoss()
+    elif rot_loss_name == "mae":
+        criterion_rot = nn.L1Loss()
+    elif rot_loss_name == "huber":
+        criterion_rot = nn.SmoothL1Loss()
+    else:
+        raise ValueError(f"Unknown rotation loss name: {rot_loss_name}")
+    return criterion_rot

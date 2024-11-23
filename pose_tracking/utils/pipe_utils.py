@@ -12,7 +12,12 @@ from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, YCBINEOAT_SCENE_DIR
 from pose_tracking.dataset.custom_sim_ds import CustomSimDataset
 from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
-from pose_tracking.losses import compute_add_loss, geodesic_loss
+from pose_tracking.losses import (
+    compute_add_loss,
+    geodesic_loss,
+    get_rot_loss,
+    get_t_loss,
+)
 from pose_tracking.models.cnnlstm import RecurrentCNN
 from pose_tracking.utils.comet_utils import (
     create_tracking_exp,
@@ -77,8 +82,8 @@ def get_model(args):
 def get_trainer(args, model, device, writer=None, world_size=1, logger=None):
     from pose_tracking.train import Trainer, TrainerVideopose
 
-    criterion_trans = nn.MSELoss()
-    criterion_rot = geodesic_loss
+    criterion_trans = get_t_loss(args.t_loss_name)
+    criterion_rot = get_rot_loss(args.rot_loss_name)
     use_pose_loss = args.pose_loss_name in ["add"]
     criterion_pose = compute_add_loss if use_pose_loss else None
 
