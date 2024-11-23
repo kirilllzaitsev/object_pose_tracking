@@ -21,6 +21,7 @@ def calc_metrics(
     use_symmetry=True,
     diameter=None,
     is_meters=True,
+    log_fn=print,
 ):
     """
     Calculate required metrics for pose estimation.
@@ -57,13 +58,22 @@ def calc_metrics(
             }
         )
     except Exception as e:
-        print(f"Error calculating ADD/ADDS: {e}\nInputs:\n{pred_rt=},\n{gt_rt=},\n{pts=},\n{model}")
+        log_fn(f"Error calculating metrics: {e}\nInputs:\n{pred_rt=},\n{gt_rt=},\n{pts=},\n{model=}")
         res.update(
             {
                 "add": torch.nan,
                 "adds": torch.nan,
+                "r_err": torch.nan,
+                "t_err": torch.nan,
+                "5deg5cm": torch.nan,
+                "2deg2cm": torch.nan,
             }
         )
+        if use_miou:
+            res["miou"] = torch.nan
+        if np.isnan(pred_rt).any():
+            log_fn("pred_rt has nan values")
+        return res
     if use_miou:
         assert bbox_3d is not None
         bbox_3d = cast_to_numpy(bbox_3d)
