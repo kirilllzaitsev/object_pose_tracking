@@ -1,4 +1,5 @@
 import json
+import os
 from glob import glob
 from pathlib import Path
 
@@ -101,6 +102,10 @@ def load_mask_(path):
 
 def load_rgb_(path):
     return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
+
+
+def ensure_path_exists(path):
+    assert os.path.exists(path), f"File not found: {path}"
 
 
 def load_depth(path, wh=None, zfar=np.inf, do_convert_to_m=True):

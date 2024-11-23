@@ -54,6 +54,20 @@ def get_parser():
     train_args.add_argument(
         "--pose_loss_name", type=str, default="add", help="Pose loss name", choices=["separate", "add"]
     )
+    train_args.add_argument(
+        "--t_loss_name",
+        type=str,
+        default="mse",
+        help="Translation loss name",
+        choices=["mse", "mae", "huber", "huber_norm", "angle", "mixed"],
+    )
+    train_args.add_argument(
+        "--rot_loss_name",
+        type=str,
+        default="geodesic",
+        help="Rotation loss name",
+        choices=["geodesic", "mse", "mae", "huber"],
+    )
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(

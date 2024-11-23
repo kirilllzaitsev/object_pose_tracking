@@ -583,6 +583,7 @@ class Trainer:
             bbox_3d = batch_t["mesh_bbox"]
             diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
+            nan_count = 0
             for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
                 m_sample = calc_metrics(
                     pred_rt=pred_rt,
@@ -597,10 +598,13 @@ class Trainer:
                 )
                 for k, v in m_sample.items():
                     m_batch[k].append(v)
+                if any(np.isnan(v) for v in m_sample.values()):
+                    nan_count += 1
+
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
-            seq_metrics["nan_count"] += 1 if any(np.isnan(v) for v in m_batch_avg.values()) else 0
+            seq_metrics["nan_count"] += nan_count
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -633,18 +637,18 @@ class Trainer:
             elif do_opt_in_the_end:
                 total_loss += loss
 
-            seq_stats["loss"] += loss.item()
+            seq_stats["loss"] += loss
             seq_stats["loss_depth"] += loss_depth
             if self.use_pose_loss:
-                seq_stats["loss_pose"] += loss_pose.item()
+                seq_stats["loss_pose"] += loss_pose
             else:
-                seq_stats["loss_rot"] += loss_rot.item()
-                seq_stats["loss_t"] += loss_t.item()
+                seq_stats["loss_rot"] += loss_rot
+                seq_stats["loss_t"] += loss_t
             if "priv_decoded" in outputs:
-                seq_stats["loss_priv"] += loss_priv.item()
+                seq_stats["loss_priv"] += loss_priv
             if self.do_predict_kpts:
-                seq_stats["loss_kpts"] += loss_kpts.item()
-                seq_stats["loss_cr"] += loss_cr.item()
+                seq_stats["loss_kpts"] += loss_kpts
+                seq_stats["loss_cr"] += loss_cr
 
             if self.do_predict_rel_pose:
                 abs_rot_quat = matrix_to_quaternion(pose_pred[:, :3, :3])
@@ -695,8 +699,12 @@ class Trainer:
             optimizer.step()
 
         for k, v in seq_stats.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
             seq_stats[k] = v / len(batched_seq)
         for k, v in seq_metrics.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
             seq_metrics[k] = v / len(batched_seq)
         if seq_metrics["nan_count"] == 0:
             seq_metrics.pop("nan_count")
