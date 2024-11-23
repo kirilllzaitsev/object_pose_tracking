@@ -77,6 +77,8 @@ def calc_metrics(
     if use_miou:
         assert bbox_3d is not None
         bbox_3d = cast_to_numpy(bbox_3d)
+        if is_meters:
+            bbox_3d *= 1000
         miou = calc_3d_iou_new(
             pred_rt,
             gt_rt,

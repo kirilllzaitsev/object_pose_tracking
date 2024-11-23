@@ -117,7 +117,7 @@ def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
 
 
 def draw_poses_on_video(
-    rgbs, intrinsics, poses_pred, poses_gt=None, bbox=None, bbox_color=(255, 255, 0), scale=50.0, take_n=None
+    rgbs, intrinsics, poses_pred, poses_gt=None, bbox=None, bbox_color=(255, 255, 0), scale=0.05, take_n=None
 ):
     """
     Given a list of rgb images, camera intrinsics, CAD bounding box, and poses, draw the poses and object axes on the images. The args have to be numpy arrays.
