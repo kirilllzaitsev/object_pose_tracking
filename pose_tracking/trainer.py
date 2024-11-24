@@ -21,6 +21,7 @@ from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
     matrix_to_quaternion,
+    quaternion_to_axis_angle,
 )
 from tqdm.auto import tqdm
 
@@ -210,7 +211,9 @@ class Trainer:
                 ), "Relative pose prediction is not supported with 6d rot or 2d t"
                 abs_prev_pose = {"t": pose_gt[:, :3], "rot": pose_gt[:, 3:]}
 
-            outputs = self.model(rgb, depth, bbox=bbox_2d, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out)
+            outputs = self.model(
+                rgb, depth, bbox=bbox_2d, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out
+            )
 
             # POSTPROCESS OUTPUTS
 
@@ -303,8 +306,8 @@ class Trainer:
                         rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
                     ).mean()
                 elif self.do_predict_3d_rot:
-                    # rot_gt_3d = quaternion_to_axis_angle(rot_gt)
-                    loss_rot = F.mse_loss(rot_pred, pose_gt_mat[:, :3, :3])
+                    rot_gt_3d = quaternion_to_axis_angle(rot_gt)
+                    loss_rot = F.mse_loss(outputs["rot"], rot_gt_3d)
                 else:
                     if self.do_predict_rel_pose:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
