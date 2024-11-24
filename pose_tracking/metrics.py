@@ -58,7 +58,7 @@ def calc_metrics(
             }
         )
     except Exception as e:
-        log_fn(f"Error calculating metrics: {e}\nInputs:\n{pred_rt=},\n{gt_rt=},\n{pts=},\n{model=}")
+        log_fn(f"Error calculating metrics: {e}\nInputs:\n{pred_rt=},\n{gt_rt=}")
         res.update(
             {
                 "add": torch.nan,

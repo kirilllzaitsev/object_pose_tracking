@@ -314,7 +314,7 @@ class RecurrentCNN(nn.Module):
             self.t_mlp_out_dim = 3
 
         self.t_mlp_in_dim = self.rot_mlp_in_dim = depth_dim + rgb_dim
-        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else 4
+        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
             self.t_mlp_in_dim += self.t_mlp_out_dim

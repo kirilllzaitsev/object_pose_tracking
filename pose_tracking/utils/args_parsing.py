@@ -76,6 +76,7 @@ def get_parser():
         "--do_predict_2d_t", action="store_true", help="Predict object 2D center and depth separately"
     )
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
+    model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
@@ -189,6 +190,8 @@ def postprocess_args(args):
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"
+
+    assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
 
     return args
 

@@ -355,6 +355,8 @@ class Trainer:
         do_debug=False,
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
+        do_predict_3d_rot=False,
+        do_predict_3d_rot=False,
         use_rnn=True,
         use_obs_belief=True,
         world_size=1,
@@ -375,7 +377,9 @@ class Trainer:
 
         self.do_debug = do_debug
         self.do_predict_2d_t = do_predict_2d_t
+        self.do_predict_3d_rot = do_predict_3d_rot
         self.do_predict_6d_rot = do_predict_6d_rot
+        self.do_predict_3d_rot = do_predict_3d_rot
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
@@ -499,6 +503,7 @@ class Trainer:
         abs_prev_pose = None  # the processed ouput of the model that matches model's expected format
         prev_model_out = None  # the raw ouput of the model
         prev_gt_mat = None  # prev gt in matrix form
+        nan_count = 0
 
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
@@ -522,6 +527,8 @@ class Trainer:
 
             if self.do_predict_6d_rot:
                 rot_pred = rot_mat_from_6d(rot_pred)
+            elif self.do_predict_3d_rot:
+                rot_pred = axis_angle_to_matrix(rot_pred)
 
             img_size = rgb.shape[-2:]
             h, w = img_size
@@ -548,7 +555,7 @@ class Trainer:
 
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
             prev_gt_mat = pose_gt_mat
-            if self.do_predict_6d_rot:
+            if self.do_predict_6d_rot or self.do_predict_3d_rot:
                 pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
                 pose_pred[:, :3, :3] = rot_pred
                 pose_pred[:, :3, 3] = t_pred
@@ -600,6 +607,9 @@ class Trainer:
                     loss_rot = torch.abs(
                         rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
                     ).mean()
+                elif self.do_predict_3d_rot:
+                    # rot_gt_3d = quaternion_to_axis_angle(rot_gt)
+                    loss_rot = F.mse_loss(rot_pred, pose_gt_mat[:, :3, :3])
                 else:
                     if self.do_predict_rel_pose:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
@@ -610,7 +620,6 @@ class Trainer:
             bbox_3d = batch_t["mesh_bbox"]
             diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
-            nan_count = 0
             for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
                 m_sample = calc_metrics(
                     pred_rt=pred_rt,
@@ -631,7 +640,6 @@ class Trainer:
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
-            seq_metrics["nan_count"] += nan_count
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
