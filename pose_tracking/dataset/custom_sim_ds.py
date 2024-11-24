@@ -42,6 +42,7 @@ class CustomSimDataset(Dataset):
     def __init__(
         self,
         root_dir,
+        cam_init_rot=(0.5, -0.5, 0.5, -0.5),
         include_masks=False,
         zfar=np.inf,
         transforms=None,
@@ -93,7 +94,7 @@ class CustomSimDataset(Dataset):
         if cam_pose_path is not None:
             cam_pose_path = Path(cam_pose_path)
             self.cam_pose = load_pose(cam_pose_path)
-            cam_init_rot = quaternion_to_matrix(torch.tensor((0.5, -0.5, 0.5, -0.5))).numpy()
+            cam_init_rot = quaternion_to_matrix(torch.tensor(cam_init_rot)).numpy()
             self.cam_pose[:3, :3] = cam_init_rot
             self.w2c = get_inv_pose(pose=self.cam_pose)
 
@@ -115,7 +116,7 @@ class CustomSimDataset(Dataset):
         path = self.color_files[idx]
         color = self.get_color(idx)
         depth_raw = self.get_depth(idx)
-        pose = load_pose(
+        pose = self.load_pose(
             Path(self.color_files[idx].replace("rgb/", "pose/")).parent / self.obj_name / f"{self.id_strs[idx]}.txt"
         )
 
@@ -157,6 +158,12 @@ class CustomSimDataset(Dataset):
 
         return sample
 
+    def load_pose(self, path):
+        pose = load_pose(path)
+        if self.do_remap_pose_from_isaac:
+            pose = self.pose_remap_from_isaac(pose)
+        return pose
+
     def load_mask(self, path):
         mask = load_mask(path.replace("rgb/", "masks/"))
         mask = torch.from_numpy(mask).float()
@@ -190,7 +197,5 @@ class CustomSimDatasetEval(CustomSimDataset):
 
     def __getitem__(self, i):
         sample = super().__getitem__(i)
-        sample["pose_pred"] = load_pose(f"{self.preds_path}/{self.id_strs[i]}.txt")
-        if self.do_remap_pose_from_isaac:
-            sample["pose_pred"] = self.pose_remap_from_isaac(sample["pose_pred"])
+        sample["pose_pred"] = self.load_pose(f"{self.preds_path}/{self.id_strs[i]}.txt")
         return sample
