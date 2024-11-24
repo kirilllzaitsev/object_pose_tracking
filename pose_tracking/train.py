@@ -471,6 +471,8 @@ class Trainer:
     ):
 
         is_train = optimizer is not None
+        do_opt_every_ts = is_train and self.use_optim_every_ts
+        do_opt_in_the_end = is_train and not self.use_optim_every_ts
 
         batch_size = len(batched_seq[0]["rgb"])
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
@@ -479,8 +481,6 @@ class Trainer:
         seq_metrics = defaultdict(float)
         ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
 
-        do_opt_every_ts = is_train and self.use_optim_every_ts
-        do_opt_in_the_end = is_train and not self.use_optim_every_ts
         if do_opt_in_the_end:
             optimizer.zero_grad()
             total_loss = 0
@@ -509,6 +509,10 @@ class Trainer:
             pose_gt = batch_t["pose"]
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
+            intrinsics = batch_t["intrinsics"]
+            h, w = rgb.shape[-2:]
+            t_gt = pose_gt[:, :3]
+            rot_gt = pose_gt[:, 3:]
 
             if abs_prev_pose is None and self.do_predict_rel_pose:
                 assert (
@@ -517,8 +521,10 @@ class Trainer:
                 abs_prev_pose = {"t": pose_gt[:, :3], "rot": pose_gt[:, 3:]}
 
             outputs = self.model(rgb, depth, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out)
-            prev_model_out = {"t": outputs["t"], "rot": outputs["rot"]}
 
+            # POSTPROCESS OUTPUTS
+
+            prev_model_out = {"t": outputs["t"], "rot": outputs["rot"]}
             rot_pred, t_pred = outputs["rot"], outputs["t"]
 
             if self.do_predict_6d_rot:
@@ -526,14 +532,7 @@ class Trainer:
             elif self.do_predict_3d_rot:
                 rot_pred = axis_angle_to_matrix(rot_pred)
 
-            img_size = rgb.shape[-2:]
-            h, w = img_size
-            t_gt = pose_gt[:, :3]
-            rot_gt = pose_gt[:, 3:]
-            intrinsics = batch_t["intrinsics"]
-
             if self.do_predict_2d_t:
-                # 3d t_pred will be used only for metrics
                 t_pred_2d_denorm = t_pred.detach().clone()
                 t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
                 t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
@@ -574,6 +573,16 @@ class Trainer:
                     do_couple_rot_t=False,
                 )
 
+            if self.do_predict_rel_pose:
+                abs_rot_quat = matrix_to_quaternion(pose_pred[:, :3, :3])
+                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_rot_quat}
+            else:
+                abs_prev_pose = {"t": t_pred, "rot": rot_pred}
+                if self.do_predict_2d_t:
+                    abs_prev_pose["center_depth"] = center_depth_pred
+            abs_prev_pose = {k: v.detach() for k, v in abs_prev_pose.items()}
+
+            # LOSSES
             # -- pose_pred is abs, t_pred/rot_pred can be rel or abs
 
             if self.use_pose_loss:
@@ -613,35 +622,6 @@ class Trainer:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 loss = loss_rot + loss_t
 
-            bbox_3d = batch_t["mesh_bbox"]
-            diameter = batch_t["mesh_diameter"]
-            m_batch = defaultdict(list)
-            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
-                m_sample = calc_metrics(
-                    pred_rt=pred_rt,
-                    gt_rt=gt_rt,
-                    pts=pts[sample_idx],
-                    class_name=None,
-                    use_miou=True,
-                    bbox_3d=bbox_3d[sample_idx],
-                    diameter=diameter[sample_idx],
-                    is_meters=True,
-                    log_fn=print if self.logger is None else self.logger.warning,
-                )
-                for k, v in m_sample.items():
-                    m_batch[k].append(v)
-                if any(np.isnan(v) for v in m_sample.values()):
-                    nan_count += 1
-
-            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
-            for k, v in m_batch_avg.items():
-                seq_metrics[k] += v
-
-            if self.do_log and self.do_log_every_ts:
-                for k, v in m_batch_avg.items():
-                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
-            self.ts_counts_per_stage[stage] += 1
-
             if self.use_obs_belief:
                 loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
             else:
@@ -668,6 +648,34 @@ class Trainer:
             elif do_opt_in_the_end:
                 total_loss += loss
 
+            # METRICS
+
+            bbox_3d = batch_t["mesh_bbox"]
+            diameter = batch_t["mesh_diameter"]
+            m_batch = defaultdict(list)
+            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
+                m_sample = calc_metrics(
+                    pred_rt=pred_rt,
+                    gt_rt=gt_rt,
+                    pts=pts[sample_idx],
+                    class_name=None,
+                    use_miou=True,
+                    bbox_3d=bbox_3d[sample_idx],
+                    diameter=diameter[sample_idx],
+                    is_meters=True,
+                    log_fn=print if self.logger is None else self.logger.warning,
+                )
+                for k, v in m_sample.items():
+                    m_batch[k].append(v)
+                if any(np.isnan(v) for v in m_sample.values()):
+                    nan_count += 1
+
+            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            for k, v in m_batch_avg.items():
+                seq_metrics[k] += v
+
+            # OTHER
+
             seq_stats["loss"] += loss
             seq_stats["loss_depth"] += loss_depth
             if self.use_pose_loss:
@@ -681,14 +689,11 @@ class Trainer:
                 seq_stats["loss_kpts"] += loss_kpts
                 seq_stats["loss_cr"] += loss_cr
 
-            if self.do_predict_rel_pose:
-                abs_rot_quat = matrix_to_quaternion(pose_pred[:, :3, :3])
-                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_rot_quat}
-            else:
-                abs_prev_pose = {"t": t_pred, "rot": rot_pred}
-                if self.do_predict_2d_t:
-                    abs_prev_pose["center_depth"] = center_depth_pred
-            abs_prev_pose = {k: v.detach() for k, v in abs_prev_pose.items()}
+            if self.do_log and self.do_log_every_ts:
+                for k, v in m_batch_avg.items():
+                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+
+            self.ts_counts_per_stage[stage] += 1
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
@@ -736,14 +741,11 @@ class Trainer:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
             optimizer.step()
 
-        for k, v in seq_stats.items():
-            if isinstance(v, torch.Tensor):
-                v = v.item()
-            seq_stats[k] = v / len(batched_seq)
-        for k, v in seq_metrics.items():
-            if isinstance(v, torch.Tensor):
-                v = v.item()
-            seq_metrics[k] = v / len(batched_seq)
+        for stats in [seq_stats, seq_metrics]:
+            for k, v in stats.items():
+                if isinstance(v, torch.Tensor):
+                    v = v.item()
+                stats[k] = v / len(batched_seq)
 
         if nan_count > 0:
             seq_metrics["nan_count"] = nan_count
