@@ -3,7 +3,12 @@ import torchvision
 
 
 def get_encoders(
-    model_name="regnet_y_800mf", device="cpu", weights_img="imagenet", weights_depth=None, do_freeze=False
+    model_name="regnet_y_800mf",
+    device="cpu",
+    weights_img="imagenet",
+    weights_depth=None,
+    do_freeze=False,
+    disable_bn_running_stats=False,
 ):
     assert model_name in ["regnet_y_800mf", "efficientnet_b1", "efficientnet_v2_s"], model_name
     if model_name == "regnet_y_800mf":
@@ -35,6 +40,8 @@ def get_encoders(
             )
     for m in [encoder_s_img, encoder_s_depth]:
         m.to(device)
+        if disable_bn_running_stats:
+            disable_running_stats(m)
     if do_freeze:
         to_freeze = []
         if weights_img is not None:
@@ -47,6 +54,14 @@ def get_encoders(
                     continue
                 param.requires_grad = False
     return encoder_s_img, encoder_s_depth
+
+
+def disable_running_stats(model):
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.track_running_stats = False
+            module.running_mean = None
+            module.running_var = None
 
 
 def is_param_part_of_encoders(name):
