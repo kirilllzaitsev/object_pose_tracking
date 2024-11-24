@@ -54,6 +54,7 @@ class Trainer:
         vis_epoch_freq=None,
         do_vis=False,
         exp_dir=None,
+        model_name=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -76,6 +77,7 @@ class Trainer:
         self.do_predict_kpts = do_predict_kpts
         self.do_vis = do_vis
         self.exp_dir = exp_dir
+        self.model_name = model_name
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -197,6 +199,7 @@ class Trainer:
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
             intrinsics = batch_t["intrinsics"]
+            bbox_2d = batch_t["bbox_2d"]
             h, w = rgb.shape[-2:]
             t_gt = pose_gt[:, :3]
             rot_gt = pose_gt[:, 3:]
@@ -207,7 +210,7 @@ class Trainer:
                 ), "Relative pose prediction is not supported with 6d rot or 2d t"
                 abs_prev_pose = {"t": pose_gt[:, :3], "rot": pose_gt[:, 3:]}
 
-            outputs = self.model(rgb, depth, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out)
+            outputs = self.model(rgb, depth, bbox=bbox_2d, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out)
 
             # POSTPROCESS OUTPUTS
 

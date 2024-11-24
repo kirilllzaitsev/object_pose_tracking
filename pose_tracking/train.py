@@ -167,7 +167,7 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
 
-    collate_fn = seq_collate_fn if args.model_name == "cnnlstm" else batch_seq_collate_fn
+    collate_fn = batch_seq_collate_fn if args.model_name in ["videopose"] else seq_collate_fn
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset)
         train_loader = DataLoader(

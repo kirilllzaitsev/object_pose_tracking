@@ -18,7 +18,7 @@ from pose_tracking.losses import (
     get_rot_loss,
     get_t_loss,
 )
-from pose_tracking.models.cnnlstm import RecurrentCNN
+from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
 from pose_tracking.utils.comet_utils import (
     create_tracking_exp,
     log_args,
@@ -47,7 +47,13 @@ def get_model(args):
         latent_dim = 256  # defined by the encoders
         depth_dim = latent_dim
         rgb_dim = latent_dim
-        model = RecurrentCNN(
+        if args.model_name == "cnnlstm":
+            model_cls = RecurrentCNN
+        elif args.model_name == "cnnlstm_sep":
+            model_cls = RecurrentCNNSeparated
+        else:
+            raise ValueError(f"Unknown model name {args.model_name}")
+        model = model_cls(
             depth_dim=depth_dim,
             rgb_dim=rgb_dim,
             hidden_dim=args.hidden_dim,
@@ -114,6 +120,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         do_predict_rel_pose=args.do_predict_rel_pose,
         do_predict_kpts=args.do_predict_kpts,
         do_vis=do_vis,
+        model_name=args.model_name,
     )
 
     return trainer

@@ -87,7 +87,7 @@ def get_parser():
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
     model_args.add_argument(
-        "--model_name", type=str, default="cnnlstm", help="Model name", choices=["cnnlstm", "videopose"]
+        "--model_name", type=str, default="cnnlstm", help="Model name", choices=["cnnlstm", "cnnlstm_sep", "videopose"]
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]

@@ -367,7 +367,7 @@ class RecurrentCNN(nn.Module):
         self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
         self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
 
-    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None):
+    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, **kwargs):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
         latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
@@ -462,6 +462,7 @@ class RecurrentCNNSeparated(nn.Module):
         encoder_name="regnet_y_800mf",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
+        do_predict_3d_rot=False,
         use_rnn=True,
         use_obs_belief=False,
         use_priv_decoder=False,
@@ -486,6 +487,7 @@ class RecurrentCNNSeparated(nn.Module):
         self.dropout = dropout
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
+        self.do_predict_3d_rot = do_predict_3d_rot
         self.use_obs_belief = use_obs_belief
         self.use_priv_decoder = use_priv_decoder
         self.use_rnn = use_rnn
@@ -588,7 +590,7 @@ class RecurrentCNNSeparated(nn.Module):
             self.t_mlp_out_dim = 3
 
         self.t_mlp_in_dim = self.rot_mlp_in_dim = depth_dim + rgb_dim
-        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else 4
+        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
             self.t_mlp_in_dim += self.t_mlp_out_dim

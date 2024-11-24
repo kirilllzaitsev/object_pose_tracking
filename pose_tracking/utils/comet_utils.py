@@ -36,6 +36,7 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         tag_prefix = get_tag_pref(k, args_to_group_map)
         extra_tags.append(f"{tag_prefix}{getattr(args, k)}")
     if not args.no_rnn:
+        extra_tags.append("m_rnn")
         extra_tags.append(f"m_rnn_type_{args.rnn_type}")
 
     tags_to_log = extra_tags
@@ -121,9 +122,9 @@ def load_artifacts_from_comet(
         assert exp_api is not None, f"Experiment {exp_name} not found"
         if args_not_exist:
             try:
-                asset_id = [x for x in exp_api.get_asset_list(asset_type="all") if f"{args_filename}.yaml" in x["fileName"]][0][
-                    "assetId"
-                ]
+                asset_id = [
+                    x for x in exp_api.get_asset_list(asset_type="all") if f"{args_filename}.yaml" in x["fileName"]
+                ][0]["assetId"]
                 api.download_experiment_asset(
                     exp_api.id,
                     asset_id,
@@ -174,7 +175,7 @@ def load_asset(exp_api, assetId, save_path):
 
 def load_metrics_from_comet(
     exp_name: str,
-    save_name: str="metrics.json",
+    save_name: str = "metrics.json",
     api: t.Optional[API] = None,
 ):
     if api is None:
@@ -189,7 +190,7 @@ def load_metrics_from_comet(
     with open(save_path, "w") as f:
         json.dump(metrics, f)
     return save_path
-    
+
 
 def log_args(exp: comet_ml.Experiment, args: argparse.Namespace, save_path: str) -> None:
     """Logs the args to the experiment and saves them to a file."""
