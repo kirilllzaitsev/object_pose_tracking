@@ -116,6 +116,7 @@ def main(exp_tools: t.Optional[dict] = None):
             include_depth=True,
             include_gt_pose=True,
             include_mask=True,
+            include_bbox_2d=True if args.model_name in ["cnnlstm_sep"] else False,
             ycb_meshes_dir=YCB_MESHES_DIR,
             transforms_rgb=transform,
             start_frame_idx=0,

@@ -649,8 +649,11 @@ class RecurrentCNNSeparated(nn.Module):
         # should be called at the beginning of each sequence
         self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
         self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
+        self.t_rnn.reset_state(batch_size, device)
 
     def forward(self, rgb, depth, bbox=None, prev_pose=None):
+
+        B, C, H, W = rgb.size()
 
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
@@ -658,7 +661,7 @@ class RecurrentCNNSeparated(nn.Module):
         block3_output_rgb = self.intermediate_outputs["block3_output"]
         block3_output_depth = self.intermediate_outputs["block3_output"]
         if isinstance(bbox, torch.Tensor):
-            ind = torch.arange(bbox.shape[0]).unsqueeze(1).repeat(1, bbox.size(0)).reshape(-1, 1)
+            ind = torch.arange(bbox.shape[0]).unsqueeze(1)
             ind = ind.type_as(bbox)
             bbox_roi = torch.cat((ind, bbox.reshape(-1, 4).float()), dim=1).float()
         else:
@@ -666,8 +669,8 @@ class RecurrentCNNSeparated(nn.Module):
 
         latent_rgb_roi = roi_align(block3_output_rgb, bbox_roi, self.roi_size)
         latent_depth_roi = roi_align(block3_output_depth, bbox_roi, self.roi_size)
-        latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi)
-        latent_depth_roi = self.depth_roi_cnn(latent_depth_roi)
+        latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi).view(B, -1)
+        latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(B, -1)
 
         t_net_out = self.t_rnn(rgb, depth, prev_pose=prev_pose, latent_rgb=latent_rgb, latent_depth=latent_depth)
 
@@ -700,8 +703,7 @@ class RecurrentCNNSeparated(nn.Module):
         else:
             rot_in = extracted_obs
 
-        b, *_ = rot_in.shape
-        rot = self.rot_mlp(rot_in.view(b, -1))
+        rot = self.rot_mlp(rot_in.view(B, -1))
 
         res.update(
             {
