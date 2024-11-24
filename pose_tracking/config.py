@@ -92,6 +92,7 @@ def log_exception(*args):
 
 
 logger = prepare_logger()
+default_logger = logger
 
 if __name__ == "__main__":
     logger.info(f"PROJ_DIR: {PROJ_DIR}")

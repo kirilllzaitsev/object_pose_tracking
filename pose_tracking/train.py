@@ -23,6 +23,7 @@ from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import VideoDataset
+from pose_tracking.config import default_logger
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
@@ -255,7 +256,7 @@ def main(exp_tools: t.Optional[dict] = None):
         writer=writer,
         world_size=world_size,
         logger=logger,
-        do_vis_inputs=args.do_vis_inputs and is_main_process,
+        do_vis=args.do_vis and is_main_process,
         exp_dir=logdir,
     )
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
@@ -365,7 +366,7 @@ class Trainer:
         do_predict_kpts=False,
         logger=None,
         vis_epoch_freq=None,
-        do_vis_inputs=False,
+        do_vis=False,
         exp_dir=None,
     ):
         assert criterion_pose is not None or (
@@ -378,7 +379,7 @@ class Trainer:
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
-        self.logger = logger
+        self.logger = default_logger if logger is None else logger
         self.vis_epoch_freq = vis_epoch_freq
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
@@ -386,7 +387,7 @@ class Trainer:
         self.use_prev_pose_condition = use_prev_pose_condition
         self.do_predict_rel_pose = do_predict_rel_pose
         self.do_predict_kpts = do_predict_kpts
-        self.do_vis_inputs = do_vis_inputs
+        self.do_vis = do_vis
         self.exp_dir = exp_dir
 
         self.use_pose_loss = criterion_pose is not None
@@ -406,6 +407,7 @@ class Trainer:
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
         self.train_epoch_count = 0
+        self.vis_dir = f"{self.exp_dir}/vis"
 
     def loader_forward(
         self,
@@ -420,6 +422,8 @@ class Trainer:
             self.train_epoch_count += 1
         running_stats = defaultdict(float)
         seq_pbar = tqdm(loader, desc="Seq", leave=False)
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
             seq_stats = self.batched_seq_forward(
                 batched_seq=batched_seq,
@@ -427,6 +431,7 @@ class Trainer:
                 save_preds=save_preds,
                 preds_dir=preds_dir,
                 stage=stage,
+                do_vis=do_vis,
             )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
@@ -442,6 +447,8 @@ class Trainer:
             seq_pbar.set_postfix(
                 {k: v / (seq_pack_idx + 1) for k, v in running_stats.items()},
             )
+
+            do_vis = False  # only do vis for the first seq
 
         for k, v in running_stats.items():
             running_stats[k] = v / len(loader)
@@ -460,6 +467,7 @@ class Trainer:
         save_preds=False,
         preds_dir=None,
         stage="train",
+        do_vis=False,
     ):
 
         is_train = optimizer is not None
@@ -484,9 +492,9 @@ class Trainer:
         if self.do_debug:
             self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
-        do_vis = self.do_vis_inputs and self.train_epoch_count % self.vis_epoch_freq == 0
         if do_vis:
             vis_batch_idxs = np.random.choice(batch_size, 2, replace=False)
+            vis_data = defaultdict(list)
 
         abs_prev_pose = None  # the processed ouput of the model that matches model's expected format
         prev_model_out = None  # the raw ouput of the model
@@ -684,7 +692,10 @@ class Trainer:
 
             if do_vis:
                 # save inputs to the exp dir
-                pass
+                for k in ["rgb", "mask", "depth", "intrinsics", "mesh_bbox"]:
+                    vis_data[k].append([batch_t[k][i] for i in vis_batch_idxs])
+                vis_data["pose_pred"].append(pose_pred[vis_batch_idxs].detach())
+                vis_data["pose_gt_mat"].append(pose_gt_mat[vis_batch_idxs])
 
             if self.do_debug:
                 # add everything to processed_data
@@ -731,6 +742,12 @@ class Trainer:
             seq_metrics[k] = v / len(batched_seq)
         if seq_metrics["nan_count"] == 0:
             seq_metrics.pop("nan_count")
+
+        if do_vis:
+            os.makedirs(self.vis_dir, exist_ok=True)
+            save_vis_path = f"{self.vis_dir}/epoch_{self.train_epoch_count}.pt"
+            torch.save(vis_data, save_vis_path)
+            self.logger.info(f"Saved vis data to {save_vis_path}")
 
         return {
             "losses": seq_stats,
