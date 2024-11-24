@@ -81,7 +81,7 @@ def get_model(args):
 
 
 def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None):
-    from pose_tracking.train import Trainer, TrainerVideopose
+    from pose_tracking.trainer import Trainer, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
     criterion_rot = get_rot_loss(args.rot_loss_name)
