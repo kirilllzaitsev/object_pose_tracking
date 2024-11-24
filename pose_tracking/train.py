@@ -16,14 +16,13 @@ from pose_tracking.config import (
     DATA_DIR,
     PROJ_DIR,
     YCB_MESHES_DIR,
+    default_logger,
     log_exception,
     prepare_logger,
 )
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
-from pose_tracking.dataset.video_ds import VideoDataset
-from pose_tracking.config import default_logger
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
@@ -43,7 +42,6 @@ from pose_tracking.utils.pipe_utils import (
     create_tools,
     get_full_ds,
     get_model,
-    get_obj_ds,
     get_trainer,
     log_artifacts,
     log_exp_meta,
@@ -54,8 +52,8 @@ from pose_tracking.utils.pipe_utils import (
 )
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import (
+    axis_angle_to_matrix,
     matrix_to_quaternion,
-    quaternion_to_matrix,
 )
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -356,7 +354,6 @@ class Trainer:
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
-        do_predict_3d_rot=False,
         use_rnn=True,
         use_obs_belief=True,
         world_size=1,
@@ -377,7 +374,6 @@ class Trainer:
 
         self.do_debug = do_debug
         self.do_predict_2d_t = do_predict_2d_t
-        self.do_predict_3d_rot = do_predict_3d_rot
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
         self.use_rnn = use_rnn
@@ -748,8 +744,9 @@ class Trainer:
             if isinstance(v, torch.Tensor):
                 v = v.item()
             seq_metrics[k] = v / len(batched_seq)
-        if seq_metrics["nan_count"] == 0:
-            seq_metrics.pop("nan_count")
+
+        if nan_count > 0:
+            seq_metrics["nan_count"] = nan_count
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
