@@ -248,7 +248,16 @@ def main(exp_tools: t.Optional[dict] = None):
     )
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma)
 
-    trainer = get_trainer(args, model, device=device, writer=writer, world_size=world_size, logger=logger)
+    trainer = get_trainer(
+        args,
+        model,
+        device=device,
+        writer=writer,
+        world_size=world_size,
+        logger=logger,
+        do_vis_inputs=args.do_vis_inputs and is_main_process,
+        exp_dir=logdir,
+    )
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model.module if args.use_ddp else model,
@@ -355,6 +364,9 @@ class Trainer:
         do_predict_rel_pose=False,
         do_predict_kpts=False,
         logger=None,
+        vis_epoch_freq=None,
+        do_vis_inputs=False,
+        exp_dir=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -367,12 +379,15 @@ class Trainer:
         self.use_obs_belief = use_obs_belief
         self.world_size = world_size
         self.logger = logger
+        self.vis_epoch_freq = vis_epoch_freq
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
         self.use_prev_pose_condition = use_prev_pose_condition
         self.do_predict_rel_pose = do_predict_rel_pose
         self.do_predict_kpts = do_predict_kpts
+        self.do_vis_inputs = do_vis_inputs
+        self.exp_dir = exp_dir
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -468,6 +483,10 @@ class Trainer:
             self.model.reset_state(batch_size, device=self.device)
         if self.do_debug:
             self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
+
+        do_vis = self.do_vis_inputs and self.train_epoch_count % self.vis_epoch_freq == 0
+        if do_vis:
+            vis_batch_idxs = np.random.choice(batch_size, 2, replace=False)
 
         abs_prev_pose = None  # the processed ouput of the model that matches model's expected format
         prev_model_out = None  # the raw ouput of the model
@@ -662,6 +681,10 @@ class Trainer:
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                 save_results(batch_t, t_pred, rot_pred, preds_dir)
+
+            if do_vis:
+                # save inputs to the exp dir
+                pass
 
             if self.do_debug:
                 # add everything to processed_data

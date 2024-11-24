@@ -425,7 +425,7 @@ def plot_sample(rgb, depth, mask):
     depth = adjust_depth_for_plt(depth)
     mask = adjust_img_for_plt(mask)
     axs[0, 0].imshow(color)
-    im = axs[0, 1].imshow(depth, cmap="jet")
+    im = axs[0, 1].imshow(depth, cmap="viridis")
     fig.colorbar(im, ax=axs[0, 1])
     axs[1, 0].imshow(mask)
     color_masked = copy.deepcopy(color)

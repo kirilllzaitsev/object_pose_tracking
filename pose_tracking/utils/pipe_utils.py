@@ -79,7 +79,7 @@ def get_model(args):
     return model
 
 
-def get_trainer(args, model, device, writer=None, world_size=1, logger=None):
+def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis_inputs=False, exp_dir=None):
     from pose_tracking.train import Trainer, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
@@ -102,13 +102,16 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None):
         use_rnn=not args.no_rnn,
         use_obs_belief=not args.no_obs_belief,
         world_size=world_size,
+        logger=logger,
+        vis_epoch_freq=args.vis_epoch_freq,
+        exp_dir=exp_dir,
         do_log_every_ts=args.do_log_every_ts,
         do_log_every_seq=args.do_log_every_seq,
         use_ddp=args.use_ddp,
         use_prev_pose_condition=args.use_prev_pose_condition,
         do_predict_rel_pose=args.do_predict_rel_pose,
         do_predict_kpts=args.do_predict_kpts,
-        logger=logger,
+        do_vis_inputs=do_vis_inputs,
     )
 
     return trainer
