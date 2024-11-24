@@ -2,7 +2,10 @@ import numpy as np
 import torch
 import trimesh
 from bop_toolkit_lib.transform import euler_matrix
-from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
+from pose_tracking.utils.rotation_conversions import (
+    axis_angle_to_matrix,
+    quaternion_to_matrix,
+)
 
 
 def combine_R_and_T(R, T, scale_translation=1.0):
@@ -17,6 +20,15 @@ def convert_pose_quaternion_to_matrix(pose):
     q = pose[3:]
     pose_matrix = torch.eye(4).to(pose.device)
     pose_matrix[:3, :3] = quaternion_to_matrix(q)
+    pose_matrix[:3, 3] = t
+    return pose_matrix
+
+
+def convert_pose_axis_angle_to_matrix(pose):
+    t = pose[:3]
+    axis_angle = pose[3:]
+    pose_matrix = torch.eye(4).to(pose.device)
+    pose_matrix[:3, :3] = axis_angle_to_matrix(axis_angle)
     pose_matrix[:3, 3] = t
     return pose_matrix
 
