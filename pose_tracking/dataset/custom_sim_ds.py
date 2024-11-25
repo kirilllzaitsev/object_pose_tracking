@@ -54,6 +54,8 @@ class CustomSimDataset(Dataset):
         obj_name="cube",
         convert_pose_to_quat=False,
         num_mesh_pts=2000,
+        env_id=None,
+        obj_id=None,
     ):
         self.include_masks = include_masks
         self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
@@ -63,9 +65,18 @@ class CustomSimDataset(Dataset):
         self.root_dir = root_dir
         self.transforms = transforms
         self.obj_name = obj_name
+        self.env_id = env_id
+        self.obj_id = obj_id
 
-        self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
-        self.K = np.loadtxt(f"{self.root_dir}/intrinsics.txt").reshape(3, 3)
+        if env_id is not None:
+            assert obj_id is not None
+
+        if env_id is None:
+            self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
+            self.K = np.loadtxt(f"{self.root_dir}/intrinsics.txt").reshape(3, 3)
+        else:
+            self.color_files = sorted(glob.glob(f"{self.root_dir}/env_{env_id}/rgb/*.png"))
+            self.K = np.load(f"{self.root_dir}/env_{env_id}/intrinsics.npy")[env_id]
         self.id_strs = []
         for color_file in self.color_files:
             id_str = os.path.basename(color_file).replace(".png", "")
@@ -88,8 +99,9 @@ class CustomSimDataset(Dataset):
             )
 
         if cam_pose_path is None:
-            if os.path.exists(f"{self.root_dir}/cam_pose.txt"):
-                cam_pose_path = f"{self.root_dir}/cam_pose.txt"
+            ext = ".txt" if env_id is None else f".npy"
+            if os.path.exists(f"{self.root_dir}/cam_pose.{ext}"):
+                cam_pose_path = f"{self.root_dir}/cam_pose.{ext}"
 
         if cam_pose_path is not None:
             cam_pose_path = Path(cam_pose_path)
@@ -97,7 +109,6 @@ class CustomSimDataset(Dataset):
             cam_init_rot = quaternion_to_matrix(torch.tensor(cam_init_rot)).numpy()
             self.cam_pose[:3, :3] = cam_init_rot
             self.w2c = get_inv_pose(pose=self.cam_pose)
-
         else:
             self.cam_pose = None
 
@@ -116,9 +127,10 @@ class CustomSimDataset(Dataset):
         path = self.color_files[idx]
         color = self.get_color(idx)
         depth_raw = self.get_depth(idx)
-        pose = self.load_pose(
-            Path(self.color_files[idx].replace("rgb/", "pose/")).parent / self.obj_name / f"{self.id_strs[idx]}.txt"
-        )
+        if self.env_id:
+            pose = self.load_pose(
+                Path(self.color_files[idx].replace("rgb/", "pose/")).parent / self.obj_name / f"{self.id_strs[idx]}.npy"
+            )
 
         priv = None
         if self.use_priv_info:
