@@ -434,22 +434,22 @@ def plot_sample(rgb, depth, mask):
     return fig, axs
 
 
-def plot_sample_pose_dict(sample, scale=50.0, bbox=None, axs=None):
+def plot_sample_pose_dict(sample, scale=50.0, bbox=None, ax=None):
     color = sample["rgb"]
     pose = sample["pose"]
     if pose.shape[-1] == 7:
         pose = convert_pose_quaternion_to_matrix(pose)
     K = sample["intrinsics"]
-    return plot_pose(color, pose, K, bbox=bbox, axs=axs, scale=scale)
+    return plot_pose(color, pose, K, bbox=bbox, ax=ax, scale=scale)
 
 
-def plot_pose(color, pose, K, bbox=None, axs=None, scale=0.05):
+def plot_pose(color, pose, K, bbox=None, ax=None, scale=0.05):
     color = adjust_img_for_plt(color)
-    if axs is None:
-        fig, axs = plt.subplots(1, 1, figsize=(10, 5))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
-    axs.imshow(color_with_pose)
-    return axs
+    ax.imshow(color_with_pose)
+    return ax
 
 
 def render_offscreen(mesh, obj_pose, intrinsic, w, h, headless=False):

@@ -32,7 +32,7 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
             zfar=np.inf,
             include_rgb=True,
             include_depth=True,
-            include_gt_pose=True,
+            include_pose=True,
             include_mask=False,
             ycb_meshes_dir=YCB_MESHES_DIR,
         )

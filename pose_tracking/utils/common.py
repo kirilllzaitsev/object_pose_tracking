@@ -1,3 +1,4 @@
+import glob
 import os
 
 import numpy as np
@@ -55,3 +56,10 @@ def convert_arr_to_tensor(v):
 
 def istensor(x):
     return isinstance(x, torch.Tensor)
+
+
+def get_ordered_paths(pattern):
+    if "*" not in pattern:
+        assert os.path.isdir(pattern), f"Check {pattern=}"
+        pattern = f"{pattern}/*"
+    return sorted(glob.glob(pattern))
