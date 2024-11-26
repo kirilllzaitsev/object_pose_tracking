@@ -14,6 +14,7 @@
 
 import copy
 import glob
+import json
 import os
 from pathlib import Path
 
@@ -23,7 +24,11 @@ import torch
 import trimesh
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import process_raw_sample
-from pose_tracking.utils.geom import backproj_depth, get_inv_pose
+from pose_tracking.utils.geom import (
+    backproj_depth,
+    bbox_to_8_point_centered,
+    get_inv_pose,
+)
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.pcl import (
     downsample_pcl_via_subsampling,
@@ -31,7 +36,7 @@ from pose_tracking.utils.pcl import (
 )
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from pose_tracking.utils.segm_utils import mask_erode
-from pose_tracking.utils.trimesh_utils import load_mesh
+from pose_tracking.utils.trimesh_utils import compute_pts_span, load_mesh
 from torch.utils.data import Dataset
 
 
@@ -42,48 +47,49 @@ class CustomSimDataset(Dataset):
     def __init__(
         self,
         root_dir,
-        cam_init_rot=(0.5, -0.5, 0.5, -0.5),
-        include_masks=False,
+        cam_init_rot=None,
         zfar=np.inf,
         transforms=None,
         mesh_path=None,
         cam_pose_path=None,
-        do_remap_pose_from_isaac=False,
-        do_erode_mask=False,
-        use_priv_info=False,
         obj_name="cube",
-        convert_pose_to_quat=False,
-        num_mesh_pts=2000,
-        env_id=None,
         obj_id=None,
+        num_mesh_pts=2000,
+        do_convert_pose_to_quat=False,
+        do_remap_pose_from_isaac=True,
+        do_erode_mask=False,
+        do_load_bbox_from_metadata=False,
+        include_masks=True,
+        use_priv_info=False,
     ):
         self.include_masks = include_masks
         self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
         self.do_erode_mask = do_erode_mask
         self.use_priv_info = use_priv_info
-        self.convert_pose_to_quat = convert_pose_to_quat
+        self.convert_pose_to_quat = do_convert_pose_to_quat
+        self.do_load_bbox_from_metadata = do_load_bbox_from_metadata
+
         self.root_dir = root_dir
         self.transforms = transforms
         self.obj_name = obj_name
-        self.env_id = env_id
         self.obj_id = obj_id
+        self.zfar = zfar
 
-        if env_id is not None:
-            assert obj_id is not None
-
-        if env_id is None:
-            self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
-            self.K = np.loadtxt(f"{self.root_dir}/intrinsics.txt").reshape(3, 3)
-        else:
-            self.color_files = sorted(glob.glob(f"{self.root_dir}/env_{env_id}/rgb/*.png"))
-            self.K = np.load(f"{self.root_dir}/env_{env_id}/intrinsics.npy")[env_id]
+        self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
+        self.K = np.loadtxt(f"{self.root_dir}/intrinsics.txt").reshape(3, 3)
         self.id_strs = []
         for color_file in self.color_files:
             id_str = os.path.basename(color_file).replace(".png", "")
             self.id_strs.append(id_str)
         self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = self.load_mask(self.color_files[0])
-        self.zfar = zfar
+        if mesh_path is None:
+            for name in ["mesh", obj_name]:
+                mesh_path_prop = f"{root_dir}/mesh/{obj_name}/{name}.obj"
+                if os.path.exists(mesh_path_prop):
+                    mesh_path = mesh_path_prop
+                    break
+        self.mesh_path = mesh_path
 
         if self.use_priv_info:
             self.ds_no_occ = CustomSimDataset(
@@ -99,26 +105,42 @@ class CustomSimDataset(Dataset):
             )
 
         if cam_pose_path is None:
-            ext = ".txt" if env_id is None else f".npy"
-            if os.path.exists(f"{self.root_dir}/cam_pose.{ext}"):
-                cam_pose_path = f"{self.root_dir}/cam_pose.{ext}"
+            if os.path.exists(f"{self.root_dir}/cam_pose.txt"):
+                cam_pose_path = f"{self.root_dir}/cam_pose.txt"
 
         if cam_pose_path is not None:
+            assert cam_init_rot is not None
             cam_pose_path = Path(cam_pose_path)
             self.cam_pose = load_pose(cam_pose_path)
-            cam_init_rot = quaternion_to_matrix(torch.tensor(cam_init_rot)).numpy()
-            self.cam_pose[:3, :3] = cam_init_rot
+            self.cam_init_rot = quaternion_to_matrix(torch.tensor(cam_init_rot)).numpy()
+            self.cam_pose[:3, :3] = self.cam_pose[:3, :3] @ self.cam_init_rot
             self.w2c = get_inv_pose(pose=self.cam_pose)
+
         else:
             self.cam_pose = None
 
-        self.mesh_path = mesh_path
-        if mesh_path is not None:
+        if obj_id is not None:
+            self.objs_metadata = json.load(open(f"{root_dir}/metadata.json"))
+
+        if mesh_path is None:
+            self.mesh = None
+        else:
             load_res = load_mesh(mesh_path)
             self.mesh = load_res["mesh"]
             self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
             self.mesh_diameter = load_res["diameter"]
             self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, num_mesh_pts)[0]).float()
+
+        metadata_path = f"{root_dir}/metadata.json"
+        if os.path.exists(metadata_path):
+            self.metadata = json.load(open(metadata_path))
+        else:
+            self.metadata = None
+        if do_load_bbox_from_metadata:
+            assert self.metadata is not None, f"metadata not found at {metadata_path}"
+            assert len(self.metadata) == 1, len(self.metadata)
+            self.mesh_bbox = bbox_to_8_point_centered(bbox=self.metadata[0]["bbox"])
+            self.mesh_diameter = compute_pts_span(self.mesh_bbox)
 
     def __len__(self):
         return len(self.color_files)
@@ -127,10 +149,15 @@ class CustomSimDataset(Dataset):
         path = self.color_files[idx]
         color = self.get_color(idx)
         depth_raw = self.get_depth(idx)
-        if self.env_id:
+        if self.obj_id is None:
             pose = self.load_pose(
-                Path(self.color_files[idx].replace("rgb/", "pose/")).parent / self.obj_name / f"{self.id_strs[idx]}.npy"
+                Path(self.color_files[idx].replace("rgb/", "pose/")).parent / self.obj_name / f"{self.id_strs[idx]}.txt"
             )
+        else:
+            poses = self.load_pose(
+                Path(self.color_files[idx].replace("rgb/", "pose/")).parent / f"{self.id_strs[idx]}.npy"
+            )
+            pose = poses[self.obj_id]
 
         priv = None
         if self.use_priv_info:
@@ -158,9 +185,10 @@ class CustomSimDataset(Dataset):
 
         sample["intrinsics"] = self.K
 
-        sample["mesh_pts"] = self.mesh_pts
-        sample["mesh_bbox"] = self.mesh_bbox
-        sample["mesh_diameter"] = self.mesh_diameter
+        if self.mesh is not None:
+            sample["mesh_pts"] = self.mesh_pts
+            sample["mesh_bbox"] = self.mesh_bbox
+            sample["mesh_diameter"] = self.mesh_diameter
         sample["obj_name"] = self.obj_name
         sample["priv"] = priv
 
@@ -192,6 +220,35 @@ class CustomSimDataset(Dataset):
     def pose_remap_from_isaac(self, pose):
         rt = self.w2c @ pose
         return rt
+
+
+class CustomSimDatasetCube(CustomSimDataset):
+    ds_name = "custom_sim_cube"
+
+    def __init__(self, obj_name="cube", cam_init_rot=(0.5, -0.5, 0.5, -0.5), *args, **kwargs):
+        super().__init__(obj_name=obj_name, cam_init_rot=cam_init_rot, *args, **kwargs)
+
+
+class CustomSimDatasetIkea(CustomSimDataset):
+    ds_name = "custom_sim_ikea"
+
+    def __init__(
+        self,
+        obj_name="object_0",
+        cam_init_rot=(0.0, 1.0, 0.0, 0.0),
+        do_load_bbox_from_metadata=True,
+        obj_id=0,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            obj_name=obj_name,
+            obj_id=obj_id,
+            cam_init_rot=cam_init_rot,
+            do_load_bbox_from_metadata=do_load_bbox_from_metadata,
+            *args,
+            **kwargs,
+        )
 
 
 class CustomSimDatasetEval(CustomSimDataset):
