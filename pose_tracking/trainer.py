@@ -406,7 +406,7 @@ class Trainer:
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, t_pred, rot_pred, preds_dir)
+                save_results(batch_t, pose_pred, preds_dir)
 
             if do_vis:
                 # save inputs to the exp dir

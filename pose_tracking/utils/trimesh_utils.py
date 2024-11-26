@@ -131,6 +131,11 @@ def extract_data_from_trimesh(mesh, device="cuda", max_tex_size=None):
 def compute_mesh_diameter(mesh):
     u, s, vh = scipy.linalg.svd(mesh.vertices, full_matrices=False)
     pts = u @ s
+    diameter = compute_pts_span(pts)
+    return diameter
+
+
+def compute_pts_span(pts):
     diameter = np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))
     return float(diameter)
 

@@ -572,3 +572,22 @@ def rot_mat_from_6d(poses):
     z = z.view(-1, 3, 1)
     matrix = torch.cat((x, y, z), 2)
     return matrix
+
+
+def bbox_to_8_point_centered(min_coords=None, max_coords=None, center=None, bbox=None):
+    if bbox is not None:
+        min_coords = bbox["min"]
+        max_coords = bbox["max"]
+        center = bbox["center"]
+    points = [
+        [min_coords[0] - center[0], min_coords[1] - center[1], min_coords[2] - center[2]],
+        [min_coords[0] - center[0], min_coords[1] - center[1], max_coords[2] - center[2]],
+        [min_coords[0] - center[0], max_coords[1] - center[1], min_coords[2] - center[2]],
+        [min_coords[0] - center[0], max_coords[1] - center[1], max_coords[2] - center[2]],
+        [max_coords[0] - center[0], min_coords[1] - center[1], min_coords[2] - center[2]],
+        [max_coords[0] - center[0], min_coords[1] - center[1], max_coords[2] - center[2]],
+        [max_coords[0] - center[0], max_coords[1] - center[1], min_coords[2] - center[2]],
+        [max_coords[0] - center[0], max_coords[1] - center[1], max_coords[2] - center[2]],
+    ]
+
+    return np.array(points)

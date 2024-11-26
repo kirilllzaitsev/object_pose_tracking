@@ -195,21 +195,24 @@ def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
         y = np.array([0, 1, 0])
         y1 = R1 @ y
         y2 = R2 @ y
-        theta = np.arccos(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)))
+        theta = np.arccos(np.clip(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)), -1, 1))
     elif class_name == "mug" and handle_visibility:
         # mag can appear symmetric when handle is not visible
         y = np.array([0, 1, 0])
         y1 = R1 @ y
         y2 = R2 @ y
-        theta = np.arccos(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)))
+        theta = np.arccos(np.clip(y1.dot(y2) / (np.linalg.norm(y1) * np.linalg.norm(y2)), -1, 1))
     elif class_name in ["phone", "eggbox", "glue"]:
         y_180_RT = np.diag([-1.0, 1.0, -1.0])
         R = R1 @ R2.T
         R_rot = R1 @ y_180_RT @ R2.T
-        theta = min(np.arccos((np.trace(R) - 1) / 2), np.arccos((np.trace(R_rot) - 1) / 2))
+        theta = min(
+            np.arccos(np.clip((np.trace(R) - 1) / 2, -1, 1)),
+            np.arccos(np.clip((np.trace(R_rot) - 1) / 2, -1, 1)),
+        )
     else:
         R = np.dot(R1, R2.T)
-        theta = np.arccos((np.trace(R) - 1) / 2)
+        theta = np.arccos(np.clip((np.trace(R) - 1) / 2, -1, 1))
 
     theta *= 180 / np.pi
     return theta

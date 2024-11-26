@@ -132,7 +132,7 @@ def draw_poses_on_video(
     """
     images = []
     num_frames = min(len(rgbs), len(poses_pred)) if take_n is None else take_n
-    for frame_idx in tqdm(range(num_frames), leave=False, desc="Frame"):
+    for frame_idx in tqdm(range(num_frames), leave=True, desc="Frame"):
         rgb = rgbs[frame_idx]
         K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
         pose_pred = poses_pred[frame_idx]

@@ -67,7 +67,7 @@ def save_videos_for_obj(exp_dir, exp_name, save_dir, obj_name, intrinsics=None, 
     if intrinsics is None:
         intrinsics = np.loadtxt(preds_dir / "intrinsics.txt")
     paths = sorted(glob(str(preds_dir / "rgb" / "*.png")))
-    for path in tqdm(paths, leave=False, desc="Paths"):
+    for path in tqdm(paths, leave=True, desc="Paths"):
         rgb = load_color(path)
         filename = Path(path).stem
         pred = load_pose(preds_dir / "poses" / f"{filename}.txt")

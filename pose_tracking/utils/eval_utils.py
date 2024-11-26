@@ -111,27 +111,6 @@ def get_preds_path_benchmark(model_name, obj_name, ds_name=None):
     return preds_path
 
 
-def convert_exp_results_to_df(exp_results, index_name="Experiment Name"):
-    df = pd.DataFrame(exp_results).T
-    cols_to_drop = ["miou", "add10", "adds10", "loss_pose"]
-    df = df.drop(columns=cols_to_drop, errors="ignore")
-
-    # report col and index of nan
-    nan_locations = df.isna().stack()[lambda x: x].index.tolist()
-    nan_df = pd.DataFrame(nan_locations, columns=["Index", "Column"])
-    if len(nan_df) > 0:
-        print(nan_df)
-
-    loss_columns = [col for col in df.columns if "loss" in col]
-    other_columns = [col for col in df.columns if "loss" not in col]
-    df = df[other_columns + loss_columns]
-
-    df = df.sort_values(by="5deg5cm", ascending=False)
-    df = format_metrics_df(df)
-    df.index.name = index_name
-    return df
-
-
 def convert_exp_results_per_obj_to_per_exp(exp_results: dict, exp_names=None) -> dict:
     exp_results_per_exp = defaultdict(defaultdict)
     if exp_names is None:

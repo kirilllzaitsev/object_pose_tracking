@@ -156,16 +156,14 @@ def create_tools(args: argparse.Namespace) -> dict:
     }
 
 
-def save_results(batch_t, t_pred, rot_pred, preds_dir):
+def save_results(batch_t, pose_pred, preds_dir):
     # batch_t contains data for the t-th timestep in N sequences
     batch_size = len(batch_t["rgb"])
     for seq_idx in range(batch_size):
         rgb = batch_t["rgb"][seq_idx].cpu().numpy()
         name = Path(batch_t["rgb_path"][seq_idx]).stem
         pose = torch.eye(4)
-        r_quat = rot_pred[seq_idx]
-        pose[:3, :3] = quaternion_to_matrix(r_quat) if r_quat.shape != (3, 3) else r_quat
-        pose[:3, 3] = t_pred[seq_idx]
+        pose = pose_pred[seq_idx]
         pose = cast_to_numpy(pose)
         gt_pose = batch_t["pose"][seq_idx]
         gt_pose_formatted = convert_pose_quaternion_to_matrix(gt_pose)
