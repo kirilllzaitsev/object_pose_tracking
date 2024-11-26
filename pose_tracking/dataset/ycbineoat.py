@@ -1,156 +1,54 @@
-import copy
-import glob
 import os
 from pathlib import Path
 
 import cv2
-import imageio
 import numpy as np
-import torch
-import trimesh
-from bop_toolkit_lib.inout import load_depth
-from pose_tracking.config import logger
-from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
-from pose_tracking.utils.geom import (
-    backproj_depth,
-    convert_3d_bbox_to_2d,
-    interpolate_bbox_edges,
-    world_to_2d,
-)
-from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
-from pose_tracking.utils.trimesh_utils import load_mesh
-from torch.utils.data import Dataset
+from pose_tracking.dataset.tracking_ds import TrackingDataset
+from pose_tracking.utils.common import get_ordered_paths
+from pose_tracking.utils.geom import backproj_depth
+from pose_tracking.utils.io import load_pose
+
+try:
+    from pizza.lib import image_utils
+except ImportError:
+    ...
 
 
-class YCBineoatDataset(Dataset):
+class YCBineoatDataset(TrackingDataset):
 
     ds_name = "ycbi"
 
     def __init__(
         self,
-        video_dir,
-        downscale=1,
-        shorter_side=None,
-        zfar=np.inf,
-        ycb_meshes_dir=None,
-        include_rgb=True,
-        include_depth=True,
-        include_mask=True,
+        *args,
         include_xyz_map=False,
         include_occ_mask=False,
-        include_gt_pose=True,
-        include_bbox_2d=True,
-        transforms_rgb=None,
-        start_frame_idx=0,
-        end_frame_idx=None,
-        num_mesh_pts=2000,
-        convert_pose_to_quat=False,
-        mask_pixels_prob=0.0,
+        ycb_meshes_dir=None,
+        **kwargs,
     ):
-        self.video_dir = video_dir
-        self.downscale = downscale
+        super().__init__(*args, pose_dirname="annotated_poses", **kwargs)
         self.ycb_meshes_dir = ycb_meshes_dir
-        self.include_rgb = include_rgb
-        self.include_mask = include_mask
-        self.include_depth = include_depth
         self.include_xyz_map = include_xyz_map
         self.include_occ_mask = include_occ_mask
-        self.include_gt_pose = include_gt_pose
-        self.include_bbox_2d = include_bbox_2d
-        self.zfar = zfar
-        self.transforms_rgb = transforms_rgb
-        self.convert_pose_to_quat = convert_pose_to_quat
-        self.mask_pixels_prob = mask_pixels_prob
 
-        self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
-
-        self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
-        self.id_strs = []
-        for color_file in self.color_files:
-            id_str = os.path.basename(color_file).replace(".png", "")
-            self.id_strs.append(id_str)
-        self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
-
-        if shorter_side is not None:
-            self.downscale = shorter_side / min(self.h, self.w)
-
-        self.h = int(self.h * self.downscale)
-        self.w = int(self.w * self.downscale)
-        self.K[:2] *= self.downscale
-
-        self.gt_pose_files = sorted(glob.glob(f"{self.video_dir}/annotated_poses/*"))
-
-        self.start_frame_idx = start_frame_idx
-        self.end_frame_idx = end_frame_idx or len(self.color_files)
-        self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
-        self.id_strs = self.id_strs[self.start_frame_idx : self.end_frame_idx]
-        self.gt_pose_files = self.gt_pose_files[self.start_frame_idx : self.end_frame_idx]
-
-        self.num_mesh_pts = num_mesh_pts
         if ycb_meshes_dir is not None:
             self.obj_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
             mesh_path = f"{ycb_meshes_dir}/{self.obj_name}/textured_simple.obj"
-            load_res = load_mesh(mesh_path)
-            self.mesh = load_res["mesh"]
-            self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
-            self.mesh_diameter = load_res["diameter"]
-            self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, num_mesh_pts)[0]).float()
+            self.set_up_obj_mesh(mesh_path)
 
-    def __len__(self):
-        return len(self.color_files)
-
-    def __getitem__(self, i):
-        sample = {}
-
-        if self.include_rgb:
-            sample["rgb"] = self.get_color(i)
-        if self.include_mask:
-            sample["mask"] = self.get_mask(i)
-        if self.include_depth:
-            sample["depth"] = self.get_depth(i)
+    def augment_sample(self, sample, idx):
         if self.include_xyz_map:
-            sample["xyz_map"] = self.get_xyz_map(i)
-        if self.include_gt_pose:
-            sample["pose"] = self.get_gt_pose(i)
-        sample["rgb_path"] = self.color_files[i]
+            sample["xyz_map"] = self.get_xyz_map(idx)
 
-        sample["intrinsics"] = self.K
-
-        sample["mesh_pts"] = self.mesh_pts
-        sample["mesh_bbox"] = self.mesh_bbox
-        sample["mesh_diameter"] = self.mesh_diameter
-        sample["obj_name"] = self.obj_name
-
-        if self.include_bbox_2d:
-            sample["bbox_2d"] = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
-            ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
-            sample["bbox_2d_kpts"] = world_to_2d(ibbs_res["all_points"], K=self.K, rt=sample["pose"])
-            # normalize bbox_2d_kpts to [0, 1]
-            sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
-            sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
-
-        sample = process_raw_sample(
-            sample,
-            transforms_rgb=self.transforms_rgb,
-            convert_pose_to_quat=self.convert_pose_to_quat,
-            mask_pixels_prob=self.mask_pixels_prob,
-        )
+        if self.include_occ_mask:
+            sample["occ_mask"] = self.get_occ_mask(idx)
 
         return sample
 
-    def get_gt_pose(self, i):
-        pose = np.loadtxt(self.gt_pose_files[i]).reshape(4, 4)
-        return pose
-
-    def get_color(self, i):
-        return load_color(self.color_files[i], wh=(self.w, self.h))
-
-    def get_mask(self, i):
-        return load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
-
-    def get_depth(self, i):
-        return load_depth(self.color_files[i].replace("rgb", "depth"), wh=(self.w, self.h), zfar=self.zfar)
+    def get_pose_paths(self):
+        paths = get_ordered_paths(f"{self.video_dir}/{self.pose_dirname}")
+        return paths
 
     def get_xyz_map(self, i):
         depth = self.get_depth(i)
