@@ -36,13 +36,13 @@ class CustomDataset(Dataset):
 
     ds_name = "custom"
 
-    def __init__(self, root_dir, include_masks=False, poses_dir=None, zfar=np.inf, transforms=None, mesh_path=None):
-        self.root_dir = root_dir
+    def __init__(self, video_dir, include_masks=False, poses_dir=None, zfar=np.inf, transforms=None, mesh_path=None):
+        self.video_dir = video_dir
         self.transforms = transforms
         self.include_masks = include_masks
         self.poses_dir = Path(poses_dir) if poses_dir else None
-        self.color_files = sorted(glob.glob(f"{self.root_dir}/rgb/*.png"))
-        self.K = np.loadtxt(f"{self.root_dir}/cam_K.txt").reshape(3, 3)
+        self.color_files = sorted(glob.glob(f"{self.video_dir}/rgb/*.png"))
+        self.K = np.loadtxt(f"{self.video_dir}/cam_K.txt").reshape(3, 3)
         self.id_strs = []
         for color_file in self.color_files:
             id_str = os.path.basename(color_file).replace(".png", "")

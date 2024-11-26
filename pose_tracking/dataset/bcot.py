@@ -15,16 +15,16 @@ class BCOTDataset(Dataset):
 
     ds_name = "bcot"
 
-    def __init__(self, root_dir, obj_name):
-        self.root_dir = root_dir
-        self.color_files = sorted(glob.glob(f"{self.root_dir}/{obj_name}/*.png"))
-        self.K = self.parse_intrinsics(f"{self.root_dir}/K.txt")
+    def __init__(self, video_dir, obj_name):
+        self.video_dir = video_dir
+        self.color_files = sorted(glob.glob(f"{self.video_dir}/{obj_name}/*.png"))
+        self.K = self.parse_intrinsics(f"{self.video_dir}/K.txt")
         self.id_strs = []
         for color_file in self.color_files:
             id_str = os.path.basename(color_file).replace(".png", "")
             self.id_strs.append(id_str)
 
-        self.poses = np.loadtxt(f"{self.root_dir}/{obj_name}/pose.txt")
+        self.poses = np.loadtxt(f"{self.video_dir}/{obj_name}/pose.txt")
 
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
 

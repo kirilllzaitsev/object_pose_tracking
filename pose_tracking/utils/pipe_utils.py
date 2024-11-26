@@ -9,7 +9,11 @@ import cv2
 import torch
 import torch.nn as nn
 from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, YCBINEOAT_SCENE_DIR
-from pose_tracking.dataset.custom_sim_ds import CustomSimDataset
+from pose_tracking.dataset.custom_sim_ds import (
+    CustomSimDataset,
+    CustomSimDatasetCube,
+    CustomSimDatasetIkea,
+)
 from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset
 from pose_tracking.losses import (
@@ -293,8 +297,8 @@ def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=Non
     sender({"model/num_params_total": num_params_total})
 
 
-def get_full_ds(
-    obj_names,
+def get_video_ds(
+    ds_video_subdirs,
     ds_name,
     seq_len,
     seq_step,
@@ -303,8 +307,8 @@ def get_full_ds(
     ds_kwargs,
 ):
     video_datasets = []
-    for obj_name in obj_names:
-        ds = get_obj_ds(ds_name, ds_kwargs, obj_name)
+    for ds_video_subdir in ds_video_subdirs:
+        ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         video_ds = VideoDataset(
             ds=ds,
             seq_len=seq_len,
@@ -321,12 +325,17 @@ def get_full_ds(
     return full_ds
 
 
-def get_obj_ds(ds_name, ds_kwargs, obj_name):
+def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     if ds_name == "ycbi":
-        ds = YCBineoatDataset(video_dir=YCBINEOAT_SCENE_DIR / obj_name, **ds_kwargs)
+        ds = YCBineoatDataset(video_dir=YCBINEOAT_SCENE_DIR / ds_video_subdir, **ds_kwargs)
     elif ds_name == "cube_sim":
-        ds = CustomSimDataset(
-            obj_name=obj_name,
+        ds = CustomSimDatasetCube(
+            **ds_kwargs,
+        )
+    elif ds_name == "ikea_sim":
+        video_dir = ds_kwargs.pop("video_dir")
+        ds = CustomSimDatasetIkea(
+            video_dir=f"{video_dir}/{ds_video_subdir}",
             **ds_kwargs,
         )
     else:

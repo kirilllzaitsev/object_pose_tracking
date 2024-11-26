@@ -22,7 +22,7 @@ class BOPDataset(Dataset):
 
     def __init__(
         self,
-        root_dir,
+        video_dir,
         split,
         rot_repr="rotation6d",
         cad_dir=None,
@@ -42,7 +42,7 @@ class BOPDataset(Dataset):
         Read a dataset in the BOP format.
         See https://github.com/thodan/bop_toolkit/blob/master/docs/bop_datasets_format.md
         """
-        self.root_dir = Path(root_dir)
+        self.video_dir = Path(video_dir)
         self.split = split
         self.rot_repr = rot_repr
         self.cad_dir = cad_dir
@@ -50,14 +50,14 @@ class BOPDataset(Dataset):
         self.include_depth = include_depth
         self.include_mask = include_mask
         self.depth_scaler_to_mm = depth_scaler_to_mm
-        self.list_scenes = load_list_scene(root_dir, split)
-        self.metadata = load_metadata(root_dir, split)
+        self.list_scenes = load_list_scene(video_dir, split)
+        self.metadata = load_metadata(video_dir, split)
         self.transforms = transforms
         if do_load_cad:
             if cad_dir is None:
                 possible_cad_subdir_names = ["models_cad", "models"]
                 for subdir_name in possible_cad_subdir_names:
-                    cad_dir = root_dir / subdir_name
+                    cad_dir = video_dir / subdir_name
                     if cad_dir.exists():
                         break
                 assert cad_dir is not None, "CAD dir must be provided"
@@ -71,7 +71,7 @@ class BOPDataset(Dataset):
 
         if use_keyframes:
             if keyframe_path is None:
-                keyframe_path = self.root_dir / "keyframe.txt"
+                keyframe_path = self.video_dir / "keyframe.txt"
                 assert keyframe_path.exists(), f"{keyframe_path} does not exist"
             self.keyframes = load_keyframes(keyframe_path)
 

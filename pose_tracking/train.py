@@ -138,7 +138,7 @@ def main(exp_tools: t.Optional[dict] = None):
     else:
         sim_ds_path = DATA_DIR / args.train_ds_folder_name
         cube_sim_kwargs = dict(
-            root_dir=sim_ds_path,
+            video_dir=sim_ds_path,
             mesh_path=f"{sim_ds_path}/mesh/cube.obj",
             include_masks=True,
             use_priv_info=args.use_priv_decoder,

@@ -12,10 +12,10 @@ from pose_tracking.utils.trimesh_utils import load_mesh, load_mesh_bounds
 from tqdm import tqdm
 
 
-def load_list_scene(root_dir, split=None):
+def load_list_scene(video_dir, split=None):
     if isinstance(split, str):
         if split is not None:
-            split_folder = osp.join(root_dir, split)
+            split_folder = osp.join(video_dir, split)
         list_scenes = sorted(
             [
                 osp.join(split_folder, scene)
@@ -28,8 +28,8 @@ def load_list_scene(root_dir, split=None):
         for scene in split:
             if not isinstance(scene, str):
                 scene = f"{scene:06d}"
-            if os.path.isdir(osp.join(root_dir, scene)):
-                list_scenes.append(osp.join(root_dir, scene))
+            if os.path.isdir(osp.join(video_dir, scene)):
+                list_scenes.append(osp.join(video_dir, scene))
         list_scenes = sorted(list_scenes)
     else:
         raise NotImplementedError
@@ -57,7 +57,7 @@ def load_scene(path, use_visible_mask=True):
     }
 
 
-def load_metadata(root_dir, split, force_recreate: bool = False, shuffle: bool = False):
+def load_metadata(video_dir, split, force_recreate: bool = False, shuffle: bool = False):
     """
     Loads metadata for the given split.
     Args:
@@ -81,10 +81,10 @@ def load_metadata(root_dir, split, force_recreate: bool = False, shuffle: bool =
         "intrinsic": [],
     }
     logger.info(f"Loading metadata for split {split}")
-    metadata_path = osp.join(root_dir, f"{split}_metadata.csv")
+    metadata_path = osp.join(video_dir, f"{split}_metadata.csv")
     if not osp.exists(metadata_path) or force_recreate:
         logger.info(f"Metadata at {metadata_path} will be created")
-        list_scenes = load_list_scene(root_dir, split)
+        list_scenes = load_list_scene(video_dir, split)
         for scene_path in tqdm(list_scenes, desc="Scenes"):
             scene_id = scene_path.split("/")[-1]
             rgb_paths = sorted(Path(scene_path).glob("rgb/*.png"))
