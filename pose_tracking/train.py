@@ -22,14 +22,14 @@ from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
-from pose_tracking.utils.common import print_args
+from pose_tracking.utils.common import get_ordered_paths, print_args
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
-    get_full_ds,
     get_model,
     get_trainer,
+    get_video_ds,
     log_artifacts,
     log_exp_meta,
     log_model_meta,
@@ -107,35 +107,54 @@ def main(exp_tools: t.Optional[dict] = None):
             f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
         )
 
-    transform = get_transforms(args.transform_names, transform_prob=args.transform_prob)
+    transform_rgb = get_transforms(args.transform_names, transform_prob=args.transform_prob)
     if args.ds_name == "ycbi":
         ycbi_kwargs = dict(
             shorter_side=None,
             zfar=np.inf,
             include_rgb=True,
             include_depth=True,
-            include_gt_pose=True,
+            include_pose=True,
             include_mask=True,
             include_bbox_2d=True if args.model_name in ["cnnlstm_sep"] else False,
             ycb_meshes_dir=YCB_MESHES_DIR,
-            transforms_rgb=transform,
+            transforms_rgb=transform_rgb,
             start_frame_idx=0,
             convert_pose_to_quat=True,
             mask_pixels_prob=args.mask_pixels_prob,
         )
         ds_kwargs = ycbi_kwargs
+    elif args.ds_name == "ikea":
+        ikea_kwargs = dict(
+            zfar=np.inf,
+            include_mask=True,
+            include_bbox_2d=True if args.model_name in ["cnnlstm_sep"] else False,
+            transforms_rgb=transform_rgb,
+            start_frame_idx=0,
+            convert_pose_to_quat=True,
+            mask_pixels_prob=args.mask_pixels_prob,
+        )
+        ds_kwargs = ikea_kwargs
     else:
-        sim_ds_path = DATA_DIR / args.ds_folder_name
+        sim_ds_path = DATA_DIR / args.train_ds_folder_name
         cube_sim_kwargs = dict(
-            root_dir=f"{sim_ds_path}",
+            root_dir=sim_ds_path,
             mesh_path=f"{sim_ds_path}/mesh/cube.obj",
             include_masks=True,
             use_priv_info=args.use_priv_decoder,
             convert_pose_to_quat=True,
         )
         ds_kwargs = cube_sim_kwargs
-    full_ds = get_full_ds(
-        obj_names=args.obj_names,
+
+    if args.ds_name in ["ycbi", "cube"]:
+        ds_video_subdirs_train = args.obj_names
+        ds_video_subdirs_val = args.obj_names_val
+    else:
+        ds_video_subdirs_train = get_ordered_paths(DATA_DIR / args.train_ds_folder_name / "env_*")
+        ds_video_subdirs_val = get_ordered_paths(DATA_DIR / args.val_ds_folder_name / "env_*")
+
+    train_dataset = get_video_ds(
+        ds_video_subdirs=ds_video_subdirs_train,
         ds_name=args.ds_name,
         seq_len=args.seq_len,
         seq_step=args.seq_step,
@@ -143,15 +162,10 @@ def main(exp_tools: t.Optional[dict] = None):
         num_samples=args.num_samples,
         ds_kwargs=ds_kwargs,
     )
-    scene_len = len(full_ds)
-    logger.info(f"Scene length: {scene_len}")
-
-    train_dataset = full_ds
-
     val_ds_kwargs = copy.deepcopy(ds_kwargs)
     val_ds_kwargs.pop("mask_pixels_prob")
-    val_dataset = get_full_ds(
-        obj_names=args.obj_names_val,
+    val_dataset = get_video_ds(
+        ds_video_subdirs=ds_video_subdirs_val,
         ds_name=args.ds_name,
         seq_len=args.seq_len,
         seq_step=1,
@@ -160,7 +174,8 @@ def main(exp_tools: t.Optional[dict] = None):
         ds_kwargs=val_ds_kwargs,
     )
 
-    logger.info(f"Using {args.obj_names_val=} for validation")
+    logger.info(f"{len(train_dataset)=}")
+    logger.info(f"{len(val_dataset)=}")
 
     if args.do_overfit:
         val_dataset = train_dataset

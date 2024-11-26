@@ -145,8 +145,9 @@ def get_parser():
         default=["mustard_easy_00_02"],
         help="Object names to use in the validation dataset",
     )
-    data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim"])
-    data_args.add_argument("--ds_folder_name", type=str, help="Name of the folder with the dataset")
+    data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"])
+    data_args.add_argument("--train_ds_folder_name", type=str, help="Name of the folder with the train dataset")
+    data_args.add_argument("--val_ds_folder_name", type=str, help="Name of the folder with the val dataset")
     data_args.add_argument(
         "--mask_pixels_prob", type=float, default=0.0, help="Probability of masking pixels in RGB/depth"
     )
