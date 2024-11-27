@@ -1,5 +1,12 @@
+import functools
+from multiprocessing.pool import ThreadPool
+
 import torch
 from torch.utils.data import Dataset
+
+
+def load_sample(i, ds):
+    return ds[i]
 
 
 class VideoDataset(Dataset):
@@ -13,12 +20,19 @@ class VideoDataset(Dataset):
         num_samples: Number of times to sample a sequence from the video (length of the dataset)
     """
 
-    def __init__(self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None):
+    def __init__(self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None, do_preload=False):
+        self.do_preload = do_preload
+
         self.ds = ds
-        self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
         self.seq_start = seq_start
         self.seq_step = seq_step
+
+        self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
         self.num_samples = len(ds) if num_samples is None else num_samples
+
+        if do_preload:
+            with ThreadPool() as pool:
+                self.seq = pool.map(functools.partial(load_sample, ds=self.ds), range(len(self.ds)))
 
     def __len__(self):
         return self.num_samples
@@ -43,20 +57,12 @@ class VideoDataset(Dataset):
 
         for t in range(timesteps):
             frame_idx = seq_start + t * seq_step
-            sample = self.ds[frame_idx]
+            if self.do_preload:
+                sample = self.seq[frame_idx]
+            else:
+                sample = self.ds[frame_idx]
             seq.append(sample)
         return seq
-
-
-class VideoDatasetPreload(VideoDataset):
-    """Preloads the entire dataset in memory for faster access."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.seq = super().__getitem__(0)
-
-    def __getitem__(self, idx):
-        return self.seq
 
 
 class MultiVideoDataset(Dataset):

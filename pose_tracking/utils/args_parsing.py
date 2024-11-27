@@ -133,6 +133,7 @@ def get_parser():
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
 
     data_args = parser.add_argument_group("Data arguments")
+    data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
     data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
     data_args.add_argument("--seq_len_test", type=int, default=600, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")

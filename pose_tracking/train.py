@@ -170,19 +170,9 @@ def main(exp_tools: t.Optional[dict] = None):
         seq_step=args.seq_step,
         seq_start=args.seq_start,
         ds_kwargs=ds_kwargs,
+        do_preload=args.do_preload_ds,
     )
-    val_ds_kwargs = copy.deepcopy(ds_kwargs)
-    val_ds_kwargs.pop("mask_pixels_prob")
-    if args.ds_name == "ikea":
-        val_ds_kwargs["video_dir"] = DATA_DIR / args.val_ds_folder_name
-    val_dataset = get_video_ds(
-        ds_video_subdirs=ds_video_subdirs_val,
-        ds_name=args.ds_name,
-        seq_len=args.seq_len,
-        seq_step=1,
-        seq_start=None,
-        ds_kwargs=val_ds_kwargs,
-    )
+            do_preload=args.do_preload_ds,
 
     if args.do_overfit:
         val_dataset = train_dataset
