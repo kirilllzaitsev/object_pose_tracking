@@ -36,6 +36,7 @@ def get_parser():
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
+    train_args.add_argument("--is_ddp_interactive", action="store_true", help="SLURM is running in the interactive mode")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
@@ -54,7 +55,7 @@ def get_parser():
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
     train_args.add_argument(
-        "--pose_loss_name", type=str, default="add", help="Pose loss name", choices=["separate", "add"]
+        "--pose_loss_name", type=str, default="separate", help="Pose loss name", choices=["separate", "add"]
     )
     train_args.add_argument(
         "--t_loss_name",
@@ -68,7 +69,7 @@ def get_parser():
         type=str,
         default="geodesic",
         help="Rotation loss name",
-        choices=["geodesic", "mse", "mae", "huber"],
+        choices=["geodesic", "mse", "mae", "huber", "videopose"],
     )
 
     model_args = parser.add_argument_group("Model arguments")
@@ -136,6 +137,8 @@ def get_parser():
     data_args.add_argument("--seq_len_test", type=int, default=600, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
+    data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
+    data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
@@ -193,6 +196,11 @@ def postprocess_args(args):
     args.use_cuda = args.device == "cuda"
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
+    if args.ds_name not in ["ycbi", "cube"]:
+        if args.do_overfit:
+            args.val_ds_folder_name = args.train_ds_folder_name
+        else:
+            assert args.val_ds_folder_name, "Validation dataset folder name is required for training"
 
     return args
 
