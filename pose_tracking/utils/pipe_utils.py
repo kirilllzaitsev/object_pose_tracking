@@ -125,6 +125,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         do_predict_kpts=args.do_predict_kpts,
         do_vis=do_vis,
         model_name=args.model_name,
+        do_debug=args.do_debug,
     )
 
     return trainer
@@ -303,8 +304,8 @@ def get_video_ds(
     seq_len,
     seq_step,
     seq_start,
-    num_samples,
     ds_kwargs,
+    num_samples=None,
 ):
     video_datasets = []
     for ds_video_subdir in ds_video_subdirs:
@@ -314,7 +315,7 @@ def get_video_ds(
             seq_len=seq_len,
             seq_step=seq_step,
             seq_start=seq_start,
-            num_samples=num_samples,
+            num_samples=len(ds) // seq_len if num_samples is None else num_samples,
         )
         video_datasets.append(video_ds)
 
@@ -326,14 +327,15 @@ def get_video_ds(
 
 
 def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
+    ds_kwargs = ds_kwargs.copy()
+    video_dir = Path(ds_kwargs.pop("video_dir"))
     if ds_name == "ycbi":
-        ds = YCBineoatDataset(video_dir=YCBINEOAT_SCENE_DIR / ds_video_subdir, **ds_kwargs)
+        ds = YCBineoatDataset(video_dir=video_dir / ds_video_subdir, **ds_kwargs)
     elif ds_name == "cube_sim":
         ds = CustomSimDatasetCube(
             **ds_kwargs,
         )
-    elif ds_name == "ikea_sim":
-        video_dir = ds_kwargs.pop("video_dir")
+    elif ds_name == "ikea":
         ds = CustomSimDatasetIkea(
             video_dir=f"{video_dir}/{ds_video_subdir}",
             **ds_kwargs,
