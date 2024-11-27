@@ -59,6 +59,7 @@ def istensor(x):
 
 
 def get_ordered_paths(pattern):
+    pattern = str(pattern)
     if "*" not in pattern:
         assert os.path.isdir(pattern), f"Check {pattern=}"
         pattern = f"{pattern}/*"

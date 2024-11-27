@@ -11,9 +11,8 @@ except Exception as e:
     ChamferDistance = None
 
 
-def normalize_quaternion(quat, eps=1e-7):
-    norm = torch.norm(quat, dim=-1, keepdim=True)
-    return quat / (norm + eps)
+def normalize_quaternion(quat, eps=1e-8):
+    return F.normalize(quat, p=2, dim=-1, eps=eps)
 
 
 def geodesic_loss(pred_quat, true_quat):
@@ -27,17 +26,17 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
-def videopose_loss(pred_quat, true_quat, eps=1e-7):
+def videopose_loss(pred_quat, true_quat, eps=1e-8):
     # https://github.com/ApoorvaBeedu/VideoPose/models/loss.py
-    pred_quat = normalize_quaternion(pred_quat)
-    true_quat = normalize_quaternion(true_quat)
+    pred_quat = normalize_quaternion(pred_quat, eps=eps)
+    true_quat = normalize_quaternion(true_quat, eps=eps)
     inn_prod = torch.mm(pred_quat, true_quat.t())
     inn_prod = inn_prod.diag()
 
     quat_loss = 1 - (inn_prod).abs().mean()
     quat_reg_loss = (1 - pred_quat.norm(dim=1).mean()).abs()
 
-    return quat_loss, quat_reg_loss
+    return quat_loss + quat_reg_loss
 
 
 def geodesic_loss_mat(pred_rot, true_rot):
@@ -157,6 +156,8 @@ def get_rot_loss(rot_loss_name):
         criterion_rot = nn.L1Loss()
     elif rot_loss_name == "huber":
         criterion_rot = nn.SmoothL1Loss()
+    elif rot_loss_name == "videopose":
+        criterion_rot = videopose_loss
     else:
         raise ValueError(f"Unknown rotation loss name: {rot_loss_name}")
     return criterion_rot

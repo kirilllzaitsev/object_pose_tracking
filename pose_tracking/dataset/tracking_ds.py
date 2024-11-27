@@ -66,10 +66,7 @@ class TrackingDataset(Dataset):
         self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
         self.num_frames = len(self.color_files)
 
-        self.id_strs = []
-        for color_file in self.color_files:
-            id_str = Path(color_file).stem
-            self.id_strs.append(id_str)
+        self.id_strs = [Path(f).stem for f in self.color_files]
         self.pose_files = self.get_pose_paths()
 
         self.mesh = None
