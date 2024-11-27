@@ -4,6 +4,7 @@ import shutil
 import sys
 import typing as t
 from collections import defaultdict
+from pathlib import Path
 
 import comet_ml
 import numpy as np
@@ -15,6 +16,7 @@ from pose_tracking.config import (
     DATA_DIR,
     PROJ_DIR,
     YCB_MESHES_DIR,
+    YCBINEOAT_SCENE_DIR,
     log_exception,
     prepare_logger,
 )
@@ -52,6 +54,8 @@ def main(exp_tools: t.Optional[dict] = None):
     world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
     rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    if args.is_ddp_interactive:
+        rank = local_rank
     if args.use_ddp:
         if "MASTER_ADDR" not in os.environ:
             os.environ["MASTER_ADDR"] = "localhost"
@@ -108,50 +112,48 @@ def main(exp_tools: t.Optional[dict] = None):
         )
 
     transform_rgb = get_transforms(args.transform_names, transform_prob=args.transform_prob)
+    ds_kwargs_common = dict(
+        shorter_side=None,
+        zfar=np.inf,
+        include_bbox_2d=True if args.do_predict_kpts else False,
+        transforms_rgb=transform_rgb,
+        start_frame_idx=0,
+        convert_pose_to_quat=True,
+        mask_pixels_prob=args.mask_pixels_prob,
+    )
     if args.ds_name == "ycbi":
         ycbi_kwargs = dict(
-            shorter_side=None,
-            zfar=np.inf,
-            include_rgb=True,
-            include_depth=True,
-            include_pose=True,
-            include_mask=True,
-            include_bbox_2d=True if args.model_name in ["cnnlstm_sep"] else False,
             ycb_meshes_dir=YCB_MESHES_DIR,
-            transforms_rgb=transform_rgb,
-            start_frame_idx=0,
-            convert_pose_to_quat=True,
-            mask_pixels_prob=args.mask_pixels_prob,
+            video_dir=YCBINEOAT_SCENE_DIR,
         )
-        ds_kwargs = ycbi_kwargs
+        ds_kwargs_custom = ycbi_kwargs
     elif args.ds_name == "ikea":
         ikea_kwargs = dict(
-            zfar=np.inf,
-            include_mask=True,
-            include_bbox_2d=True if args.model_name in ["cnnlstm_sep"] else False,
-            transforms_rgb=transform_rgb,
-            start_frame_idx=0,
-            convert_pose_to_quat=True,
-            mask_pixels_prob=args.mask_pixels_prob,
+            video_dir=DATA_DIR / args.train_ds_folder_name,
         )
-        ds_kwargs = ikea_kwargs
+        ds_kwargs_custom = ikea_kwargs
     else:
         sim_ds_path = DATA_DIR / args.train_ds_folder_name
         cube_sim_kwargs = dict(
             video_dir=sim_ds_path,
             mesh_path=f"{sim_ds_path}/mesh/cube.obj",
-            include_masks=True,
             use_priv_info=args.use_priv_decoder,
-            convert_pose_to_quat=True,
         )
-        ds_kwargs = cube_sim_kwargs
+        ds_kwargs_custom = cube_sim_kwargs
+
+    ds_kwargs = {**ds_kwargs_common, **ds_kwargs_custom}
 
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
         ds_video_subdirs_val = args.obj_names_val
     else:
-        ds_video_subdirs_train = get_ordered_paths(DATA_DIR / args.train_ds_folder_name / "env_*")
-        ds_video_subdirs_val = get_ordered_paths(DATA_DIR / args.val_ds_folder_name / "env_*")
+        ds_video_subdirs_train = [
+            Path(p).name for p in get_ordered_paths(DATA_DIR / args.train_ds_folder_name / "env_*")
+        ]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(DATA_DIR / args.val_ds_folder_name / "env_*")]
+
+    ds_video_subdirs_train = ds_video_subdirs_train[: args.max_train_videos]
+    ds_video_subdirs_val = ds_video_subdirs_val[: args.max_val_videos]
 
     train_dataset = get_video_ds(
         ds_video_subdirs=ds_video_subdirs_train,
@@ -159,23 +161,20 @@ def main(exp_tools: t.Optional[dict] = None):
         seq_len=args.seq_len,
         seq_step=args.seq_step,
         seq_start=args.seq_start,
-        num_samples=args.num_samples,
         ds_kwargs=ds_kwargs,
     )
     val_ds_kwargs = copy.deepcopy(ds_kwargs)
     val_ds_kwargs.pop("mask_pixels_prob")
+    if args.ds_name == "ikea":
+        val_ds_kwargs["video_dir"] = DATA_DIR / args.val_ds_folder_name
     val_dataset = get_video_ds(
         ds_video_subdirs=ds_video_subdirs_val,
         ds_name=args.ds_name,
         seq_len=args.seq_len,
         seq_step=1,
         seq_start=None,
-        num_samples=min(args.num_samples, 500),
         ds_kwargs=val_ds_kwargs,
     )
-
-    logger.info(f"{len(train_dataset)=}")
-    logger.info(f"{len(val_dataset)=}")
 
     if args.do_overfit:
         val_dataset = train_dataset
@@ -223,7 +222,7 @@ def main(exp_tools: t.Optional[dict] = None):
             model,
             device_ids=[local_rank] if args.use_cuda else None,
             output_device=local_rank if args.use_cuda else None,
-            broadcast_buffers=False,  # how does this affect training on diff subs
+            broadcast_buffers=False,  # how does this affect training on diff subsets
         )
     optimizer = optim.AdamW(
         [
