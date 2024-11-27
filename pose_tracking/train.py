@@ -5,6 +5,7 @@ import sys
 import typing as t
 from collections import defaultdict
 from pathlib import Path
+from socket import gethostname
 
 import comet_ml
 import numpy as np
@@ -48,8 +49,9 @@ def main(exp_tools: t.Optional[dict] = None):
     args, args_to_group_map = parse_args()
 
     set_seed(args.seed)
-
-    device = torch.device(args.device)
+    if args.use_ddp:
+        assert any(x in os.environ for x in ["SLURM_PROCID", "RANK"])
+        assert any(x in os.environ for x in ["SLURM_NTASKS", "WORLD_SIZE"])
 
     world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
     rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
@@ -63,7 +65,9 @@ def main(exp_tools: t.Optional[dict] = None):
             os.environ["MASTER_PORT"] = str(np.random.randint(20000, 30000))
 
         dist.init_process_group(
-            backend="nccl" if args.use_cuda else "gloo", init_method="env://", world_size=world_size, rank=rank
+            backend="nccl" if args.use_cuda else "gloo",
+            world_size=world_size,
+            rank=rank,
         )
         if args.use_cuda:
             torch.cuda.set_device(local_rank)
@@ -71,7 +75,16 @@ def main(exp_tools: t.Optional[dict] = None):
 
         is_main_process = rank == 0
     else:
+        device = torch.device(args.device)
         is_main_process = True
+
+    if args.use_ddp:
+        print(f"host: {gethostname()}, {world_size=}, {rank=}, {local_rank=}")
+        if is_main_process:
+            print(f"Group initialized? {dist.is_initialized()}", flush=True)
+    if "SLURM_GPUS_ON_NODE" in os.environ:
+        gpus_per_node = int(os.environ["SLURM_GPUS_ON_NODE"])
+        assert gpus_per_node == torch.cuda.device_count()
 
     external_tools = True
     if exp_tools is None:
@@ -105,11 +118,6 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
-
-    if args.use_ddp:
-        print(
-            f"Hello from rank {rank} of {world_size - 1} where there are {world_size} allocated GPUs per node.",
-        )
 
     transform_rgb = get_transforms(args.transform_names, transform_prob=args.transform_prob)
     ds_kwargs_common = dict(
@@ -184,7 +192,7 @@ def main(exp_tools: t.Optional[dict] = None):
 
     collate_fn = batch_seq_collate_fn if args.model_name in ["videopose"] else seq_collate_fn
     if args.use_ddp:
-        train_sampler = DistributedSampler(train_dataset)
+        train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
         train_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
@@ -192,7 +200,7 @@ def main(exp_tools: t.Optional[dict] = None):
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
-        val_sampler = DistributedSampler(val_dataset)
+        val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank)
         val_loader = DataLoader(
             val_dataset,
             batch_size=args.batch_size,
@@ -221,7 +229,6 @@ def main(exp_tools: t.Optional[dict] = None):
         model = DDP(
             model,
             device_ids=[local_rank] if args.use_cuda else None,
-            output_device=local_rank if args.use_cuda else None,
             broadcast_buffers=False,  # how does this affect training on diff subsets
         )
     optimizer = optim.AdamW(
