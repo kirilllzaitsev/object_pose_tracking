@@ -2,6 +2,7 @@ import functools
 import sys
 import traceback
 from pathlib import Path
+from types import TracebackType
 
 from dotenv import load_dotenv
 
@@ -84,7 +85,10 @@ def log_exception(*args):
             "Not able to log exception. Wrong number of arguments given. Should either receive 1 argument "
             "- an exception, or 3 arguments: exc type, exc value and traceback"
         )
-        logger.error(args)
+        logger.error(f"{len(args)=}, {args=}")
+        for arg in args:
+            if isinstance(arg, TracebackType):
+                logger.error(traceback.format_tb(arg))
         return
 
     tb_msg = "".join(traceback.format_exception(etype, value, tb))
