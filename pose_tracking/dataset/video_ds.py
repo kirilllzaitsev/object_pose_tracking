@@ -1,12 +1,12 @@
-import functools
-from multiprocessing.pool import ThreadPool
-
 import torch
+from pose_tracking.dataset.dataloading import preload_ds
+from pose_tracking.dataset.ds_common import adjust_img_for_torch
+from pose_tracking.dataset.transforms import (
+    apply_replay_transform,
+    get_transforms_video,
+)
+from pose_tracking.utils.common import adjust_img_for_plt
 from torch.utils.data import Dataset
-
-
-def load_sample(i, ds):
-    return ds[i]
 
 
 class VideoDataset(Dataset):
@@ -20,7 +20,9 @@ class VideoDataset(Dataset):
         num_samples: Number of times to sample a sequence from the video (length of the dataset)
     """
 
-    def __init__(self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None, do_preload=False):
+    def __init__(
+        self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None, do_preload=False, transforms_rgb=None
+    ):
         self.do_preload = do_preload
 
         self.ds = ds
@@ -29,10 +31,10 @@ class VideoDataset(Dataset):
 
         self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
         self.num_samples = len(ds) if num_samples is None else num_samples
+        self.transforms_rgb = get_transforms_video(transforms_rgb) if transforms_rgb is not None else None
 
         if do_preload:
-            with ThreadPool() as pool:
-                self.seq = pool.map(functools.partial(load_sample, ds=self.ds), range(len(self.ds)))
+            self.seq = preload_ds(ds)
 
     def __len__(self):
         return self.num_samples
@@ -61,6 +63,14 @@ class VideoDataset(Dataset):
                 sample = self.seq[frame_idx]
             else:
                 sample = self.ds[frame_idx]
+            if self.transforms_rgb is not None:
+                if t == 0:
+                    t_res = self.transforms_rgb(image=adjust_img_for_plt(sample["rgb"]))
+                else:
+                    t_res = apply_replay_transform(adjust_img_for_plt(sample["rgb"]), t_res)
+                new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
+                new_sample["rgb"] = adjust_img_for_torch(t_res["image"])
+                sample = new_sample
             seq.append(sample)
         return seq
 
