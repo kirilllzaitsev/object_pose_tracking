@@ -28,6 +28,14 @@ def get_transforms(transform_names=None, transform_prob=0.75):
     return Compose([rgb_transforms, ToTensorV2()])
 
 
+def get_transforms_video(transforms):
+    return A.ReplayCompose(transforms.transforms)
+
+
+def apply_replay_transform(rgb, transform_res):
+    return A.ReplayCompose.replay(transform_res["replay"], image=rgb)
+
+
 def mask_pixels(img, p=0.5, pixels_masked_max_percent=0.1):
     if len(img.shape) == 2:
         us, vs = np.where(img > 0)
