@@ -1,7 +1,7 @@
+import functools
 import typing as t
+from multiprocessing.pool import ThreadPool
 
-import numpy as np
-import torch
 from pose_tracking.utils.misc import DeviceType, is_tensor, to
 
 
@@ -26,3 +26,13 @@ def _transfer_batch_to_device(batch: dict, device: DeviceType) -> dict:
             elif isinstance(v[0], list):
                 batch[k] = [[to(x, device) if is_tensor(x) else x for x in y] for y in v]
     return batch
+
+
+def load_sample(i, ds):
+    return ds[i]
+
+
+def preload_ds(ds):
+    with ThreadPool() as pool:
+        seq = pool.map(functools.partial(load_sample, ds=ds), range(len(ds)))
+    return seq
