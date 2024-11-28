@@ -20,15 +20,11 @@ def get_ds_sample(
     mask_pixels_prob=0.0,
     pixels_masked_max_percent=0.1,
 ):
-    if transforms_rgb is None:
-        rgb = torch.from_numpy(color).permute(2, 0, 1)
-    else:
-        sample = transforms_rgb(image=color)
-        rgb = sample["image"]
+    if transforms_rgb is not None:
+        transformed = transforms_rgb(image=color)
+        color = transformed["image"]
 
-    rgb = rgb.float()
-    if rgb.max() > 1:
-        rgb /= 255.0
+    rgb = adjust_img_for_torch(color)
 
     sample = {
         "rgb": rgb,
@@ -38,14 +34,12 @@ def get_ds_sample(
         depth = from_numpy(depth_m)
         if mask_pixels_prob > 0:
             depth = mask_pixels(depth, p=mask_pixels_prob, pixels_masked_max_percent=pixels_masked_max_percent)
-        if depth.ndim == 2:
-            depth = depth.unsqueeze(0)
+        depth = adjust_depth_for_torch(depth)
         sample["depth"] = depth
     if intrinsics is not None:
         sample["intrinsics"] = from_numpy(intrinsics)
     if mask is not None:
-        if mask.max() > 1:
-            mask = mask / 255.0
+        mask = adjust_mask_for_torch(mask)
         sample["mask"] = from_numpy(mask)
     if pose is not None:
         if convert_pose_to_quat:
@@ -60,6 +54,29 @@ def get_ds_sample(
         sample["priv"] = from_numpy(priv)
 
     return sample
+
+
+def adjust_depth_for_torch(depth):
+    if depth.ndim == 2:
+        depth = depth.unsqueeze(0)
+    return depth
+
+
+def adjust_mask_for_torch(mask):
+    if mask.max() > 1:
+        mask = mask / 255.0
+    return mask
+
+
+def adjust_img_for_torch(rgb):
+    if isinstance(rgb, np.ndarray):
+        rgb = from_numpy(rgb)
+    if rgb.shape[-1] == 3:
+        rgb = rgb.permute(2, 0, 1)
+    rgb = rgb.float()
+    if rgb.max() > 1:
+        rgb /= 255.0
+    return rgb
 
 
 def from_numpy(x):

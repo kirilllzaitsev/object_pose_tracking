@@ -307,6 +307,7 @@ def get_video_ds(
     ds_kwargs,
     num_samples=None,
     do_preload=False,
+    transforms_rgb=None,
 ):
     video_datasets = []
     for ds_video_subdir in ds_video_subdirs:
@@ -318,6 +319,7 @@ def get_video_ds(
             seq_start=seq_start,
             num_samples=len(ds) // seq_len if num_samples is None else num_samples,
             do_preload=do_preload,
+            transforms_rgb=transforms_rgb,
         )
         video_datasets.append(video_ds)
 
