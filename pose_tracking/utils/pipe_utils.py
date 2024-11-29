@@ -317,7 +317,7 @@ def get_video_ds(
             seq_len=seq_len,
             seq_step=seq_step,
             seq_start=seq_start,
-            num_samples=len(ds) // seq_len if num_samples is None else num_samples,
+            num_samples=max(1, len(ds) // seq_len) if num_samples is None else num_samples,
             do_preload=do_preload,
             transforms_rgb=transforms_rgb,
         )

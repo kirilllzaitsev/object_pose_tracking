@@ -36,15 +36,17 @@ def get_parser():
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
-    train_args.add_argument("--is_ddp_interactive", action="store_true", help="SLURM is running in the interactive mode")
+    train_args.add_argument(
+        "--is_ddp_interactive", action="store_true", help="SLURM is running in the interactive mode"
+    )
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
     train_args.add_argument("--vis_epoch_freq", type=int, default=5, help="Visualize a random sequence every N epochs")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
-    train_args.add_argument("--val_epoch_freq", type=int, default=5, help="Validate every N epochs")
-    train_args.add_argument("--save_epoch_freq", type=int, default=5, help="Save model every N epochs")
+    train_args.add_argument("--val_epoch_freq", type=int, default=1, help="Validate every N epochs")
+    train_args.add_argument("--save_epoch_freq", type=int, default=1, help="Save model every N epochs")
     train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
@@ -149,9 +151,11 @@ def get_parser():
         default=["mustard_easy_00_02"],
         help="Object names to use in the validation dataset",
     )
-    data_args.add_argument("--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"])
-    data_args.add_argument("--train_ds_folder_name", type=str, help="Name of the folder with the train dataset")
-    data_args.add_argument("--val_ds_folder_name", type=str, help="Name of the folder with the val dataset")
+    data_args.add_argument(
+        "--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"]
+    )
+    data_args.add_argument("--ds_folder_name_train", type=str, help="Name of the folder with the train dataset")
+    data_args.add_argument("--ds_folder_name_val", type=str, help="Name of the folder with the val dataset")
     data_args.add_argument(
         "--mask_pixels_prob", type=float, default=0.0, help="Probability of masking pixels in RGB/depth"
     )
@@ -199,9 +203,9 @@ def postprocess_args(args):
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     if args.ds_name not in ["ycbi", "cube"]:
         if args.do_overfit:
-            args.val_ds_folder_name = args.train_ds_folder_name
+            args.ds_folder_name_val = args.ds_folder_name_train
         else:
-            assert args.val_ds_folder_name, "Validation dataset folder name is required for training"
+            assert args.ds_folder_name_val, "Validation dataset folder name is required for training"
 
     return args
 
