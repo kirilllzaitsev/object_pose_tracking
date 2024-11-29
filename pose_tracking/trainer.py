@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -190,7 +191,7 @@ class Trainer:
             self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
         if do_vis:
-            vis_batch_idxs = np.random.choice(batch_size, 2, replace=False)
+            vis_batch_idxs = list(range(min(batch_size, 16)))
             vis_data = defaultdict(list)
 
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
@@ -434,13 +435,14 @@ class Trainer:
             if do_vis:
                 # save inputs to the exp dir
                 vis_keys = ["rgb", "depth", "intrinsics"]
-                for k in ["mask", "mesh_bbox"]:
+                for k in ["mask", "mesh_bbox", "pts"]:
                     if k in batch_t and len(batch_t[k]) > 0:
                         vis_keys.append(k)
                 for k in vis_keys:
-                    vis_data[k].append([batch_t[k][i] for i in vis_batch_idxs])
-                vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach())
-                vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs])
+                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
+                vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
+                vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
+                vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
             if self.do_debug:
                 # add everything to processed_data
@@ -482,8 +484,6 @@ class Trainer:
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
-                if isinstance(v, torch.Tensor):
-                    v = v.item()
                 stats[k] = v / seq_length
 
         if nan_count > 0:
@@ -491,9 +491,9 @@ class Trainer:
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
-            save_vis_path = f"{self.vis_dir}/epoch_{self.train_epoch_count}.pt"
+            save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
             torch.save(vis_data, save_vis_path)
-            self.logger.info(f"Saved vis data to {save_vis_path}")
+            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
         return {
             "losses": seq_stats,
