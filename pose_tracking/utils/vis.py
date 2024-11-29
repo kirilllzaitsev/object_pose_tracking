@@ -333,7 +333,7 @@ def PIL_image_grid(imgs, rows, cols):
     return grid
 
 
-def make_grid_image(imgs, nrow, padding=5, pad_value=255, dtype=np.uint8):
+def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
     """
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
@@ -356,6 +356,16 @@ def plot_seq(seq, keys_to_plot=["rgb"], take_n=None):
                 dtype = np.float32
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(seq[i][key][None])
+                dtype = np.uint8
+            elif key in ["pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
+                grid_img = draw_pose_on_img(
+                    seq[i]["rgb"],
+                    seq[i]["intrinsics"],
+                    seq[i][key],
+                    bbox=seq[i]["mesh_bbox"],
+                    bbox_color=(255, 255, 0),
+                    scale=0.1,
+                )
                 dtype = np.uint8
             else:
                 grid_img = adjust_img_for_plt(seq[i][key])
