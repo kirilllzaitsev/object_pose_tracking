@@ -119,63 +119,45 @@ def main(exp_tools: t.Optional[dict] = None):
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
 
-    transform_rgb = get_transforms(args.transform_names, transform_prob=args.transform_prob)
-    ds_kwargs_common = dict(
-        shorter_side=None,
-        zfar=np.inf,
-        include_bbox_2d=True if args.do_predict_kpts else False,
-        transforms_rgb=transform_rgb,
-        start_frame_idx=0,
-        convert_pose_to_quat=True,
-        mask_pixels_prob=args.mask_pixels_prob,
-    )
-    if args.ds_name == "ycbi":
-        ycbi_kwargs = dict(
-            ycb_meshes_dir=YCB_MESHES_DIR,
-            video_dir=YCBINEOAT_SCENE_DIR,
-        )
-        ds_kwargs_custom = ycbi_kwargs
-    elif args.ds_name == "ikea":
-        ikea_kwargs = dict(
-            video_dir=DATA_DIR / args.train_ds_folder_name,
-        )
-        ds_kwargs_custom = ikea_kwargs
-    else:
-        sim_ds_path = DATA_DIR / args.train_ds_folder_name
-        cube_sim_kwargs = dict(
-            video_dir=sim_ds_path,
-            mesh_path=f"{sim_ds_path}/mesh/cube.obj",
-            use_priv_info=args.use_priv_decoder,
-        )
-        ds_kwargs_custom = cube_sim_kwargs
-
-    ds_kwargs = {**ds_kwargs_common, **ds_kwargs_custom}
-
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
         ds_video_subdirs_val = args.obj_names_val
     else:
         ds_video_subdirs_train = [
-            Path(p).name for p in get_ordered_paths(DATA_DIR / args.train_ds_folder_name / "env_*")
+            Path(p).name for p in get_ordered_paths(DATA_DIR / args.ds_folder_name_train / "env_*")
         ]
-        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(DATA_DIR / args.val_ds_folder_name / "env_*")]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(DATA_DIR / args.ds_folder_name_val / "env_*")]
 
     ds_video_subdirs_train = ds_video_subdirs_train[: args.max_train_videos]
     ds_video_subdirs_val = ds_video_subdirs_val[: args.max_val_videos]
 
-    train_dataset = get_video_ds(
-        ds_video_subdirs=ds_video_subdirs_train,
+    if args.ds_name in ["ikea", "cube"]:
+        ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
+        ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
+    else:
+        ds_video_dir_train = YCBINEOAT_SCENE_DIR
+        ds_video_dir_val = YCBINEOAT_SCENE_DIR
+
+    datasets = get_datasets(
         ds_name=args.ds_name,
         seq_len=args.seq_len,
         seq_step=args.seq_step,
         seq_start=args.seq_start,
-        ds_kwargs=ds_kwargs,
-        do_preload=args.do_preload_ds,
+        ds_video_dir_train=ds_video_dir_train,
+        ds_video_dir_val=ds_video_dir_val,
+        ds_video_subdirs_train=ds_video_subdirs_train,
+        ds_video_subdirs_val=ds_video_subdirs_val,
+        transform_names=args.transform_names,
+        transform_prob=args.transform_prob,
+        mask_pixels_prob=args.mask_pixels_prob,
+        num_samples=args.num_samples,
+        do_predict_kpts=args.do_predict_kpts,
+        use_priv_decoder=args.use_priv_decoder,
+        do_overfit=args.do_overfit,
+        do_preload_ds=args.do_preload_ds,
     )
-            do_preload=args.do_preload_ds,
 
-    if args.do_overfit:
-        val_dataset = train_dataset
+    train_dataset, val_dataset = datasets["train"], datasets["val"]
 
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
@@ -327,6 +309,114 @@ def main(exp_tools: t.Optional[dict] = None):
 
     if args.use_ddp:
         dist.destroy_process_group()
+
+
+def get_datasets(
+    ds_name,
+    seq_len,
+    seq_step,
+    seq_start,
+    ds_video_dir_train=None,
+    ds_video_dir_val=None,
+    ds_video_dir_test=None,
+    ds_video_subdirs_train=None,
+    ds_video_subdirs_val=None,
+    ds_video_subdirs_test=None,
+    transform_names=None,
+    transform_prob=0.0,
+    mask_pixels_prob=0.0,
+    num_samples=None,
+    ds_types=("train", "val"),
+    do_predict_kpts=False,
+    use_priv_decoder=False,
+    do_overfit=False,
+    do_preload_ds=False,
+):
+
+    transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
+    ds_kwargs_common = dict(
+        shorter_side=None,
+        zfar=np.inf,
+        include_mask=False,
+        include_bbox_2d=True if do_predict_kpts else False,
+        start_frame_idx=0,
+        convert_pose_to_quat=True,
+        mask_pixels_prob=mask_pixels_prob,
+    )
+    if ds_name == "ycbi":
+        ycbi_kwargs = dict(
+            ycb_meshes_dir=YCB_MESHES_DIR,
+        )
+        ds_kwargs_custom = ycbi_kwargs
+    elif ds_name == "ikea":
+        ikea_kwargs = dict()
+        ds_kwargs_custom = ikea_kwargs
+    else:
+        cube_sim_kwargs = dict(
+            mesh_path=f"{ds_video_dir_train}/mesh/cube.obj",
+            use_priv_info=use_priv_decoder,
+        )
+        ds_kwargs_custom = cube_sim_kwargs
+
+    ds_kwargs = {**ds_kwargs_common, **ds_kwargs_custom}
+
+    res = {}
+
+    if "train" in ds_types:
+        train_ds_kwargs = copy.deepcopy(ds_kwargs)
+        train_ds_kwargs["video_dir"] = ds_video_dir_train
+        train_dataset = get_video_ds(
+            ds_video_subdirs=ds_video_subdirs_train,
+            ds_name=ds_name,
+            seq_len=seq_len,
+            seq_step=seq_step,
+            seq_start=seq_start,
+            ds_kwargs=train_ds_kwargs,
+            num_samples=num_samples,
+            do_preload=do_preload_ds,
+            transforms_rgb=transform_rgb,
+        )
+        res["train"] = train_dataset
+
+    if "val" in ds_types:
+        if do_overfit:
+            val_dataset = train_dataset
+        else:
+            assert ds_video_dir_val and ds_video_subdirs_val
+            val_ds_kwargs = copy.deepcopy(ds_kwargs)
+            val_ds_kwargs.pop("mask_pixels_prob")
+            if ds_name == "ikea":
+                val_ds_kwargs["video_dir"] = ds_video_dir_val
+            val_dataset = get_video_ds(
+                ds_video_subdirs=ds_video_subdirs_val,
+                ds_name=ds_name,
+                seq_len=seq_len,
+                seq_step=1,
+                seq_start=None,
+                ds_kwargs=val_ds_kwargs,
+                num_samples=num_samples,
+                do_preload=do_preload_ds,
+            )
+        res["val"] = val_dataset
+
+    if "test" in ds_types:
+        assert ds_video_dir_test and ds_video_subdirs_test
+        test_ds_kwargs = copy.deepcopy(ds_kwargs)
+        test_ds_kwargs.pop("mask_pixels_prob")
+        test_ds_kwargs["video_dir"] = ds_video_dir_test
+        test_dataset = get_video_ds(
+            ds_video_subdirs=ds_video_subdirs_test,
+            ds_name=ds_name,
+            seq_len=seq_len,
+            seq_step=1,
+            seq_start=0,
+            ds_kwargs=test_ds_kwargs,
+            num_samples=num_samples,
+            do_preload=do_preload_ds,
+        )
+        res["test"] = test_dataset
+
+    return res
 
 
 if __name__ == "__main__":
