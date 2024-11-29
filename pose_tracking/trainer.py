@@ -193,9 +193,9 @@ class Trainer:
             vis_batch_idxs = np.random.choice(batch_size, 2, replace=False)
             vis_data = defaultdict(list)
 
-        abs_prev_pose = None  # the processed ouput of the model that matches model's expected format
-        prev_model_out = None  # the raw ouput of the model
-        prev_gt_mat = None  # prev gt in matrix form
+        pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
+        out_prev = None  # raw ouput of the model
+        pose_mat_prev_gt_abs = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:
@@ -203,47 +203,42 @@ class Trainer:
                 optimizer.zero_grad()
             rgb = batch_t["rgb"]
             seg_masks = batch_t["mask"]
-            pose_gt = batch_t["pose"]
+            pose_gt_abs = batch_t["pose"]
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
             intrinsics = batch_t["intrinsics"]
             bbox_2d = batch_t["bbox_2d"]
             h, w = rgb.shape[-2:]
-            t_gt = pose_gt[:, :3]
-            rot_gt = pose_gt[:, 3:]
+            t_gt_abs = pose_gt_abs[:, :3]
+            rot_gt_abs = pose_gt_abs[:, 3:]
 
             if self.do_predict_rel_pose:
                 assert (
                     not self.do_predict_6d_rot and not self.do_predict_2d_t
                 ), "Relative pose prediction is not supported with 6d rot or 2d t"
                 if t == 0:
-                    abs_prev_t = t_gt
-                    abs_prev_rot = rot_gt
+                    rot_prev_gt_abs = rot_gt_abs
                     if self.do_predict_3d_rot:
-                        abs_prev_rot = quaternion_to_axis_angle(abs_prev_rot)
-                    abs_prev_pose = {"t": abs_prev_t, "rot": abs_prev_rot}
+                        rot_prev_gt_abs = quaternion_to_axis_angle(rot_prev_gt_abs)
+                    pose_prev_pred_abs = {"t": t_gt_abs, "rot": rot_prev_gt_abs}
 
-                    prev_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
+                    pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
 
-            outputs = self.model(
-                rgb, depth, bbox=bbox_2d, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out
+            out = self.model(
+                rgb, depth, bbox=bbox_2d, prev_pose=pose_prev_pred_abs if self.do_predict_rel_pose else out_prev
             )
 
             # POSTPROCESS OUTPUTS
 
-            prev_model_out = {"t": outputs["t"], "rot": outputs["rot"]}
-            rot_pred, t_pred = outputs["rot"], outputs["t"]
-
-            if self.do_predict_6d_rot:
-                rot_pred = rot_mat_from_6d(rot_pred)
+            rot_pred, t_pred = out["rot"], out["t"]
 
             if self.do_predict_2d_t:
                 t_pred_2d_denorm = t_pred.detach().clone()
                 t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
                 t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
 
-                depth_gt = t_gt[:, 2]
-                center_depth_pred = outputs["center_depth"]
+                depth_gt = t_gt_abs[:, 2]
+                center_depth_pred = out["center_depth"]
                 t_pred_2d_backproj = []
                 for sample_idx in range(len(depth_gt)):
                     t_pred_2d_backproj.append(
@@ -253,49 +248,59 @@ class Trainer:
                     )
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
-            pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
+            pose_mat_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
+            rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
 
             if self.do_predict_6d_rot:
-                pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
-                pose_pred[:, :3, :3] = rot_pred
-                pose_pred[:, :3, 3] = t_pred
+                pose_mat_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
+                pose_mat_pred[:, :3, :3] = rot_mat_from_6d(rot_pred)
+                pose_mat_pred[:, :3, 3] = t_pred
             else:
-                pose_pred = torch.stack([pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)])
+                pose_mat_pred = torch.stack(
+                    [pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
+                )
 
             if self.do_predict_rel_pose:
-                prev_pose_mat = torch.stack(
+                pose_mat_prev_pred_abs = torch.stack(
                     [
                         pose_to_mat_converter_fn(rt)
-                        for rt in torch.cat([abs_prev_pose["t"], abs_prev_pose["rot"]], dim=1)
+                        for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
                     ]
                 )
-                pose_pred = egocentric_delta_pose_to_pose(
-                    prev_pose_mat,
-                    trans_delta=pose_pred[:, :3, 3],
-                    rot_mat_delta=pose_pred[:, :3, :3],
+                pose_mat_pred_abs = egocentric_delta_pose_to_pose(
+                    pose_mat_prev_pred_abs,
+                    trans_delta=pose_mat_pred[:, :3, 3],
+                    rot_mat_delta=pose_mat_pred[:, :3, :3],
                     do_couple_rot_t=False,
                 )
+            else:
+                pose_mat_pred_abs = pose_mat_pred
+
+            rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
 
             # LOSSES
-            # -- pose_pred is abs, t_pred/rot_pred can be rel or abs
+            # -- t_pred/rot_pred can be rel or abs
 
             if self.use_pose_loss:
-                loss_pose = self.criterion_pose(pose_pred, pose_gt_mat, pts)
+                loss_pose = self.criterion_pose(pose_mat_pred_abs, pose_mat_gt_abs, pts)
                 loss = loss_pose.clone()
             else:
                 if self.do_predict_rel_pose:
-                    t_gt_rel, rot_gt_rel = pose_to_egocentric_delta_pose(pose_gt_mat, prev_gt_mat)
+                    t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_gt_abs, pose_mat_prev_gt_abs)
                     if self.do_predict_3d_rot:
-                        rot_gt_rel = matrix_to_axis_angle(rot_gt_rel)
+                        rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
                     else:
-                        rot_gt_rel = matrix_to_quaternion(rot_gt_rel)
+                        rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
+
+                # t loss
+
                 if self.do_predict_2d_t:
-                    t_gt_2d = cam_to_2d(t_gt.unsqueeze(1), intrinsics).squeeze(1)
+                    t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
                     t_gt_2d_norm = t_gt_2d.clone()
                     t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
                     t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
 
-                    t_pred_2d = outputs["t"]
+                    t_pred_2d = out["t"]
                     loss_t_2d = torch.abs(t_pred_2d - t_gt_2d_norm).mean()
                     loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
 
@@ -305,17 +310,19 @@ class Trainer:
                         rel_t_scaler = 1e3
                         loss_t = self.criterion_trans(t_pred * rel_t_scaler, t_gt_rel * rel_t_scaler)
                     else:
-                        loss_t = self.criterion_trans(t_pred, t_gt)
+                        loss_t = self.criterion_trans(t_pred, t_gt_abs)
+
+                # rot loss
+
+                if self.do_predict_3d_rot:
+                    rot_gt = quaternion_to_axis_angle(rot_gt_abs)
+                else:
+                    rot_gt = rot_gt_abs
+
                 if self.do_predict_6d_rot:
                     loss_rot = torch.abs(
-                        rotate_pts_batch(pose_pred[:, :3, :3], pts) - rotate_pts_batch(pose_gt_mat[:, :3, :3], pts)
+                        rotate_pts_batch(rot_mat_pred_abs, pts) - rotate_pts_batch(rot_mat_gt_abs, pts)
                     ).mean()
-                elif self.do_predict_3d_rot:
-                    if self.do_predict_rel_pose:
-                        loss_rot = F.mse_loss(rot_pred, rot_gt_rel)
-                    else:
-                        rot_gt_3d = quaternion_to_axis_angle(rot_gt)
-                        loss_rot = F.mse_loss(rot_pred, rot_gt_3d)
                 else:
                     if self.do_predict_rel_pose:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
@@ -323,18 +330,21 @@ class Trainer:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
                 loss = loss_rot + loss_t
 
+            # depth loss
             if self.use_obs_belief:
-                loss_depth = F.mse_loss(outputs["decoder_out"]["depth_final"], outputs["latent_depth"])
+                loss_depth = F.mse_loss(out["decoder_out"]["depth_final"], out["latent_depth"])
             else:
                 loss_depth = torch.tensor(0.0).to(self.device)
             loss += loss_depth
 
-            if "priv_decoded" in outputs:
-                loss_priv = compute_chamfer_dist(outputs["priv_decoded"], batch_t["priv"])
+            # priv loss
+            if "priv_decoded" in out:
+                loss_priv = compute_chamfer_dist(out["priv_decoded"], batch_t["priv"])
                 loss += loss_priv * 0.01
 
+            # kpt loss
             if self.do_predict_kpts:
-                kpts_pred = outputs["kpts"]
+                kpts_pred = out["kpts"]
                 kpts_gt = batch_t["bbox_2d_kpts"].float()
                 loss_kpts = F.huber_loss(kpts_pred, kpts_gt)
                 bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
@@ -342,6 +352,7 @@ class Trainer:
                 loss += loss_kpts
                 loss += loss_cr * 0.01
 
+            # optim
             if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
@@ -354,7 +365,7 @@ class Trainer:
             bbox_3d = batch_t["mesh_bbox"]
             diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
-            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_pred, pose_gt_mat)):
+            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
                 m_sample = calc_metrics(
                     pred_rt=pred_rt,
                     gt_rt=gt_rt,
@@ -379,17 +390,18 @@ class Trainer:
 
             if self.do_predict_rel_pose:
                 if self.do_predict_3d_rot:
-                    abs_prev_rot = matrix_to_axis_angle(pose_pred[:, :3, :3])
+                    rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
                 else:
-                    abs_prev_rot = matrix_to_quaternion(pose_pred[:, :3, :3])
-                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_prev_rot}
+                    rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
+                pose_prev_pred_abs = {"t": rot_mat_pred_abs, "rot": rot_prev_pred_abs}
             else:
-                abs_prev_pose = {"t": t_pred, "rot": rot_pred}
-                if self.do_predict_2d_t:
-                    abs_prev_pose["center_depth"] = center_depth_pred
-            abs_prev_pose = {k: v.detach() for k, v in abs_prev_pose.items()}
+                pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
+            if self.do_predict_2d_t:
+                pose_prev_pred_abs["center_depth"] = center_depth_pred
+            pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
 
-            prev_gt_mat = pose_gt_mat
+            pose_mat_prev_gt_abs = pose_mat_gt_abs
+            out_prev = {"t": out["t"], "rot": out["rot"]}
 
             # OTHER
 
@@ -400,7 +412,7 @@ class Trainer:
             else:
                 seq_stats["loss_rot"] += loss_rot
                 seq_stats["loss_t"] += loss_t
-            if "priv_decoded" in outputs:
+            if "priv_decoded" in out:
                 seq_stats["loss_priv"] += loss_priv
             if self.do_predict_kpts:
                 seq_stats["loss_kpts"] += loss_kpts
@@ -414,38 +426,38 @@ class Trainer:
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, pose_pred, preds_dir)
+                save_results(batch_t, pose_mat_pred_abs, preds_dir)
 
             if do_vis:
                 # save inputs to the exp dir
                 for k in ["rgb", "mask", "depth", "intrinsics", "mesh_bbox"]:
                     vis_data[k].append([batch_t[k][i] for i in vis_batch_idxs])
-                vis_data["pose_pred"].append(pose_pred[vis_batch_idxs].detach())
-                vis_data["pose_gt_mat"].append(pose_gt_mat[vis_batch_idxs])
+                vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach())
+                vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs])
 
             if self.do_debug:
                 # add everything to processed_data
                 self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
                 self.processed_data["rgb"].append(rgb)
                 self.processed_data["seg_masks"].append(seg_masks)
-                self.processed_data["pose_gt"].append(pose_gt)
-                self.processed_data["pose_gt_mat"].append(pose_gt_mat)
+                self.processed_data["pose_gt_abs"].append(pose_gt_abs)
+                self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
                 self.processed_data["depth"].append(depth)
                 self.processed_data["rot_pred"].append(rot_pred)
                 self.processed_data["t_pred"].append(t_pred)
                 if self.do_predict_2d_t:
                     self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
-                if "priv_decoded" in outputs:
-                    self.processed_data["priv_decoded"].append(outputs["priv_decoded"])
-                self.processed_data["pose_pred"].append(pose_pred)
-                self.processed_data["abs_prev_pose"].append(abs_prev_pose)
+                if "priv_decoded" in out:
+                    self.processed_data["priv_decoded"].append(out["priv_decoded"])
+                self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
+                self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
                 self.processed_data["pts"].append(pts)
                 self.processed_data["bbox_3d"].append(bbox_3d)
                 self.processed_data["diameter"].append(diameter)
                 self.processed_data["loss"].append(loss)
                 self.processed_data["m_batch"].append(m_batch)
                 self.processed_data["loss_depth"].append(loss_depth)
-                self.processed_data["prev_model_out"].append(prev_model_out)
+                self.processed_data["out_prev"].append(out_prev)
                 if self.use_pose_loss:
                     self.processed_data["loss_pose"].append(loss_pose)
                 else:
