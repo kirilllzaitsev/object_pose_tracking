@@ -168,6 +168,7 @@ class Trainer:
         do_opt_every_ts = is_train and self.use_optim_every_ts
         do_opt_in_the_end = is_train and not self.use_optim_every_ts
 
+        seq_length = len(batched_seq)
         batch_size = len(batched_seq[0]["rgb"])
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
         pose_to_mat_converter_fn = (
@@ -276,7 +277,10 @@ class Trainer:
             else:
                 pose_mat_pred_abs = pose_mat_pred
 
+            t_pred_abs = pose_mat_pred_abs[:, :3, 3]
             rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
+            if self.do_predict_rel_pose:
+                t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_gt_abs, pose_mat_prev_gt_abs)
 
             # LOSSES
             # -- t_pred/rot_pred can be rel or abs
@@ -285,12 +289,10 @@ class Trainer:
                 loss_pose = self.criterion_pose(pose_mat_pred_abs, pose_mat_gt_abs, pts)
                 loss = loss_pose.clone()
             else:
-                if self.do_predict_rel_pose:
-                    t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_gt_abs, pose_mat_prev_gt_abs)
-                    if self.do_predict_3d_rot:
-                        rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
-                    else:
-                        rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
+                if self.do_predict_3d_rot:
+                    rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
+                else:
+                    rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
 
                 # t loss
 
@@ -310,7 +312,7 @@ class Trainer:
                         rel_t_scaler = 1e3
                         loss_t = self.criterion_trans(t_pred * rel_t_scaler, t_gt_rel * rel_t_scaler)
                     else:
-                        loss_t = self.criterion_trans(t_pred, t_gt_abs)
+                        loss_t = self.criterion_trans(t_pred_abs, t_gt_abs)
 
                 # rot loss
 
@@ -367,6 +369,12 @@ class Trainer:
             m_batch = defaultdict(list)
 
             for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
+                m_sample = calc_metrics(
+                    pred_rt=pred_rt,
+                    gt_rt=gt_rt,
+                    pts=pts[sample_idx],
+                    class_name=None,
+                    use_miou=True,
                     bbox_3d=bbox_3d[sample_idx],
                     diameter=diameter[sample_idx],
                     is_meters=True,
@@ -388,7 +396,7 @@ class Trainer:
                     rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
                 else:
                     rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
-                pose_prev_pred_abs = {"t": rot_mat_pred_abs, "rot": rot_prev_pred_abs}
+                pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
             else:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
             if self.do_predict_2d_t:
@@ -463,7 +471,7 @@ class Trainer:
                     self.processed_data["rot_gt_rel"].append(rot_gt_rel)
 
         if do_opt_in_the_end:
-            total_loss /= len(batched_seq)
+            total_loss /= seq_length
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
             optimizer.step()
@@ -472,7 +480,7 @@ class Trainer:
             for k, v in stats.items():
                 if isinstance(v, torch.Tensor):
                     v = v.item()
-                stats[k] = v / len(batched_seq)
+                stats[k] = v / seq_length
 
         if nan_count > 0:
             seq_metrics["nan_count"] = nan_count
