@@ -365,19 +365,8 @@ class Trainer:
             bbox_3d = batch_t["mesh_bbox"]
             diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
-            if self.do_predict_rel_pose:
-                pose_mat_gt = torch.stack(
-                    [pose_to_mat_converter_fn(rt) for rt in torch.cat([t_gt_rel, rot_gt_rel], dim=1)]
-                )
-            else:
-                pose_mat_gt = pose_mat_gt_abs
-            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred, pose_mat_gt)):
-                m_sample = calc_metrics(
-                    pred_rt=pred_rt,
-                    gt_rt=gt_rt,
-                    pts=pts[sample_idx],
-                    class_name=None,
-                    use_miou=True,
+
+            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
                     bbox_3d=bbox_3d[sample_idx],
                     diameter=diameter[sample_idx],
                     is_meters=True,
