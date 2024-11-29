@@ -23,6 +23,8 @@ def get_parser():
     pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
+    pipe_args.add_argument("--do_profile", action="store_true", help="Profile the code")
+    pipe_args.add_argument("--do_print_seq_stats", action="store_true", help="Print sequence-level stats")
     pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
     pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
     pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")

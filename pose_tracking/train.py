@@ -1,4 +1,5 @@
 import copy
+import functools
 import os
 import shutil
 import sys
@@ -45,8 +46,7 @@ from tqdm.auto import tqdm
 
 
 @record
-def main(exp_tools: t.Optional[dict] = None):
-    args, args_to_group_map = parse_args()
+def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional[dict] = None):
 
     set_seed(args.seed)
     if args.use_ddp:
@@ -420,4 +420,14 @@ def get_datasets(
 
 
 if __name__ == "__main__":
-    main()
+    args, args_to_group_map = parse_args()
+    import datetime as dt
+
+    from pose_tracking.utils.profiling_utils import profile_func
+
+    run = functools.partial(main, args=args, args_to_group_map=args_to_group_map)
+    if args.do_profile:
+        now = dt.datetime.now()
+        profile_func(run, f"{PROJ_DIR}/profiling/{now.strftime('%Y%m%d_%H%M%S')}.prof")
+    else:
+        run()

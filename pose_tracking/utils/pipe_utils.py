@@ -36,6 +36,7 @@ from pose_tracking.utils.misc import DeviceType
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 
 def get_model(args):
@@ -126,6 +127,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         do_vis=do_vis,
         model_name=args.model_name,
         do_debug=args.do_debug,
+        do_print_seq_stats=args.do_print_seq_stats,
     )
 
     return trainer
@@ -310,7 +312,7 @@ def get_video_ds(
     transforms_rgb=None,
 ):
     video_datasets = []
-    for ds_video_subdir in ds_video_subdirs:
+    for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         video_ds = VideoDataset(
             ds=ds,

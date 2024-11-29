@@ -51,6 +51,7 @@ class Trainer:
         world_size=1,
         do_log_every_ts=False,
         do_log_every_seq=True,
+        do_print_seq_stats=False,
         use_ddp=False,
         use_prev_pose_condition=False,
         do_predict_rel_pose=False,
@@ -71,9 +72,6 @@ class Trainer:
         self.do_predict_3d_rot = do_predict_3d_rot
         self.use_rnn = use_rnn
         self.use_obs_belief = use_obs_belief
-        self.world_size = world_size
-        self.logger = default_logger if logger is None else logger
-        self.vis_epoch_freq = vis_epoch_freq
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
@@ -81,13 +79,13 @@ class Trainer:
         self.do_predict_rel_pose = do_predict_rel_pose
         self.do_predict_kpts = do_predict_kpts
         self.do_vis = do_vis
+        self.do_print_seq_stats = do_print_seq_stats
+
+        self.world_size = world_size
+        self.logger = default_logger if logger is None else logger
+        self.vis_epoch_freq = vis_epoch_freq
         self.exp_dir = exp_dir
         self.model_name = model_name
-
-        self.use_pose_loss = criterion_pose is not None
-        self.do_log = writer is not None
-        self.use_optim_every_ts = not use_rnn
-
         self.model = model
         self.device = device
         self.hidden_dim = hidden_dim
@@ -96,12 +94,16 @@ class Trainer:
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
         self.writer = writer
-        self.processed_data = defaultdict(list)
 
+        self.use_pose_loss = criterion_pose is not None
+        self.do_log = writer is not None
+        self.use_optim_every_ts = not use_rnn
+        self.vis_dir = f"{self.exp_dir}/vis"
+
+        self.processed_data = defaultdict(list)
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
         self.train_epoch_count = 0
-        self.vis_dir = f"{self.exp_dir}/vis"
 
     def loader_forward(
         self,
@@ -129,25 +131,22 @@ class Trainer:
             )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
-                if isinstance(v, torch.Tensor):
-                    v = v.item()
-                    if self.use_ddp:
-                        reduce_metric(v, world_size=self.world_size)
                 running_stats[k] += v
-                if self.do_log:
+                if self.do_log and self.do_log_every_seq:
                     self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
             self.seq_counts_per_stage[stage] += 1
 
-            seq_pbar.set_postfix(
-                {k: v / (seq_pack_idx + 1) for k, v in running_stats.items()},
-            )
+            if self.do_print_seq_stats:
+                seq_pbar.set_postfix({k: v / (seq_pack_idx + 1) for k, v in running_stats.items()})
 
             do_vis = False  # only do vis for the first seq
 
         for k, v in running_stats.items():
+            if self.use_ddp:
+                v = reduce_metric(v, world_size=self.world_size)
             running_stats[k] = v / len(loader)
 
-        if self.do_log and self.do_log_every_seq:
+        if self.do_log:
             for k, v in running_stats.items():
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
 
@@ -289,10 +288,11 @@ class Trainer:
                 loss_pose = self.criterion_pose(pose_mat_pred_abs, pose_mat_gt_abs, pts)
                 loss = loss_pose.clone()
             else:
-                if self.do_predict_3d_rot:
-                    rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
-                else:
-                    rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
+                if self.do_predict_rel_pose:
+                    if self.do_predict_3d_rot:
+                        rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
+                    else:
+                        rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
 
                 # t loss
 
@@ -433,7 +433,11 @@ class Trainer:
 
             if do_vis:
                 # save inputs to the exp dir
-                for k in ["rgb", "mask", "depth", "intrinsics", "mesh_bbox"]:
+                vis_keys = ["rgb", "depth", "intrinsics"]
+                for k in ["mask", "mesh_bbox"]:
+                    if k in batch_t and len(batch_t[k]) > 0:
+                        vis_keys.append(k)
+                for k in vis_keys:
                     vis_data[k].append([batch_t[k][i] for i in vis_batch_idxs])
                 vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach())
                 vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs])
