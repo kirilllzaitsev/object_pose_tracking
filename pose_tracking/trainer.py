@@ -212,15 +212,18 @@ class Trainer:
             t_gt = pose_gt[:, :3]
             rot_gt = pose_gt[:, 3:]
 
-            if abs_prev_pose is None and self.do_predict_rel_pose:
+            if self.do_predict_rel_pose:
                 assert (
                     not self.do_predict_6d_rot and not self.do_predict_2d_t
                 ), "Relative pose prediction is not supported with 6d rot or 2d t"
-                abs_prev_t = pose_gt[:, :3]
-                abs_prev_rot = pose_gt[:, 3:]
-                if self.do_predict_3d_rot:
-                    abs_prev_rot = quaternion_to_axis_angle(abs_prev_rot)
-                abs_prev_pose = {"t": abs_prev_t, "rot": abs_prev_rot}
+                if t == 0:
+                    abs_prev_t = t_gt
+                    abs_prev_rot = rot_gt
+                    if self.do_predict_3d_rot:
+                        abs_prev_rot = quaternion_to_axis_angle(abs_prev_rot)
+                    abs_prev_pose = {"t": abs_prev_t, "rot": abs_prev_rot}
+
+                    prev_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
 
             outputs = self.model(
                 rgb, depth, bbox=bbox_2d, prev_pose=abs_prev_pose if self.do_predict_rel_pose else prev_model_out
@@ -251,7 +254,7 @@ class Trainer:
                 t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
             pose_gt_mat = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt])
-            prev_gt_mat = pose_gt_mat
+
             if self.do_predict_6d_rot:
                 pose_pred = torch.eye(4).repeat(batch_size, 1, 1).to(self.device)
                 pose_pred[:, :3, :3] = rot_pred
@@ -272,18 +275,6 @@ class Trainer:
                     rot_mat_delta=pose_pred[:, :3, :3],
                     do_couple_rot_t=False,
                 )
-
-            if self.do_predict_rel_pose:
-                if self.do_predict_3d_rot:
-                    abs_prev_rot = matrix_to_axis_angle(prev_gt_mat[:, :3, :3])
-                else:
-                    abs_prev_rot = matrix_to_quaternion(pose_pred[:, :3, :3])
-                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_prev_rot}
-            else:
-                abs_prev_pose = {"t": t_pred, "rot": rot_pred}
-                if self.do_predict_2d_t:
-                    abs_prev_pose["center_depth"] = center_depth_pred
-            abs_prev_pose = {k: v.detach() for k, v in abs_prev_pose.items()}
 
             # LOSSES
             # -- pose_pred is abs, t_pred/rot_pred can be rel or abs
@@ -384,6 +375,22 @@ class Trainer:
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
 
+            # UPDATE VARS
+
+            if self.do_predict_rel_pose:
+                if self.do_predict_3d_rot:
+                    abs_prev_rot = matrix_to_axis_angle(pose_pred[:, :3, :3])
+                else:
+                    abs_prev_rot = matrix_to_quaternion(pose_pred[:, :3, :3])
+                abs_prev_pose = {"t": pose_pred[:, :3, 3], "rot": abs_prev_rot}
+            else:
+                abs_prev_pose = {"t": t_pred, "rot": rot_pred}
+                if self.do_predict_2d_t:
+                    abs_prev_pose["center_depth"] = center_depth_pred
+            abs_prev_pose = {k: v.detach() for k, v in abs_prev_pose.items()}
+
+            prev_gt_mat = pose_gt_mat
+
             # OTHER
 
             seq_stats["loss"] += loss
@@ -444,6 +451,9 @@ class Trainer:
                 else:
                     self.processed_data["loss_rot"].append(loss_rot)
                     self.processed_data["loss_t"].append(loss_t)
+                if self.do_predict_rel_pose:
+                    self.processed_data["t_gt_rel"].append(t_gt_rel)
+                    self.processed_data["rot_gt_rel"].append(rot_gt_rel)
 
         if do_opt_in_the_end:
             total_loss /= len(batched_seq)
