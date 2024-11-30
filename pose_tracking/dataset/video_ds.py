@@ -74,6 +74,7 @@ class VideoDataset(Dataset):
             seq.append(sample)
         return seq
 
+import numpy as np
 
 class MultiVideoDataset(Dataset):
     """
@@ -91,6 +92,6 @@ class MultiVideoDataset(Dataset):
         return sum(self.lens)
 
     def __getitem__(self, idx):
-        ds_idx = torch.randint(0, len(self.video_datasets), (1,)).item()
+        ds_idx = np.searchsorted(np.cumsum(self.lens), idx, side="right")
         sample_idx = idx - sum(self.lens[:ds_idx])
         return self.video_datasets[ds_idx][sample_idx]
