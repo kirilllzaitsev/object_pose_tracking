@@ -163,6 +163,7 @@ def get_video_ds(
     video_datasets = []
     for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
+        seq_len = len(ds) if seq_len is None else seq_len
         video_ds = VideoDataset(
             ds=ds,
             seq_len=seq_len,

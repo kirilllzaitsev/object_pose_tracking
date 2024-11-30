@@ -21,7 +21,7 @@ class VideoDataset(Dataset):
     """
 
     def __init__(
-        self, ds, seq_len=10, seq_start=None, seq_step=1, num_samples=None, do_preload=False, transforms_rgb=None
+        self, ds, seq_len=None, seq_start=0, seq_step=1, num_samples=None, do_preload=False, transforms_rgb=None
     ):
         self.do_preload = do_preload
 
