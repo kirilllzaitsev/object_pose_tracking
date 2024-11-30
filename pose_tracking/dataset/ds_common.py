@@ -115,6 +115,8 @@ def dict_collate_fn(batch):
     for k in batch[0].keys():
         new_b[k] = [d[k] for d in batch]
     for k, v in new_b.items():
+        if k in ["class_id", "bbox_2d"]:
+            continue
         if isinstance(v[0], torch.Tensor):
             new_b[k] = torch.stack(v)
     return new_b

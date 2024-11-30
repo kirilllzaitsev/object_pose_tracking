@@ -16,11 +16,11 @@ class HO3DDataset(torch.utils.data.Dataset):
 
     ds_name = "ho3d"
 
-    def __init__(self, video_dir, transforms=None, include_masks=True, include_occ_masks=False, do_load_mesh=True):
+    def __init__(self, video_dir, transforms=None, include_mask=True, include_occ_masks=False, do_load_mesh=True):
         super().__init__()
         self.video_dir = video_dir
         self.transforms = transforms
-        self.include_masks = include_masks
+        self.include_mask = include_mask
         self.include_occ_masks = include_occ_masks
         self.color_files = sorted(glob(f"{self.video_dir}/rgb/*.jpg"))
         meta_file = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
@@ -46,7 +46,7 @@ class HO3DDataset(torch.utils.data.Dataset):
         depth_raw = self.get_depth(idx)
         pose = self.get_gt_pose(idx)
 
-        if self.include_masks:
+        if self.include_mask:
             bin_mask = self.get_mask(idx)
         else:
             bin_mask = None
