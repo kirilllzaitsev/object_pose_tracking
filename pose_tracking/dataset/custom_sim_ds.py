@@ -174,31 +174,15 @@ class CustomSimDatasetIkea(CustomSimDataset):
             self.objs_metadata = json.load(open(f"{self.video_dir}/metadata.json"))
 
         metadata_path = f"{self.video_dir}/metadata.json"
-        if os.path.exists(metadata_path):
-            self.metadata = json.load(open(metadata_path))
-        else:
-            self.metadata = None
+        assert os.path.exists(metadata_path)
+        self.metadata = json.load(open(metadata_path))
+
         if do_load_bbox_from_metadata:
             assert self.metadata is not None, f"metadata not found at {metadata_path}"
             assert len(self.metadata) == 1, len(self.metadata)
             self.mesh_bbox = bbox_to_8_point_centered(bbox=self.metadata[0]["bbox"])
             self.mesh_diameter = compute_pts_span(self.mesh_bbox)
 
-
-class CustomSimDatasetEval(CustomSimDataset):
-    def __init__(self, preds_path, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.preds_path = Path(preds_path)
-        self.pred_file_paths = list(sorted(self.preds_path.glob("*.txt")))
-        if len(self.pred_file_paths) != len(self.color_files):
-            logger.warning(
-                f"Number of predictions ({len(self.pred_file_paths)}) does not match number of samples ({len(self.color_files)})"
-            )
-
-    def __len__(self):
-        return min(len(self.color_files), len(self.pred_file_paths))
-
     def augment_sample(self, sample, idx):
-        sample = super().augment_sample(sample, idx)
-        sample["pose_pred"] = self.get_pose(f"{self.preds_path}/{self.id_strs[idx]}.txt")
+        sample["class_id"] = self.metadata[self.obj_id].get("class_id", 0)
         return sample
