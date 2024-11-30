@@ -68,6 +68,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         dist.init_process_group(
             backend="nccl" if args.use_cuda else "gloo",
             world_size=world_size,
+            init_method="env://",
             rank=rank,
         )
         if args.use_cuda:
@@ -347,6 +348,8 @@ def get_datasets(
         start_frame_idx=0,
         convert_pose_to_quat=True,
         mask_pixels_prob=mask_pixels_prob,
+        do_normalize_bbox=True if args.model_name in ["detr"] else False,
+        bbox_format="xyhw" if args.model_name in ["detr"] else "xyxy",
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

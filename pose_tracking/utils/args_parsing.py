@@ -84,6 +84,7 @@ def get_parser():
     model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
+    model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
@@ -92,7 +93,11 @@ def get_parser():
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
     model_args.add_argument(
-        "--model_name", type=str, default="cnnlstm", help="Model name", choices=["cnnlstm", "cnnlstm_sep", "videopose"]
+        "--model_name",
+        type=str,
+        default="cnnlstm",
+        help="Model name",
+        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr"],
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
@@ -146,7 +151,7 @@ def get_parser():
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
     data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
-    data_args.add_argument("--obj_names", nargs="+", default=["mustard0"], help="Object names to use in the dataset")
+    data_args.add_argument("--obj_names", nargs="*", default=["mustard0"], help="Object names to use in the dataset")
     data_args.add_argument(
         "--obj_names_val",
         nargs="*",
