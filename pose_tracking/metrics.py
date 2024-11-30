@@ -316,3 +316,23 @@ def relative_pose_error(T_0to1, R, t, ignore_gt_t_thr=0.0):
     R_err = np.rad2deg(np.abs(np.arccos(cos)))
 
     return t_err, R_err
+
+
+@torch.no_grad()
+def accuracy(pred_logits, gt_labels, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    if gt_labels.numel() == 0:
+        return [torch.zeros([], device=pred_logits.device)]
+    maxk = max(topk)
+    batch_size = gt_labels.size(0)
+
+    _, pred = pred_logits.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(gt_labels.view(1, -1).expand_as(pred))
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0)
+        res.append(correct_k.mul_(100.0 / batch_size))
+    return res
+
