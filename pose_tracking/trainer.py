@@ -9,6 +9,7 @@ from pose_tracking.config import default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
+from pose_tracking.utils.artifact_utils import save_results
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
@@ -17,7 +18,7 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
-from pose_tracking.utils.pipe_utils import reduce_metric, save_results
+from pose_tracking.utils.pipe_utils import reduce_metric
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,

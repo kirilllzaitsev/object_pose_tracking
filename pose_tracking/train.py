@@ -26,6 +26,11 @@ from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
+from pose_tracking.utils.artifact_utils import (
+    log_artifacts,
+    log_exp_meta,
+    log_model_meta,
+)
 from pose_tracking.utils.common import get_ordered_paths, print_args
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
@@ -34,10 +39,6 @@ from pose_tracking.utils.pipe_utils import (
     get_model,
     get_trainer,
     get_video_ds,
-    log_artifacts,
-    log_exp_meta,
-    log_model_meta,
-    print_stats,
 )
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -250,7 +251,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         )
 
         logger.info(f"# Epoch {epoch} #")
-        print_stats(train_stats, logger, "train")
+        printer.print_stats(train_stats, "train")
         for k, v in train_stats.items():
             history["train"][k].append(v)
 
@@ -268,7 +269,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     stage="val",
                 )
             if is_main_process:
-                print_stats(val_stats, logger, "val")
+                printer.print_stats(val_stats, "val")
                 for k, v in val_stats.items():
                     history["val"][k].append(v)
 
