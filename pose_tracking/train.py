@@ -176,7 +176,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank)
         val_loader = DataLoader(
             val_dataset,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size if len(val_dataset) > 8 else len(val_dataset),
             sampler=val_sampler,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
@@ -191,7 +191,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             num_workers=args.num_workers,
         )
         val_loader = DataLoader(
-            val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=args.num_workers
+            val_dataset,
+            batch_size=args.batch_size if len(val_dataset) > 8 else len(val_dataset),
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=args.num_workers,
         )
 
     model = get_model(args).to(device)
@@ -391,12 +395,12 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
-                seq_len=seq_len,
+                seq_len=None,
                 seq_step=1,
-                seq_start=None,
+                seq_start=0,
                 ds_kwargs=val_ds_kwargs,
                 num_samples=num_samples,
-                do_preload=do_preload_ds,
+                do_preload=True,
             )
         res["val"] = val_dataset
 
@@ -413,7 +417,7 @@ def get_datasets(
             seq_start=0,
             ds_kwargs=test_ds_kwargs,
             num_samples=num_samples,
-            do_preload=do_preload_ds,
+            do_preload=True,
         )
         res["test"] = test_dataset
 
