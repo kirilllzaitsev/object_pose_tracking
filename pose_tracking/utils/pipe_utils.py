@@ -147,17 +147,22 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
 
     if args.model_name == "videopose":
         trainer_cls = TrainerVideopose
-    elif args.model_name == "detr":
+    elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
     else:
         trainer_cls = Trainer
 
-    if args.model_name == "detr":
+    if "detr" in args.model_name:
         extra_kwargs = {
-            "num_dec_layers": 6,
             "num_classes": 21,
-            "aux_loss": True,
         }
+        if "detr" in args.model_name:
+            extra_kwargs.update(
+                {
+                    "num_dec_layers": 6,
+                    "aux_loss": True,
+                }
+            )
     else:
         extra_kwargs = {}
 
