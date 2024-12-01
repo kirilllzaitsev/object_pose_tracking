@@ -3,8 +3,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import torch
-from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME
+import yaml
+from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, RELATED_DIR
 from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetCube,
     CustomSimDatasetIkea,
@@ -19,13 +19,79 @@ from tqdm import tqdm
 
 
 def get_model(args):
+    num_classes = getattr(args, "num_classes", 21)
+
     if args.model_name == "videopose":
         from videopose.arguments import parse_args
+    elif args.model_name == "detr":
+        from deformable_detr.models.backbone import build_backbone
+        from deformable_detr.models.deformable_detr import DeformableDETR
+        from deformable_detr.models.deformable_transformer import (
+            build_deforamble_transformer,
+        )
+
+        detr_args = yaml.load(
+            open(
+                f"{RELATED_DIR}/transformers/Deformable-DETR/deformable_detr/config.yaml",
+                "r",
+            ),
+            Loader=yaml.Loader,
+        )
+        detr_args.device = args.device
+        backbone = build_backbone(detr_args)
+
+        transformer = build_deforamble_transformer(detr_args)
+        model = DeformableDETR(
+            backbone,
+            transformer,
+            num_classes=num_classes,
+            num_queries=detr_args.num_queries,
+            num_feature_levels=detr_args.num_feature_levels,
+            aux_loss=detr_args.aux_loss,
+            with_box_refine=detr_args.with_box_refine,
+            two_stage=detr_args.two_stage,
+        )
+    elif args.model_name == "detr_basic":
+        from pose_tracking.models.detr import DETR
+
+        model = DETR(num_classes=num_classes)
         from videopose.models.model import VideoPose
 
         args = parse_args()
         # args.backbone = "transformer"
         model = VideoPose(args)
+    elif args.model_name == "detr":
+        from deformable_detr.models.backbone import build_backbone
+        from deformable_detr.models.deformable_detr import DeformableDETR
+        from deformable_detr.models.deformable_transformer import (
+            build_deforamble_transformer,
+        )
+
+        detr_args = yaml.load(
+            open(
+                f"{RELATED_DIR}/transformers/Deformable-DETR/deformable_detr/config.yaml",
+                "r",
+            ),
+            Loader=yaml.Loader,
+        )
+        detr_args.device = args.device
+        backbone = build_backbone(detr_args)
+
+        transformer = build_deforamble_transformer(detr_args)
+        model = DeformableDETR(
+            backbone,
+            transformer,
+            num_classes=num_classes,
+            num_queries=detr_args.num_queries,
+            num_feature_levels=detr_args.num_feature_levels,
+            aux_loss=detr_args.aux_loss,
+            with_box_refine=detr_args.with_box_refine,
+            two_stage=detr_args.two_stage,
+        )
+    elif args.model_name == "detr_basic":
+        from pose_tracking.models.detr import DETR
+
+        model = DETR(num_classes=num_classes)
     else:
         priv_dim = 256 * 3
         latent_dim = 256  # defined by the encoders
@@ -64,6 +130,7 @@ def get_model(args):
             use_priv_decoder=args.use_priv_decoder,
             do_freeze_encoders=args.do_freeze_encoders,
             use_prev_pose_condition=args.use_prev_pose_condition,
+            use_prev_latent=args.use_prev_latent,
             do_predict_kpts=args.do_predict_kpts,
         )
 
