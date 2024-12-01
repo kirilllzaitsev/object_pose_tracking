@@ -37,6 +37,9 @@ class TrackingDataset(Dataset):
         include_bbox_2d=False,
         convert_pose_to_quat=False,
         do_erode_mask=False,
+        do_convert_depth_to_m=True,
+        do_normalize_bbox=False,
+        bbox_format="xyxy",
         transforms_rgb=None,
         start_frame_idx=0,
         end_frame_idx=None,
@@ -49,6 +52,8 @@ class TrackingDataset(Dataset):
         self.include_pose = include_pose
         self.include_bbox_2d = include_bbox_2d
         self.do_erode_mask = do_erode_mask
+        self.do_convert_depth_to_m = do_convert_depth_to_m
+        self.do_normalize_bbox = do_normalize_bbox
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -60,6 +65,7 @@ class TrackingDataset(Dataset):
         self.num_mesh_pts = num_mesh_pts
         self.start_frame_idx = start_frame_idx
         self.pose_dirname = pose_dirname
+        self.bbox_format = bbox_format
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.png")
         self.end_frame_idx = end_frame_idx or len(self.color_files)
@@ -112,7 +118,23 @@ class TrackingDataset(Dataset):
             sample["mesh_diameter"] = self.mesh_diameter
 
         if self.include_bbox_2d:
-            sample["bbox_2d"] = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
+            bbox_2d = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
+            if self.do_normalize_bbox:
+                bbox_2d = bbox_2d.astype(float)
+                bbox_2d[:, 0] /= self.w
+                bbox_2d[:, 1] /= self.h
+            if self.bbox_format == "xyxy":
+                sample["bbox_2d"] = bbox_2d
+            elif self.bbox_format == "xyhw":
+                bbox_2d = bbox_2d.reshape(-1)
+                sample["bbox_2d"] = np.array(
+                    [
+                        (bbox_2d[0] + bbox_2d[2]) / 2,
+                        (bbox_2d[1] + bbox_2d[3]) / 2,
+                        bbox_2d[2] - bbox_2d[0],
+                        bbox_2d[3] - bbox_2d[1],
+                    ]
+                )
             ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
             sample["bbox_2d_kpts"] = world_to_2d(ibbs_res["all_points"], K=self.K, rt=sample["pose"])
             # normalize bbox_2d_kpts to [0, 1]
