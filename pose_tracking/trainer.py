@@ -9,6 +9,8 @@ from pose_tracking.config import default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
+from pose_tracking.models.matcher import HungarianMatcher
+from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
@@ -18,13 +20,12 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
-from pose_tracking.utils.pipe_utils import reduce_metric
+from pose_tracking.utils.misc import reduce_dict, reduce_metric
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,
 )
 from pose_tracking.utils.rotation_conversions import (
-    axis_angle_to_matrix,
     matrix_to_axis_angle,
     matrix_to_quaternion,
     quaternion_to_axis_angle,
@@ -58,6 +59,7 @@ class Trainer:
         use_prev_pose_condition=False,
         do_predict_rel_pose=False,
         do_predict_kpts=False,
+        use_prev_latent=False,
         logger=None,
         vis_epoch_freq=None,
         do_vis=False,
@@ -79,6 +81,7 @@ class Trainer:
         self.use_ddp = use_ddp
         self.use_prev_pose_condition = use_prev_pose_condition
         self.do_predict_rel_pose = do_predict_rel_pose
+        self.use_prev_latent = use_prev_latent
         self.do_predict_kpts = do_predict_kpts
         self.do_vis = do_vis
         self.do_print_seq_stats = do_print_seq_stats
@@ -198,6 +201,7 @@ class Trainer:
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
         out_prev = None  # raw ouput of the model
         pose_mat_prev_gt_abs = None
+        prev_latent = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:
@@ -227,7 +231,11 @@ class Trainer:
                     pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
 
             out = self.model(
-                rgb, depth, bbox=bbox_2d, prev_pose=pose_prev_pred_abs if self.do_predict_rel_pose else out_prev
+                rgb,
+                depth,
+                bbox=bbox_2d,
+                prev_pose=pose_prev_pred_abs if self.do_predict_rel_pose else out_prev,
+                prev_latent=prev_latent,
             )
 
             # POSTPROCESS OUTPUTS
@@ -405,6 +413,7 @@ class Trainer:
 
             pose_mat_prev_gt_abs = pose_mat_gt_abs
             out_prev = {"t": out["t"], "rot": out["rot"]}
+            prev_latent = out["prev_latent"].detach() if self.use_prev_latent else None
 
             # OTHER
 
