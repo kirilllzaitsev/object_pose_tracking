@@ -32,12 +32,9 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         p = r"^(disable_|no_)"
         if re.match(p, k) and v:
             extra_tags.append(f"{tag_prefix}no_{re.sub(p, '', k)}")
-    for k in ["ds_name"]:
+    for k in ["ds_name", "model_name"]:
         tag_prefix = get_tag_pref(k, args_to_group_map)
         extra_tags.append(f"{tag_prefix}{getattr(args, k)}")
-    if not args.no_rnn:
-        extra_tags.append("m_rnn")
-        extra_tags.append(f"m_rnn_type_{args.rnn_type}")
 
     tags_to_log = extra_tags
     if len(args.exp_tags) > 0 and args.exp_tags[0] != "":

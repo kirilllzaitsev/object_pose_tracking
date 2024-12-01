@@ -97,7 +97,7 @@ def get_parser():
         type=str,
         default="cnnlstm",
         help="Model name",
-        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr"],
+        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr", "detr_basic"],
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
