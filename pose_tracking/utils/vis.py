@@ -161,15 +161,35 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def draw_2d_bbox_pil(img_PIL, bbox, color="red", width=3):
-    img_PIL = Image.fromarray(adjust_img_for_plt(img_PIL))
-    draw = ImageDraw.Draw(img_PIL)
+def plot_bbox_2d(img, bbox, color="red", width=3, ax=None, format="xyxy", is_normalized=False):
+    img = vis_bbox_2d(img, bbox, color=color, width=width, format=format, is_normalized=is_normalized)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    ax.imshow(img)
+    return ax
+
+
+def vis_bbox_2d(img, bbox, color="red", width=3, format="xyxy", is_normalized=False):
+    img = Image.fromarray(adjust_img_for_plt(img))
+    draw = ImageDraw.Draw(img)
     if bbox.shape == (4, 2):
         bbox_xy_bl = bbox[0]
         bbox_xy_ur = bbox[2]
+    elif bbox.shape == (2, 2):
+        bbox_xy_bl = bbox[0]
+        bbox_xy_ur = bbox[1]
     else:
         bbox_xy_bl = bbox[:2]
         bbox_xy_ur = bbox[2:]
+    if format == "xyhw":
+        center = bbox[:2]
+        size = bbox[2:]
+        bbox_xy_bl = center - size / 2
+        bbox_xy_ur = center + size / 2
+        if is_normalized:
+            h, w = img.size
+            bbox_xy_bl = bbox_xy_bl * np.array([h, w])
+            bbox_xy_ur = bbox_xy_ur * np.array([h, w])
     draw.rectangle(
         (
             (bbox_xy_bl[0], bbox_xy_bl[1]),
@@ -178,7 +198,20 @@ def draw_2d_bbox_pil(img_PIL, bbox, color="red", width=3):
         outline=color,
         width=width,
     )
-    return img_PIL
+
+    return np.array(img)
+
+
+def box_cxcywh_to_xyxy(x):
+    x_c, y_c, w, h = x.unbind(-1)
+    b = [(x_c - 0.5 * w), (y_c - 0.5 * h), (x_c + 0.5 * w), (y_c + 0.5 * h)]
+    return torch.stack(b, dim=-1)
+
+
+def box_xyxy_to_cxcywh(x):
+    x0, y0, x1, y1 = x.unbind(-1)
+    b = [(x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0), (y1 - y0)]
+    return torch.stack(b, dim=-1)
 
 
 def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=None, text=[], dpi=75, path=None):
@@ -412,6 +445,11 @@ def vis_optical_flow(flow):
     hsv[..., 1] = 255  # Full saturation
     hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)  # Magnitude of flow
     rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    return rgb
+
+
+def plot_optical_flow(flow):
+    rgb = vis_optical_flow(flow)
     plt.imshow(rgb)
     return rgb
 
@@ -448,9 +486,9 @@ def plot_imgs(imgs, n_samples=15, return_fig=False):
 
 
 def plot_sample_dict(sample):
-    rgb = sample["rgb"]
-    depth = sample["depth"]
-    mask = sample["mask"]
+    rgb = sample["rgb"].squeeze()
+    depth = sample["depth"].squeeze()
+    mask = sample["mask"].squeeze()
     return plot_sample(rgb, depth, mask)
 
 
@@ -479,12 +517,17 @@ def plot_sample_pose_dict(sample, scale=50.0, bbox=None, ax=None):
 
 
 def plot_pose(color, pose, K, bbox=None, ax=None, scale=0.05):
-    color = adjust_img_for_plt(color)
+    color_with_pose = vis_pose(color, pose, K, bbox=bbox, scale=scale)
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
     ax.imshow(color_with_pose)
     return ax
+
+
+def vis_pose(color, pose, K, bbox=None, scale=0.05):
+    color = adjust_img_for_plt(color)
+    color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
+    return color_with_pose
 
 
 def render_offscreen(mesh, obj_pose, intrinsic, w, h, headless=False):
@@ -531,7 +574,7 @@ def draw_pose_contour(cvImg, mesh, intrinsic, obj_openCV_pose, color, thickness=
     return rendered_color, cvImg
 
 
-def plot_bbox_2d(bbox_2d, color="r"):
+def plot_bbox_2d_plt(bbox_2d, color="r"):
     plt.plot(bbox_2d[[0, 1], 0], bbox_2d[[0, 1], 1], color)
     plt.plot(bbox_2d[[1, 2], 0], bbox_2d[[1, 2], 1], color)
     plt.plot(bbox_2d[[2, 3], 0], bbox_2d[[2, 3], 1], color)
