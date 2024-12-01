@@ -340,16 +340,17 @@ def get_datasets(
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
+    is_detr_model = "detr" in args.model_name
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
         include_mask=False,
-        include_bbox_2d=True if do_predict_kpts else False,
+        include_bbox_2d=True if do_predict_kpts or is_detr_model else False,
         start_frame_idx=0,
         convert_pose_to_quat=True,
         mask_pixels_prob=mask_pixels_prob,
-        do_normalize_bbox=True if args.model_name in ["detr"] else False,
-        bbox_format="xyhw" if args.model_name in ["detr"] else "xyxy",
+        do_normalize_bbox=True if is_detr_model else False,
+        bbox_format="xyhw" if is_detr_model else "xyxy",
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

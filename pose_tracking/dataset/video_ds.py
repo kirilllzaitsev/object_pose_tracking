@@ -46,7 +46,7 @@ class VideoDataset(Dataset):
         seq_step = self.seq_step
 
         if not seq_step:
-            seq_step = torch.randint(1, 7, (1,)).item()
+            seq_step = torch.randint(1, 10, (1,)).item()
 
         if seq_start is None:
             seq_start = torch.randint(

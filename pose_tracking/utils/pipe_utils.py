@@ -23,6 +23,11 @@ def get_model(args):
 
     if args.model_name == "videopose":
         from videopose.arguments import parse_args
+        from videopose.models.model import VideoPose
+
+        args = parse_args()
+        # args.backbone = "transformer"
+        model = VideoPose(args)
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR
@@ -55,11 +60,6 @@ def get_model(args):
         from pose_tracking.models.detr import DETR
 
         model = DETR(num_classes=num_classes)
-        from videopose.models.model import VideoPose
-
-        args = parse_args()
-        # args.backbone = "transformer"
-        model = VideoPose(args)
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR
@@ -185,10 +185,12 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         use_prev_pose_condition=args.use_prev_pose_condition,
         do_predict_rel_pose=args.do_predict_rel_pose,
         do_predict_kpts=args.do_predict_kpts,
+        use_prev_latent=args.use_prev_latent,
         do_vis=do_vis,
         model_name=args.model_name,
         do_debug=args.do_debug,
         do_print_seq_stats=args.do_print_seq_stats,
+        **extra_kwargs,
     )
 
     return trainer
@@ -222,13 +224,6 @@ def create_tools(args: argparse.Namespace) -> dict:
         "preds_dir": preds_dir,
         "logdir": logdir,
     }
-
-
-def reduce_metric(value, world_size):
-    """Synchronize and average a metric across all processes."""
-    tensor = torch.tensor(value, device="cuda")
-    torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.SUM)
-    return tensor.item() / world_size
 
 
 def get_video_ds(
@@ -292,8 +287,8 @@ class Printer:
 
     def print_stats(self, train_stats, stage):
         self.log_fn(f"## {stage.upper()} ##")
-        LOSS_METRICS = ["loss", "loss_pose", "loss_depth", "loss_rot", "loss_t", "loss_priv", "loss_kpts", "loss_cr"]
-        ERROR_METRICS = ["r_err", "t_err"]
+        LOSS_METRICS = [k for k in train_stats if "loss" in k]
+        ERROR_METRICS = [k for k in train_stats if "err" in k]
         ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm", "nan_count"]
 
         for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
