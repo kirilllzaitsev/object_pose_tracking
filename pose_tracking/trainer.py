@@ -500,6 +500,342 @@ class Trainer:
         }
 
 
+class TrainerDeformableDETR:
+
+    def __init__(
+        self,
+        model,
+        device,
+        hidden_dim,
+        rnn_type,
+        num_classes,
+        aux_loss,
+        num_dec_layers,
+        criterion_trans=None,
+        criterion_rot=None,
+        criterion_pose=None,
+        writer=None,
+        do_debug=False,
+        do_predict_2d_t=False,
+        do_predict_6d_rot=False,
+        do_predict_3d_rot=False,
+        use_rnn=True,
+        use_obs_belief=True,
+        world_size=1,
+        do_log_every_ts=False,
+        do_log_every_seq=True,
+        do_print_seq_stats=False,
+        use_ddp=False,
+        use_prev_pose_condition=False,
+        do_predict_rel_pose=False,
+        do_predict_kpts=False,
+        use_prev_latent=False,
+        logger=None,
+        vis_epoch_freq=None,
+        do_vis=False,
+        exp_dir=None,
+        model_name=None,
+        focal_alpha=0.25,
+    ):
+        assert criterion_pose is not None or (
+            criterion_rot is not None and criterion_trans is not None
+        ), "Either pose or rot & trans criteria must be provided"
+
+        self.do_debug = do_debug
+        self.do_predict_2d_t = do_predict_2d_t
+        self.do_predict_6d_rot = do_predict_6d_rot
+        self.do_predict_3d_rot = do_predict_3d_rot
+        self.use_rnn = use_rnn
+        self.use_obs_belief = use_obs_belief
+        self.do_log_every_ts = do_log_every_ts
+        self.do_log_every_seq = do_log_every_seq
+        self.use_ddp = use_ddp
+        self.use_prev_pose_condition = use_prev_pose_condition
+        self.do_predict_rel_pose = do_predict_rel_pose
+        self.use_prev_latent = use_prev_latent
+        self.do_predict_kpts = do_predict_kpts
+        self.do_vis = do_vis
+        self.do_print_seq_stats = do_print_seq_stats
+
+        self.world_size = world_size
+        self.logger = default_logger if logger is None else logger
+        self.vis_epoch_freq = vis_epoch_freq
+        self.exp_dir = exp_dir
+        self.model_name = model_name
+        self.model = model
+        self.device = device
+        self.hidden_dim = hidden_dim
+        self.rnn_type = rnn_type
+        self.criterion_trans = criterion_trans
+        self.criterion_rot = criterion_rot
+        self.criterion_pose = criterion_pose
+        self.writer = writer
+
+        cost_class, cost_bbox, cost_giou = (2, 5, 2)
+        self.matcher = HungarianMatcher(cost_class=cost_class, cost_bbox=cost_bbox, cost_giou=cost_giou)
+        self.losses = ["labels", "boxes", "cardinality"]
+        self.weight_dict = {
+            "loss_ce": 1,
+            "loss_bbox": 5,
+            "loss_giou": 2,
+            "loss_ce_enc": 1,
+            "loss_bbox_enc": 5,
+            "loss_giou_enc": 2,
+        }
+        if aux_loss:
+            aux_weight_dict = {}
+            for i in range(num_dec_layers - 1):
+                aux_weight_dict.update({k + f"_{i}": v for k, v in self.weight_dict.items()})
+            aux_weight_dict.update({f"{k}_enc": v for k, v in self.weight_dict.items()})
+            self.weight_dict.update(aux_weight_dict)
+        self.criterion = SetCriterion(num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha)
+
+        self.use_pose_loss = criterion_pose is not None
+        self.do_log = writer is not None
+        self.use_optim_every_ts = not use_rnn
+        self.vis_dir = f"{self.exp_dir}/vis"
+
+        self.processed_data = defaultdict(list)
+        self.seq_counts_per_stage = defaultdict(int)
+        self.ts_counts_per_stage = defaultdict(int)
+        self.train_epoch_count = 0
+
+    def loader_forward(
+        self,
+        loader,
+        *,
+        optimizer=None,
+        save_preds=False,
+        preds_dir=None,
+        stage="train",
+    ):
+        if stage == "train":
+            self.train_epoch_count += 1
+        running_stats = defaultdict(float)
+        seq_pbar = tqdm(loader, desc="Seq", leave=False)
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+
+        for seq_pack_idx, batched_seq in enumerate(seq_pbar):
+            seq_stats = self.batched_seq_forward(
+                batched_seq=batched_seq,
+                optimizer=optimizer,
+                save_preds=save_preds,
+                preds_dir=preds_dir,
+                stage=stage,
+                do_vis=do_vis,
+            )
+
+            for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
+                running_stats[k] += v
+                if self.do_log and self.do_log_every_seq:
+                    self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
+            self.seq_counts_per_stage[stage] += 1
+
+            if self.do_print_seq_stats:
+                seq_pbar.set_postfix({k: v / (seq_pack_idx + 1) for k, v in running_stats.items()})
+
+            do_vis = False  # only do vis for the first seq
+
+        for k, v in running_stats.items():
+            if self.use_ddp:
+                v = reduce_metric(v, world_size=self.world_size)
+            running_stats[k] = v / len(loader)
+
+        if self.do_log:
+            for k, v in running_stats.items():
+                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
+
+        return running_stats
+
+    def batched_seq_forward(
+        self,
+        batched_seq,
+        *,
+        optimizer=None,
+        save_preds=False,
+        preds_dir=None,
+        stage="train",
+        do_vis=False,
+    ):
+
+        is_train = optimizer is not None
+        do_opt_every_ts = is_train and self.use_optim_every_ts
+        do_opt_in_the_end = is_train and not self.use_optim_every_ts
+
+        seq_length = len(batched_seq)
+        batch_size = len(batched_seq[0]["rgb"])
+        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+        pose_to_mat_converter_fn = (
+            convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
+        )
+
+        seq_stats = defaultdict(float)
+        seq_metrics = defaultdict(float)
+        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
+
+        if do_opt_in_the_end:
+            optimizer.zero_grad()
+            total_loss = 0
+
+        # if self.use_ddp:
+        #     self.model.module.reset_state(batch_size, device=self.device)
+        # else:
+        #     self.model.reset_state(batch_size, device=self.device)
+        if self.do_debug:
+            self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
+
+        if do_vis:
+            vis_batch_idxs = list(range(min(batch_size, 16)))
+            vis_data = defaultdict(list)
+
+        pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
+        out_prev = None  # raw ouput of the model
+        pose_mat_prev_gt_abs = None
+        prev_latent = None
+        nan_count = 0
+
+        for t, batch_t in ts_pbar:
+            if do_opt_every_ts:
+                optimizer.zero_grad()
+            rgb = batch_t["rgb"]
+            seg_masks = batch_t["mask"]
+            pose_gt_abs = batch_t["pose"]
+            depth = batch_t["depth"]
+            pts = batch_t["mesh_pts"]
+            intrinsics = batch_t["intrinsics"]
+            bbox_2d = batch_t["bbox_2d"]
+            class_id = batch_t["class_id"]
+            h, w = rgb.shape[-2:]
+            t_gt_abs = pose_gt_abs[:, :3]
+            rot_gt_abs = pose_gt_abs[:, 3:]
+
+            targets = {
+                "labels": [v if v.ndim > 0 else v[None] for v in class_id],
+                "boxes": [v.float() for v in [v if v.ndim > 1 else v[None] for v in bbox_2d]],
+                "masks": seg_masks,
+            }
+            out = self.model(rgb)
+
+            # POSTPROCESS OUTPUTS
+
+            # LOSSES
+
+            loss_dict = self.criterion(out, targets)
+            weight_dict = self.criterion.weight_dict
+            loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+
+            # reduce losses over all GPUs for logging purposes
+            loss_dict_reduced = reduce_dict(loss_dict)
+            loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
+            loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
+            losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
+
+            # optim
+            if do_opt_every_ts:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                optimizer.step()
+            elif do_opt_in_the_end:
+                total_loss += loss
+
+            # METRICS
+
+            bbox_3d = batch_t["mesh_bbox"]
+            diameter = batch_t["mesh_diameter"]
+            m_batch = defaultdict(list)
+
+            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            for k, v in m_batch_avg.items():
+                seq_metrics[k] += v
+
+            # UPDATE VARS
+
+            # OTHER
+
+            seq_stats["loss"] += losses_reduced_scaled.item()
+            for k, v in {**loss_dict_reduced_scaled, **loss_dict_reduced_unscaled}.items():
+                seq_stats[k] += v
+            seq_stats["class_error"] += loss_dict_reduced["class_error"]
+
+            if self.do_log and self.do_log_every_ts:
+                for k, v in m_batch_avg.items():
+                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+
+            self.ts_counts_per_stage[stage] += 1
+
+            if save_preds:
+                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                save_results(batch_t, pose_mat_pred_abs, preds_dir)
+
+            if do_vis:
+                # save inputs to the exp dir
+                vis_keys = ["rgb", "depth", "intrinsics"]
+                for k in ["mask", "mesh_bbox", "pts", "class_id"]:
+                    if k in batch_t and len(batch_t[k]) > 0:
+                        vis_keys.append(k)
+                for k in vis_keys:
+                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
+                # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
+                # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
+                # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
+
+            if self.do_debug:
+                # add everything to processed_data
+                self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
+                self.processed_data["rgb"].append(rgb)
+                self.processed_data["seg_masks"].append(seg_masks)
+                # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
+                # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
+                self.processed_data["depth"].append(depth)
+                self.processed_data["rot_pred"].append(rot_pred)
+                self.processed_data["t_pred"].append(t_pred)
+                if self.do_predict_2d_t:
+                    self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
+                if "priv_decoded" in out:
+                    self.processed_data["priv_decoded"].append(out["priv_decoded"])
+                # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
+                # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
+                self.processed_data["pts"].append(pts)
+                self.processed_data["bbox_3d"].append(bbox_3d)
+                self.processed_data["diameter"].append(diameter)
+                self.processed_data["loss"].append(loss)
+                self.processed_data["m_batch"].append(m_batch)
+                self.processed_data["loss_depth"].append(loss_depth)
+                self.processed_data["out_prev"].append(out_prev)
+                if self.use_pose_loss:
+                    self.processed_data["loss_pose"].append(loss_pose)
+                else:
+                    self.processed_data["loss_rot"].append(loss_rot)
+                    self.processed_data["loss_t"].append(loss_t)
+                if self.do_predict_rel_pose:
+                    self.processed_data["t_gt_rel"].append(t_gt_rel)
+                    self.processed_data["rot_gt_rel"].append(rot_gt_rel)
+
+        if do_opt_in_the_end:
+            total_loss /= seq_length
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            optimizer.step()
+
+        for stats in [seq_stats, seq_metrics]:
+            for k, v in stats.items():
+                stats[k] = v / seq_length
+
+        if nan_count > 0:
+            seq_metrics["nan_count"] = nan_count
+
+        if do_vis:
+            os.makedirs(self.vis_dir, exist_ok=True)
+            save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
+            torch.save(vis_data, save_vis_path)
+            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
+
+        return {
+            "losses": seq_stats,
+            "metrics": seq_metrics,
+        }
+
+
 class TrainerVideopose(Trainer):
 
     def __init__(self, *args, **kwargs):
