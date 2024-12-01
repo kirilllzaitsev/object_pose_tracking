@@ -138,14 +138,29 @@ def get_model(args):
 
 
 def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None):
-    from pose_tracking.trainer import Trainer, TrainerVideopose
+    from pose_tracking.trainer import Trainer, TrainerDeformableDETR, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
     criterion_rot = get_rot_loss(args.rot_loss_name)
     use_pose_loss = args.pose_loss_name in ["add"]
     criterion_pose = compute_add_loss if use_pose_loss else None
 
-    trainer_cls = TrainerVideopose if args.model_name == "videopose" else Trainer
+    if args.model_name == "videopose":
+        trainer_cls = TrainerVideopose
+    elif args.model_name == "detr":
+        trainer_cls = TrainerDeformableDETR
+    else:
+        trainer_cls = Trainer
+
+    if args.model_name == "detr":
+        extra_kwargs = {
+            "num_dec_layers": 6,
+            "num_classes": 21,
+            "aux_loss": True,
+        }
+    else:
+        extra_kwargs = {}
+
     trainer = trainer_cls(
         model=model,
         device=device,
