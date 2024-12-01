@@ -3,10 +3,11 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from pose_tracking.utils.common import get_ordered_paths
 import torch
 import trimesh
+from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import process_raw_sample
+from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import (
     convert_3d_bbox_to_2d,
     interpolate_bbox_edges,
@@ -165,7 +166,12 @@ class TrackingDataset(Dataset):
         return load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
 
     def get_depth(self, i):
-        return load_depth(self.color_files[i].replace("rgb", "depth"), wh=(self.w, self.h), zfar=self.zfar)
+        return load_depth(
+            self.color_files[i].replace("rgb", "depth"),
+            wh=(self.w, self.h),
+            zfar=self.zfar,
+            do_convert_to_m=self.do_convert_depth_to_m,
+        )
 
     def get_pose(self, idx):
         return load_pose(self.pose_files[idx])
@@ -177,3 +183,22 @@ class TrackingDataset(Dataset):
         self.mesh_diameter = load_res["diameter"]
         self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, self.num_mesh_pts)[0]).float()
         self.mesh_path = mesh_path
+
+
+class TrackingDatasetEval:
+    def __init__(self, ds, preds_path):
+        self.ds = ds
+        self.preds_path = Path(preds_path)
+        self.pred_file_paths = list(sorted(self.preds_path.glob("*.txt")))
+        if len(self.pred_file_paths) != len(self.ds):
+            logger.warning(
+                f"Number of predictions ({len(self.pred_file_paths)}) does not match number of samples ({len(self.ds)})"
+            )
+
+    def __len__(self):
+        return min(len(self.ds), len(self.pred_file_paths))
+
+    def __getitem__(self, idx):
+        sample = self.ds[idx]
+        sample["pose_pred"] = load_pose(f"{self.preds_path}/{self.ds.id_strs[idx]}.txt")
+        return sample
