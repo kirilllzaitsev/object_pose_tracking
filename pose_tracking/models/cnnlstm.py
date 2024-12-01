@@ -226,6 +226,7 @@ class RecurrentCNN(nn.Module):
         use_priv_decoder=False,
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
+        use_prev_latent=False,
         do_predict_kpts=False,
         do_predict_rot=True,
     ):
@@ -252,10 +253,12 @@ class RecurrentCNN(nn.Module):
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
         self.use_prev_pose_condition = use_prev_pose_condition
+        self.use_prev_latent = use_prev_latent
         self.do_predict_kpts = do_predict_kpts
         self.do_predict_rot = do_predict_rot
 
         self.input_dim = depth_dim + rgb_dim
+        self.encoder_out_dim = 256
 
         if use_rnn:
             if rnn_type == "lstm":
@@ -308,6 +311,8 @@ class RecurrentCNN(nn.Module):
             self.depth_mlp_out_dim = 1
             if use_prev_pose_condition:
                 self.depth_mlp_in_dim += self.depth_mlp_out_dim
+            if use_prev_latent:
+                self.depth_mlp_in_dim += self.encoder_out_dim * 2
             self.depth_mlp = MLP(
                 in_dim=self.depth_mlp_in_dim,
                 out_dim=self.depth_mlp_out_dim,
@@ -324,6 +329,9 @@ class RecurrentCNN(nn.Module):
         if use_prev_pose_condition:
             self.t_mlp_in_dim += self.t_mlp_out_dim
             self.rot_mlp_in_dim += self.rot_mlp_out_dim
+        if use_prev_latent:
+            self.t_mlp_in_dim += self.encoder_out_dim * 2
+            self.rot_mlp_in_dim += self.encoder_out_dim * 2
 
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
@@ -367,7 +375,7 @@ class RecurrentCNN(nn.Module):
         self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
         self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
 
-    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, **kwargs):
+    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
         latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
@@ -392,6 +400,8 @@ class RecurrentCNN(nn.Module):
         else:
             extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
 
+        t_in = extracted_obs
+        rot_in = extracted_obs
         if self.use_prev_pose_condition:
             if prev_pose is None:
                 prev_pose = {
@@ -402,11 +412,13 @@ class RecurrentCNN(nn.Module):
                 prev_pose["center_depth"] = torch.zeros(
                     latent_rgb.size(0), self.depth_mlp_out_dim, device=latent_rgb.device
                 )
-            t_in = torch.cat([extracted_obs, prev_pose["t"]], dim=1)
-            rot_in = torch.cat([extracted_obs, prev_pose["rot"]], dim=1)
-        else:
-            t_in = extracted_obs
-            rot_in = extracted_obs
+            t_in = torch.cat([t_in, prev_pose["t"]], dim=1)
+            rot_in = torch.cat([rot_in, prev_pose["rot"]], dim=1)
+        if self.use_prev_latent:
+            if prev_latent is None:
+                prev_latent = torch.zeros(latent_rgb.size(0), self.encoder_out_dim * 2, device=latent_rgb.device)
+            t_in = torch.cat([t_in, prev_latent], dim=1)
+            rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
         t = self.t_mlp(t_in)
         res.update(
@@ -416,6 +428,8 @@ class RecurrentCNN(nn.Module):
                 "t": t,
             }
         )
+        if self.use_prev_latent:
+            res["prev_latent"] = extracted_obs
 
         if self.do_predict_rot:
             rot = self.rot_mlp(rot_in)
@@ -424,6 +438,8 @@ class RecurrentCNN(nn.Module):
         if self.do_predict_2d_t:
             if self.use_prev_pose_condition:
                 depth_in = torch.cat([extracted_obs, prev_pose["center_depth"]], dim=1)
+            if self.use_prev_latent:
+                depth_in = torch.cat([extracted_obs, prev_latent], dim=1)
             else:
                 depth_in = extracted_obs
             center_depth = self.depth_mlp(depth_in)
