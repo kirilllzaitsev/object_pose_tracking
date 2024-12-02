@@ -125,6 +125,41 @@ def dice_loss(inputs, targets, num_boxes):
     return loss.sum() / num_boxes
 
 
+class MixedTranslationLoss(nn.Module):
+    def __init__(self):
+        super(MixedTranslationLoss, self).__init__()
+        self.huber = get_t_loss("huber")
+        self.huber_norm = get_t_loss("huber_norm")
+        self.huber_angle = get_t_loss("angle")
+
+    def forward(self, pred, true):
+        huber = self.huber(pred, true)
+        huber_norm = self.huber_norm(pred, true)
+        huber_angle = self.huber_angle(pred, true)
+        return huber + huber_norm + huber_angle
+
+
+class NormTranslationLoss(nn.Module):
+    def __init__(self):
+        super(NormTranslationLoss, self).__init__()
+        self.huber = get_t_loss("huber")
+
+    def forward(self, pred, true):
+        pred = pred / pred.norm(dim=-1, keepdim=True)
+        true = true / true.norm(dim=-1, keepdim=True)
+        return self.huber(pred, true)
+
+
+class AngleTranslationLoss(nn.Module):
+    def __init__(self):
+        super(AngleTranslationLoss, self).__init__()
+        self.huber = get_t_loss("huber")
+
+    def forward(self, pred, true):
+        angle = torch.acos(torch.clamp(torch.sum(pred * true, dim=-1) / (pred.norm(dim=-1) * true.norm(dim=-1)), -1, 1))
+        return self.huber(angle, torch.zeros_like(angle))
+
+
 def get_t_loss(t_loss_name):
     if t_loss_name == "mse":
         criterion_trans = nn.MSELoss()
@@ -133,33 +168,11 @@ def get_t_loss(t_loss_name):
     elif t_loss_name == "huber":
         criterion_trans = nn.SmoothL1Loss()
     elif t_loss_name == "huber_norm":
-        huber = get_t_loss("huber")
-
-        def huber_norm_loss(pred, true):
-            pred = pred / pred.norm(dim=-1, keepdim=True)
-            true = true / true.norm(dim=-1, keepdim=True)
-            return huber(pred, true)
-
-        criterion_trans = huber_norm_loss
+        criterion_trans = NormTranslationLoss()
     elif t_loss_name == "angle":
-        huber = get_t_loss("huber")
-
-        def huber_angle_loss(pred, true):
-            angle = torch.acos(
-                torch.clamp(torch.sum(pred * true, dim=-1) / (pred.norm(dim=-1) * true.norm(dim=-1)), -1, 1)
-            )
-            return huber(angle, torch.zeros_like(angle))
-
-        criterion_trans = huber_angle_loss
+        criterion_trans = AngleTranslationLoss()
     elif t_loss_name == "mixed":
-        huber = get_t_loss("huber")
-        huber_norm = get_t_loss("huber_norm")
-        huber_angle = get_t_loss("angle")
-
-        def mixed_loss(pred, true):
-            return huber(pred, true) + huber_norm(pred, true) + huber_angle(pred, true)
-
-        criterion_trans = mixed_loss
+        criterion_trans = MixedTranslationLoss()
     else:
         raise ValueError(f"Unknown translation loss name: {t_loss_name}")
     return criterion_trans

@@ -33,13 +33,13 @@ def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_
     """
     if is_input_rgb:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    xx = np.array([1, 0, 0, 1]).astype(float)
-    yy = np.array([0, 1, 0, 1]).astype(float)
-    zz = np.array([0, 0, 1, 1]).astype(float)
+    xx = np.array([1, 0, 0, 1]).astype(float).reshape(-1, 1)
+    yy = np.array([0, 1, 0, 1]).astype(float).reshape(-1, 1)
+    zz = np.array([0, 0, 1, 1]).astype(float).reshape(-1, 1)
     xx[:3] = xx[:3] * scale
     yy[:3] = yy[:3] * scale
     zz[:3] = zz[:3] * scale
-    origin = tuple(world_to_2d_pt_homo(np.array([0.0, 0.0, 0.0, 1]), K, rt))
+    origin = tuple(world_to_2d_pt_homo(np.array([0.0, 0.0, 0.0, 1]).reshape(-1, 1), K, rt))
     xx = tuple(world_to_2d_pt_homo(xx, K, rt))
     yy = tuple(world_to_2d_pt_homo(yy, K, rt))
     zz = tuple(world_to_2d_pt_homo(zz, K, rt))
