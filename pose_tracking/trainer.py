@@ -247,10 +247,9 @@ class Trainer:
                 t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
                 t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
 
-                depth_gt = t_gt_abs[:, 2]
                 center_depth_pred = out["center_depth"]
                 t_pred_2d_backproj = []
-                for sample_idx in range(len(depth_gt)):
+                for sample_idx in range(batch_size):
                     t_pred_2d_backproj.append(
                         backproj_2d_to_3d(
                             t_pred_2d_denorm[sample_idx][None], center_depth_pred[sample_idx], intrinsics[sample_idx]
@@ -307,10 +306,7 @@ class Trainer:
                     t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
 
                     t_pred_2d = out["t"]
-
-                    max_depth = 10
-                    depth_gt /= max_depth
-                    center_depth_pred = torch.sigmoid(center_depth_pred)
+                    depth_gt = t_gt_abs[:, 2]
 
                     loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
                     loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()

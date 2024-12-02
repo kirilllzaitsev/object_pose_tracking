@@ -350,7 +350,7 @@ def get_datasets(
         convert_pose_to_quat=True,
         mask_pixels_prob=mask_pixels_prob,
         do_normalize_bbox=True if is_detr_model else False,
-        bbox_format="xyhw" if is_detr_model else "xyxy",
+        bbox_format="cxcywh" if is_detr_model else "xyxy",
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(
@@ -429,6 +429,11 @@ def get_datasets(
 
 
 if __name__ == "__main__":
+
+    import matplotlib
+
+    matplotlib.use("TkAgg")
+
     args, args_to_group_map = parse_args()
     import datetime as dt
 
