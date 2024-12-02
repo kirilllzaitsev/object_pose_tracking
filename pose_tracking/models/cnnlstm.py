@@ -425,9 +425,14 @@ class RecurrentCNN(nn.Module):
             {
                 "latent_depth": latent_depth,
                 "state": {"hx": self.hx, "cx": self.cx},
-                "t": t,
             }
         )
+
+        if self.do_predict_2d_t:
+            res["t"] = torch.sigmoid(t)
+        else:
+            res["t"] = t
+
         if self.use_prev_latent:
             res["prev_latent"] = extracted_obs
 
@@ -436,12 +441,11 @@ class RecurrentCNN(nn.Module):
             res["rot"] = rot
 
         if self.do_predict_2d_t:
+            depth_in = extracted_obs
             if self.use_prev_pose_condition:
-                depth_in = torch.cat([extracted_obs, prev_pose["center_depth"]], dim=1)
+                depth_in = torch.cat([depth_in, prev_pose["center_depth"]], dim=1)
             if self.use_prev_latent:
-                depth_in = torch.cat([extracted_obs, prev_latent], dim=1)
-            else:
-                depth_in = extracted_obs
+                depth_in = torch.cat([depth_in, prev_latent], dim=1)
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
 
