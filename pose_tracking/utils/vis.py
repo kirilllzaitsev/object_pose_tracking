@@ -161,17 +161,16 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def plot_bbox_2d(img, bbox, color="red", width=3, ax=None, format="xyxy", is_normalized=False):
-    img = vis_bbox_2d(img, bbox, color=color, width=width, format=format, is_normalized=is_normalized)
+def plot_bbox_2d(img, bbox, ax=None, format="xyxy", is_normalized=False, **kwargs):
+    img = vis_bbox_2d(img, bbox, format=format, is_normalized=is_normalized, **kwargs)
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     ax.imshow(img)
     return ax
 
 
-def vis_bbox_2d(img, bbox, color="red", width=3, format="xyxy", is_normalized=False):
-    img = Image.fromarray(adjust_img_for_plt(img))
-    draw = ImageDraw.Draw(img)
+def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
+    img = np.ascontiguousarray(adjust_img_for_plt(img))
     if bbox.shape == (4, 2):
         bbox_xy_bl = bbox[0]
         bbox_xy_ur = bbox[2]
@@ -181,25 +180,29 @@ def vis_bbox_2d(img, bbox, color="red", width=3, format="xyxy", is_normalized=Fa
     else:
         bbox_xy_bl = bbox[:2]
         bbox_xy_ur = bbox[2:]
-    if format == "xyhw":
-        center = bbox[:2]
-        size = bbox[2:]
-        bbox_xy_bl = center - size / 2
-        bbox_xy_ur = center + size / 2
-        if is_normalized:
-            h, w = img.size
-            bbox_xy_bl = bbox_xy_bl * np.array([h, w])
-            bbox_xy_ur = bbox_xy_ur * np.array([h, w])
-    draw.rectangle(
-        (
-            (bbox_xy_bl[0], bbox_xy_bl[1]),
-            (bbox_xy_ur[0], bbox_xy_ur[1]),
-        ),
-        outline=color,
-        width=width,
-    )
+    if format == "cxcywh":
+        bbox_xyxy = box_cxcywh_to_xyxy(bbox)
+        bbox_xy_bl = bbox_xyxy[:2]
+        bbox_xy_ur = bbox_xyxy[2:]
 
-    return np.array(img)
+        if is_normalized:
+            h, w = img.shape[:2]
+            bbox_xy_bl = bbox_xy_bl * np.array([w, h])
+            bbox_xy_ur = bbox_xy_ur * np.array([w, h])
+    bbox_xy_ur = cast_to_numpy(bbox_xy_ur)
+    bbox_xy_bl = cast_to_numpy(bbox_xy_bl)
+    print(f"{bbox_xy_bl=}")
+    print(f"{bbox_xy_ur=}")
+    img = cv2.rectangle(
+        img,
+        tuple(bbox_xy_bl.astype(int)),
+        tuple(bbox_xy_ur.astype(int)),
+        color,
+        width,
+    )
+    for pt in [bbox_xy_bl, bbox_xy_ur]:
+        img = cv2.circle(img, tuple(pt.astype(int)), 5, (0, 255, 0), -1)
+    return img
 
 
 def box_cxcywh_to_xyxy(x):
