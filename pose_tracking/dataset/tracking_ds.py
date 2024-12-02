@@ -126,7 +126,7 @@ class TrackingDataset(Dataset):
                 bbox_2d[:, 1] /= self.h
             if self.bbox_format == "xyxy":
                 sample["bbox_2d"] = bbox_2d
-            elif self.bbox_format == "xyhw":
+            elif self.bbox_format == "cxcywh":
                 bbox_2d = bbox_2d.reshape(-1)
                 sample["bbox_2d"] = np.array(
                     [

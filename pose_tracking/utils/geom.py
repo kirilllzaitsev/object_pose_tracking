@@ -6,37 +6,10 @@ from pose_tracking.utils.misc import pick_library
 from scipy.spatial.transform import Rotation as R
 
 
-def world_to_2d_pt_homo(pt, K, rt):
-    pt = pt.reshape(4, 1)
-    projected = K @ ((rt @ pt)[:3, :])
-    projected = projected.reshape(-1)
-    projected = projected / projected[2]
-    return projected.reshape(-1)[:2].round().astype(int)
-
-
-def world_to_cam(pts, rt):
-    # returns N x 3 pts in camera frame
-    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
-    if pts.shape[1] == 3:
-        pts = pts.T
-    pts = np.vstack([pts, np.ones((1, pts.shape[1]), dtype=np.float32)])
-    new_pts = rt @ pts
-    new_pts = new_pts[:3, :] / new_pts[3, :]
-    return new_pts.T
-
-
-def get_34_intrinsics(K):
-    return np.hstack([K, np.zeros((3, 1))])
-
-
 def world_to_2d(pts, K, rt):
     # returns N x 2 pts
-    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
-    if pts.shape[1] == 3:
-        pts = pts.T
-    new_pts = K @ (rt[:3, :3] @ pts + rt[:3, 3].reshape(3, 1))
-    new_pts = new_pts[:2, :] / new_pts[2, :]
-    return new_pts.T
+    pts_cam = world_to_cam(pts, rt)
+    return cam_to_2d(pts_cam, K)
 
 
 def cam_to_2d(pts, K):
@@ -54,6 +27,24 @@ def cam_to_2d(pts, K):
     return new_pts.T
 
 
+def world_to_cam(pts, rt):
+    # returns N x 3 pts in camera frame
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    if pts.shape[1] == 3:
+        pts = pts.T
+    new_pts = rt[:3, :3] @ pts + rt[:3, 3].reshape(3, 1)
+    return new_pts.T
+
+
+def world_to_2d_pt_homo(pt, K, rt):
+    if pt.shape[-1] == 4:
+        pt = pt.T
+    assert pt.shape[0] == 4
+    pts_cam = (rt @ pt)[:3, :]
+    projected = cam_to_2d(pts_cam, K).squeeze()
+    return projected.round().astype(int)
+
+
 def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     pose = np.eye(4) if pose is None else pose
     bbox_2d = world_to_2d(bbox, intrinsics, rt=pose)
@@ -64,6 +55,10 @@ def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     x_min, y_min, x_max, y_max = max(0, x_min), max(0, y_min), min(w, x_max), min(h, y_max)
     bbox_2d = np.array([[x_min, y_min], [x_max, y_max]])
     return bbox_2d
+
+
+def get_34_intrinsics(K):
+    return np.hstack([K, np.zeros((3, 1))])
 
 
 def get_inv_pose(pose=None, rot=None, t=None):
