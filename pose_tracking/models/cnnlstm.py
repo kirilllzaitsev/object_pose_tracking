@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from pose_tracking.models.encoders import get_encoders
 from pose_tracking.models.rnn_cells import GRUCell
+from pose_tracking.utils.misc import print_cls
 from torch import jit
 from torch.nn import Parameter
 from torchvision.ops import roi_align
@@ -432,13 +433,9 @@ class RecurrentCNN(nn.Module):
             {
                 "latent_depth": latent_depth,
                 "state": {"hx": self.hx, "cx": self.cx},
+                "t": t,
             }
         )
-
-        if self.do_predict_2d_t:
-            res["t"] = torch.sigmoid(t)
-        else:
-            res["t"] = t
 
         if self.use_prev_latent:
             res["prev_latent"] = extracted_obs
