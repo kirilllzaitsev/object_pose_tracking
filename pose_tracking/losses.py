@@ -140,23 +140,27 @@ class MixedTranslationLoss(nn.Module):
 
 
 class NormTranslationLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, eps=1e-8):
         super(NormTranslationLoss, self).__init__()
         self.huber = get_t_loss("huber")
+        self.eps = eps
 
     def forward(self, pred, true):
-        pred = pred / pred.norm(dim=-1, keepdim=True)
-        true = true / true.norm(dim=-1, keepdim=True)
+        pred = pred / (pred.norm(dim=-1, keepdim=True) + self.eps)
+        true = true / (true.norm(dim=-1, keepdim=True) + self.eps)
         return self.huber(pred, true)
 
 
 class AngleTranslationLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, eps=1e-8):
         super(AngleTranslationLoss, self).__init__()
         self.huber = get_t_loss("huber")
+        self.eps = eps
 
     def forward(self, pred, true):
-        angle = torch.acos(torch.clamp(torch.sum(pred * true, dim=-1) / (pred.norm(dim=-1) * true.norm(dim=-1)), -1, 1))
+        angle = torch.acos(
+            torch.clamp(torch.sum(pred * true, dim=-1) / (pred.norm(dim=-1) * true.norm(dim=-1) + self.eps), -1, 1)
+        )
         return self.huber(angle, torch.zeros_like(angle))
 
 
