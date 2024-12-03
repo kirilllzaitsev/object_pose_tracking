@@ -376,12 +376,7 @@ class RecurrentCNN(nn.Module):
 
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
-        self.hx = torch.nn.init.xavier_uniform_(torch.zeros(batch_size, self.hidden_dim, device=device))
-        self.cx = (
-            None
-            if "gru" in self.rnn_type
-            else torch.nn.init.xavier_uniform_(torch.zeros(batch_size, self.hidden_dim, device=device))
-        )
+        self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
 
     def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
 
@@ -420,7 +415,11 @@ class RecurrentCNN(nn.Module):
                 prev_pose["center_depth"] = torch.zeros(
                     latent_rgb.size(0), self.depth_mlp_out_dim, device=latent_rgb.device
                 )
-            t_in = torch.cat([t_in, prev_pose["t"]], dim=1)
+            if self.do_predict_2d_t:
+                t_prev = prev_pose["t"][:, :2]
+            else:
+                t_prev = prev_pose["t"]
+            t_in = torch.cat([t_in, t_prev], dim=1)
             rot_in = torch.cat([rot_in, prev_pose["rot"]], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
@@ -461,6 +460,15 @@ class RecurrentCNN(nn.Module):
         return res
 
 
+def reset_state_rnn(hidden_dim, batch_size, device, rnn_type):
+    # should be called at the beginning of each sequence
+    hx = torch.nn.init.xavier_uniform_(torch.zeros(batch_size, hidden_dim, device=device))
+    cx = (
+        None if "gru" in rnn_type else torch.nn.init.xavier_uniform_(torch.zeros(batch_size, hidden_dim, device=device))
+    )
+    return hx, cx
+
+
 class RecurrentCNNSeparated(nn.Module):
     """ """
 
@@ -492,7 +500,9 @@ class RecurrentCNNSeparated(nn.Module):
         use_priv_decoder=False,
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
+        use_prev_latent=False,
         do_predict_kpts=False,
+        do_predict_rot=True,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -517,7 +527,9 @@ class RecurrentCNNSeparated(nn.Module):
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
         self.use_prev_pose_condition = use_prev_pose_condition
+        self.use_prev_latent = use_prev_latent
         self.do_predict_kpts = do_predict_kpts
+        self.do_predict_rot = do_predict_rot
 
         self.roi_size = 7
         self.input_dim = depth_dim + rgb_dim
@@ -546,6 +558,7 @@ class RecurrentCNNSeparated(nn.Module):
             use_rnn=use_rnn,
             use_obs_belief=use_obs_belief,
             use_priv_decoder=use_priv_decoder,
+            use_prev_latent=use_prev_latent,
             do_freeze_encoders=do_freeze_encoders,
             use_prev_pose_condition=use_prev_pose_condition,
             do_predict_kpts=do_predict_kpts,
@@ -671,11 +684,9 @@ class RecurrentCNNSeparated(nn.Module):
 
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
-        self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
-        self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
-        self.t_rnn.reset_state(batch_size, device)
+        self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
 
-    def forward(self, rgb, depth, bbox=None, prev_pose=None):
+    def forward(self, rgb, depth, bbox=None, prev_pose=None, prev_latent=None):
 
         B, C, H, W = rgb.size()
 
@@ -696,7 +707,9 @@ class RecurrentCNNSeparated(nn.Module):
         latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi).view(B, -1)
         latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(B, -1)
 
-        t_net_out = self.t_rnn(rgb, depth, prev_pose=prev_pose, latent_rgb=latent_rgb, latent_depth=latent_depth)
+        t_net_out = self.t_rnn(
+            rgb, depth, prev_pose=prev_pose, latent_rgb=latent_rgb, latent_depth=latent_depth, prev_latent=prev_latent
+        )
 
         res = {}
         if self.use_obs_belief:
