@@ -120,11 +120,12 @@ class TrackingDataset(Dataset):
 
         if self.include_bbox_2d:
             bbox_2d = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
+            bbox_2d = bbox_2d.astype(np.float32)
             if self.do_normalize_bbox:
-                bbox_2d = bbox_2d.astype(float)
                 bbox_2d[:, 0] /= self.w
                 bbox_2d[:, 1] /= self.h
             if self.bbox_format == "xyxy":
+                bbox_2d = bbox_2d.reshape(1, -1)
                 sample["bbox_2d"] = bbox_2d
             elif self.bbox_format == "cxcywh":
                 bbox_2d = bbox_2d.reshape(-1)
