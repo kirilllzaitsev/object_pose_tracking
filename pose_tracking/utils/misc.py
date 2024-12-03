@@ -128,3 +128,15 @@ class NestedTensor(object):
 
     def __repr__(self):
         return str(self.tensors)
+
+
+def print_cls(cls, exclude_private=True, excluded_attrs=None):
+    msg = ""
+    excluded_attrs = excluded_attrs or []
+    for k, v in cls.__dict__.items():
+        if exclude_private and k.startswith("_"):
+            continue
+        if k in excluded_attrs:
+            continue
+        msg += f"{k}: {v}\n"
+    return msg

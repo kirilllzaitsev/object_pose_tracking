@@ -370,10 +370,17 @@ class RecurrentCNN(nn.Module):
         self.hx = None
         self.cx = None
 
+    def __repr__(self):
+        return print_cls(self)
+
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
-        self.hx = torch.zeros(batch_size, self.hidden_dim, device=device)
-        self.cx = None if "gru" in self.rnn_type else torch.zeros(batch_size, self.hidden_dim, device=device)
+        self.hx = torch.nn.init.xavier_uniform_(torch.zeros(batch_size, self.hidden_dim, device=device))
+        self.cx = (
+            None
+            if "gru" in self.rnn_type
+            else torch.nn.init.xavier_uniform_(torch.zeros(batch_size, self.hidden_dim, device=device))
+        )
 
     def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
 

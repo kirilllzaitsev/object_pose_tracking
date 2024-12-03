@@ -12,6 +12,7 @@ from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results
+from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
@@ -20,7 +21,7 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
-from pose_tracking.utils.misc import reduce_dict, reduce_metric
+from pose_tracking.utils.misc import print_cls, reduce_dict, reduce_metric
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,
@@ -109,6 +110,9 @@ class Trainer:
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
         self.train_epoch_count = 0
+
+    def __repr__(self):
+        return print_cls(self, excluded_attrs=["processed_data", "model"])
 
     def loader_forward(
         self,
@@ -366,6 +370,12 @@ class Trainer:
             if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                if self.do_debug:
+                    grad_norms = [
+                        cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None
+                    ]
+                    self.processed_data["grad_norm"].append(sum(grad_norms) / len(grad_norms))
+                    self.processed_data["grad_norms"].append(grad_norms)
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -464,6 +474,10 @@ class Trainer:
                 self.processed_data["t_pred"].append(t_pred)
                 if self.do_predict_2d_t:
                     self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
+                    self.processed_data["depth_gt"].append(depth_gt)
+                    self.processed_data["center_depth_pred"].append(center_depth_pred)
+                    self.processed_data["t_pred_2d_denorm"].append(t_pred_2d_denorm)
+                    self.processed_data["t_pred_2d"].append(t_pred_2d)
                 if "priv_decoded" in out:
                     self.processed_data["priv_decoded"].append(out["priv_decoded"])
                 self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)

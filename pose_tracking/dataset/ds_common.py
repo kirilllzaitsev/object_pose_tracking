@@ -16,7 +16,7 @@ def get_ds_sample(
     intrinsics=None,
     transforms_rgb=None,
     priv=None,
-    convert_pose_to_quat=False,
+    do_convert_pose_to_quat=False,
     mask_pixels_prob=0.0,
     pixels_masked_max_percent=0.1,
 ):
@@ -42,7 +42,7 @@ def get_ds_sample(
         mask = adjust_mask_for_torch(mask)
         sample["mask"] = from_numpy(mask)
     if pose is not None:
-        if convert_pose_to_quat:
+        if do_convert_pose_to_quat:
             if pose.shape[-1] != 7:
                 rot = torch.from_numpy(pose[:3, :3])
                 quat = convert_rotation_representation(rot, rot_representation="quaternion")

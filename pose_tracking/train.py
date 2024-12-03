@@ -157,6 +157,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_priv_decoder=args.use_priv_decoder,
         do_overfit=args.do_overfit,
         do_preload_ds=args.do_preload_ds,
+        model_name=args.model_name,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
@@ -333,21 +334,24 @@ def get_datasets(
     mask_pixels_prob=0.0,
     num_samples=None,
     ds_types=("train", "val"),
+    model_name="",
     do_predict_kpts=False,
     use_priv_decoder=False,
     do_overfit=False,
     do_preload_ds=False,
+    include_mask=False,
+    do_convert_pose_to_quat=True,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
-    is_detr_model = "detr" in args.model_name
+    is_detr_model = "detr" in model_name
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
-        include_mask=False,
+        include_mask=include_mask,
         include_bbox_2d=True if do_predict_kpts or is_detr_model else False,
         start_frame_idx=0,
-        convert_pose_to_quat=True,
+        do_convert_pose_to_quat=do_convert_pose_to_quat,
         mask_pixels_prob=mask_pixels_prob,
         do_normalize_bbox=True if is_detr_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",

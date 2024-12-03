@@ -516,7 +516,7 @@ def plot_sample(rgb, depth, mask):
     return fig, axs
 
 
-def plot_sample_pose_dict(sample, scale=50.0, bbox=None, ax=None):
+def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
     color = sample["rgb"]
     pose = sample["pose"]
     if pose.shape[-1] == 7:
