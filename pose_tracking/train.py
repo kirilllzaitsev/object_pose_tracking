@@ -345,11 +345,13 @@ def get_datasets(
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
     is_detr_model = "detr" in model_name
+    is_roi_model = "_sep" in model_name
+    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
         include_mask=include_mask,
-        include_bbox_2d=True if do_predict_kpts or is_detr_model else False,
+        include_bbox_2d=include_bbox_2d,
         start_frame_idx=0,
         do_convert_pose_to_quat=do_convert_pose_to_quat,
         mask_pixels_prob=mask_pixels_prob,

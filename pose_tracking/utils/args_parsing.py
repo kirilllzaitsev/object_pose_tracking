@@ -208,6 +208,11 @@ def postprocess_args(args):
     args.use_cuda = args.device == "cuda"
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
+    assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
+    assert (
+        not args.do_predict_6d_rot and not args.do_predict_2d_t
+    ), "Relative pose prediction is not supported with 6d rot or 2d t"
+
     if args.ds_name not in ["ycbi", "cube"]:
         if args.do_overfit:
             args.ds_folder_name_val = args.ds_folder_name_train

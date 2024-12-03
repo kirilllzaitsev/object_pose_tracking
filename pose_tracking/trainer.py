@@ -223,9 +223,6 @@ class Trainer:
             rot_gt_abs = pose_gt_abs[:, 3:]
 
             if self.do_predict_rel_pose:
-                assert (
-                    not self.do_predict_6d_rot and not self.do_predict_2d_t
-                ), "Relative pose prediction is not supported with 6d rot or 2d t"
                 if t == 0:
                     rot_prev_gt_abs = rot_gt_abs
                     if self.do_predict_3d_rot:

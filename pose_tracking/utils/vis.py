@@ -381,36 +381,35 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
     return grid
 
 
-def plot_seq(seq, keys_to_plot=["rgb"], take_n=None):
+def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
     take_n = take_n or len(seq)
     results = {}
     if len(seq[0]["rgb"].shape) == 4:
-        subidx = 0
-        print(f"Taking the first image from the batch of size {seq[0]['rgb'].shape[0]}")
+        print(f"Taking {batch_idx} image from the batch of size {seq[0]['rgb'].shape[0]}")
     else:
-        subidx = ...
+        batch_idx = ...
     for key in keys_to_plot:
         arr = []
         for i in range(take_n):
             img = seq[i][key]
             if key in ["depth"]:
-                grid_img = adjust_depth_for_plt(img[subidx])
+                grid_img = adjust_depth_for_plt(img[batch_idx])
                 dtype = np.float32
             elif key in ["mask"]:
-                grid_img = adjust_img_for_plt(img[subidx][None])
+                grid_img = adjust_img_for_plt(img[batch_idx][None])
                 dtype = np.uint8
             elif key in ["pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
                 grid_img = draw_pose_on_img(
-                    seq[i]["rgb"][subidx],
-                    seq[i]["intrinsics"][subidx],
-                    img[subidx],
-                    bbox=seq[i]["mesh_bbox"][subidx],
+                    seq[i]["rgb"][batch_idx],
+                    seq[i]["intrinsics"][batch_idx],
+                    img[batch_idx],
+                    bbox=seq[i]["mesh_bbox"][batch_idx],
                     bbox_color=(255, 255, 0),
                     scale=0.1,
                 )
                 dtype = np.uint8
             else:
-                grid_img = adjust_img_for_plt(img[subidx])
+                grid_img = adjust_img_for_plt(img[batch_idx])
                 dtype = np.uint8
             arr.append(grid_img)
         res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype)
