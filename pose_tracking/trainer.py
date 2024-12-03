@@ -317,7 +317,7 @@ class Trainer:
                     loss_t = loss_t_2d + loss_center_depth
                 else:
                     if self.do_predict_rel_pose:
-                        rel_t_scaler = 1e3
+                        rel_t_scaler = 1
                         loss_t = self.criterion_trans(t_pred * rel_t_scaler, t_gt_rel * rel_t_scaler)
                     else:
                         loss_t = self.criterion_trans(t_pred_abs, t_gt_abs)
