@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pose_tracking.config import logger
 from pose_tracking.utils.io import load_json
-from pose_tracking.utils.pose import combine_R_and_T
+from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.trimesh_utils import load_mesh, load_mesh_bounds
 from tqdm import tqdm
 
@@ -115,7 +115,7 @@ def load_metadata(video_dir, split, force_recreate: bool = False, shuffle: bool 
                 id_frame = int(str(rgb_path).split("/")[-1].split(".")[0])
                 # get frame gt
                 frame_gt = video_metadata["scene_gt"][f"{id_frame}"]
-                obj_poses = np.array([combine_R_and_T(x["cam_R_m2c"], x["cam_t_m2c"]) for x in frame_gt])
+                obj_poses = np.array([convert_r_t_to_rt(x["cam_R_m2c"], x["cam_t_m2c"]) for x in frame_gt])
                 obj_ids = [int(x["obj_id"]) for x in frame_gt]
 
                 for idx_obj in range(len(obj_ids)):

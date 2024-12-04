@@ -8,11 +8,13 @@ from pose_tracking.utils.rotation_conversions import (
 )
 
 
-def combine_R_and_T(R, T, scale_translation=1.0):
-    matrix4x4 = np.eye(4)
-    matrix4x4[:3, :3] = np.array(R).reshape(3, 3)
-    matrix4x4[:3, 3] = np.array(T).reshape(-1) * scale_translation
-    return matrix4x4
+def convert_r_t_to_rt(r, t, scale_translation=1.0):
+    if len(r.shape) == 3:
+        return torch.stack([convert_r_t_to_rt(r[i], t[i], scale_translation) for i in range(r.shape[0])])
+    pose = torch.eye(4, device=r.device)
+    pose[:3, :3] = r
+    pose[:3, 3] = t * scale_translation
+    return pose
 
 
 def convert_pose_quaternion_to_matrix(pose):
