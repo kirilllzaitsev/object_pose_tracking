@@ -10,7 +10,8 @@ from pose_tracking.utils.geom import backproj_depth
 from pose_tracking.utils.io import load_pose
 
 try:
-    from pizza.lib import image_utils
+    from pizza.lib.dataloader import augmentation, image_utils, utils
+    from pizza.lib.dataset.modelNet import dataloader_utils
 except ImportError:
     ...
 
@@ -87,3 +88,94 @@ class YCBineoatDatasetBenchmark(YCBineoatDataset):
         sample = super().__getitem__(i)
         sample["pose_pred"] = self.get_pred_pose(i)
         return sample
+
+
+class YCBineoatDatasetPizza(YCBineoatDataset):
+    """
+    ratio
+    uv_first_frame
+    gt_delta_uv
+    gt_delta_depth
+    depth_first_frame
+    gt_delta_rotation
+    rotation_first_frame
+    gt_rotations
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        sequence_obj = dataloader_utils.SequenceProcessing(
+            root_path="/media/master/t7/msc_studies/pose_estimation/object_pose_tracking/data/ycbineoat/mustard0/rgb",
+            intrinsic=self.K,
+        )
+        sequence_obj.create_list_index_frame_in_sequences()
+        sequence_obj.create_list_img_path()
+        self.gt_sequence_obj = sequence_obj.create_gt_tracking()
+        # shuffle?!
+        self.image_size = np.array([self.h, self.w]).max()
+
+    def __len__(self):
+        return len(self.gt_sequence_obj["delta_rotation"])
+
+    def __getitem__(self, i):
+        sample = super().__getitem__(i)
+        # bbox_size = np.max([bbox_sequence[2] - bbox_sequence[0], bbox_sequence[3] - bbox_sequence[1]])
+        bbox = sample["bbox_2d"].numpy()[0]
+        bbox_size = np.max(bbox[2:] - bbox[:2])
+        max_size_with_margin = bbox_size * 1.3  # margin = 0.2 x max_dim
+        margin = bbox_size * 0.15
+        # bbox_sequence = bbox_sequence + np.array([-margin, -margin, margin, margin])
+
+        bbox_sequence_square = image_utils.make_bbox_square(bbox, max_size_with_margin)
+        ratio = self.image_size / max_size_with_margin
+        names = [
+            "delta_rotation",
+            "delta_uv",
+            "delta_depth",
+            "rotation_first_frame",
+            "uv_first_frame",
+            "depth_first_frame",
+            "gt_rotations",
+            "gt_translations",
+        ]
+        for name in names:
+            v = self.gt_sequence_obj[name][i]
+            if name == "delta_uv":
+                v = v * ratio / (self.image_size / 2)
+            elif name == "delta_depth":
+                v = v * ratio
+            sample[name] = v
+        sample["ratio"] = ratio
+        sample["bbox_sequence_square"] = bbox_sequence_square
+        return sample
+
+    def _fetch_sequence(self, img_path, save_path=None):
+        sequence_img, list_bbox = [], []
+        for i in range(2):
+            img = image_utils.open_image(img_path[i])
+            sequence_img.append(img)
+            list_bbox.append(np.asarray(img.getbbox()))
+        # take max bbox of two images
+        bbox_sequence = np.zeros(4)
+        bbox_sequence[0] = np.min([list_bbox[0][0], list_bbox[1][0]])
+        bbox_sequence[1] = np.min([list_bbox[0][1], list_bbox[1][1]])
+        bbox_sequence[2] = np.max([list_bbox[0][2], list_bbox[1][2]])
+        bbox_sequence[3] = np.max([list_bbox[0][3], list_bbox[1][3]])
+
+        bbox_size = np.max([bbox_sequence[2] - bbox_sequence[0], bbox_sequence[3] - bbox_sequence[1]])
+        max_size_with_margin = bbox_size * 1.3  # margin = 0.2 x max_dim
+        margin = bbox_size * 0.15
+        bbox_sequence = bbox_sequence + np.array([-margin, -margin, margin, margin])
+        bbox_sequence_square = image_utils.make_bbox_square(bbox_sequence, max_size_with_margin)
+        ratio = self.image_size / max_size_with_margin  # keep this value to predict translation later
+        for i in range(2):
+            cropped_img = sequence_img[i].crop(bbox_sequence_square)
+            cropped_resized_img = cropped_img.resize((self.image_size, self.image_size))
+            sequence_img[i] = cropped_resized_img
+        # if "train" in self.split and self.use_augmentation:
+        #     sequence_img = augmentation.apply_data_augmentation(2, sequence_img)
+        if save_path is None:
+            seq_img = np.zeros((2, 3, self.image_size, self.image_size))
+            for i in range(2):
+                seq_img[i] = image_utils.normalize(sequence_img[i].convert("RGB"))
+            return seq_img, ratio, bbox_sequence_square
