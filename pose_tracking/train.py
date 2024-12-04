@@ -16,6 +16,7 @@ import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     DATA_DIR,
+    IS_CLUSTER,
     PROJ_DIR,
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
@@ -400,8 +401,7 @@ def get_datasets(
             assert ds_video_dir_val and ds_video_subdirs_val
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
-            if ds_name == "ikea":
-                val_ds_kwargs["video_dir"] = ds_video_dir_val
+            val_ds_kwargs["video_dir"] = ds_video_dir_val
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
@@ -436,9 +436,10 @@ def get_datasets(
 
 if __name__ == "__main__":
 
-    import matplotlib
+    if not IS_CLUSTER:
+        import matplotlib
 
-    matplotlib.use("TkAgg")
+        matplotlib.use("TkAgg")
 
     args, args_to_group_map = parse_args()
     import datetime as dt

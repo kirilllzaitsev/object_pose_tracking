@@ -1,4 +1,5 @@
 import functools
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -23,6 +24,8 @@ HO3D_ROOT = DATA_DIR / "ho3d"
 
 PROJ_NAME = "pose-tracking"
 COMET_WORKSPACE = "kirilllzaitsev"
+
+IS_CLUSTER = os.path.exists("/cluster")
 
 
 def prepare_logger(logpath=None, level="INFO"):
