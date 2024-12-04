@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from pose_tracking.config import default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
+from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.matcher import HungarianMatcher
@@ -902,15 +903,28 @@ class TrainerVideopose(Trainer):
         MSELoss = torch.nn.MSELoss()
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-            seq_size = len(batched_seq["rgb"])
+            seq_size = len(batched_seq["rgb"][0])
+            for k, v in batched_seq.items():
+                if k in ["rgb_path", "obj_name"]:
+                    continue
+                if isinstance(v, list):
+                    if len(v) > 0:
+                        if isinstance(v[0][0], torch.Tensor):
+                            batched_seq[k] = torch.stack([torch.stack(vv) for vv in v]).to(self.device)
+                        else:
+                            if isinstance(v[0][0], np.ndarray):
+                                batched_seq[k] = from_numpy(v).to(self.device)
+                            else:
+                                batched_seq[k] = torch.tensor(v).to(self.device)
             batched_seq = transfer_batch_to_device(batched_seq, self.device)
-            res = self.model(batched_seq)
+            res = self.model(batched_seq["rgb"])
             rot = res["rot"]
             delta_uv = res["delta_uv"]
             delta_depth = res["delta_depth"]
 
             batch = batched_seq
             ratio = batch["ratio"]
+            # TODO: incorrect data prep. uv_first_frame should be of shape (B, 2) and not (B, L, 2)
             uv_first_frame = batch["uv_first_frame"]
             gt_delta_uv = batch["delta_uv"]
             gt_delta_depth = batch["delta_depth"]

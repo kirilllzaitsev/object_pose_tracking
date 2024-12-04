@@ -10,6 +10,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from pose_tracking.dataset.ds_common import convert_seq_batch_to_batch_seq
 import pyrender
 import torch
 import torchvision
@@ -382,6 +383,8 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
 
 
 def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
+    if "rgb" in seq:
+        seq = [s[batch_idx] for s in convert_seq_batch_to_batch_seq(seq)]
     take_n = take_n or len(seq)
     results = {}
     if len(seq[0]["rgb"].shape) == 4:
