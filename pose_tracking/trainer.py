@@ -231,11 +231,18 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
 
+                    continue
+
+            if self.use_prev_pose_condition:
+                prev_pose = pose_prev_pred_abs if self.do_predict_rel_pose else out_prev
+            else:
+                prev_pose = None
+
             out = self.model(
                 rgb,
                 depth,
                 bbox=bbox_2d,
-                prev_pose=pose_prev_pred_abs if self.do_predict_rel_pose else out_prev,
+                prev_pose=prev_pose,
                 prev_latent=prev_latent,
             )
 
