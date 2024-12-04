@@ -10,7 +10,7 @@ from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetIkea,
 )
 from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
-from pose_tracking.dataset.ycbineoat import YCBineoatDataset
+from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -28,6 +28,10 @@ def get_model(args):
         args = parse_args()
         # args.backbone = "transformer"
         model = VideoPose(args)
+    elif args.model_name == "pizza":
+        from pizza.lib.model.network import PIZZA
+
+        model = PIZZA(backbone="resnet18", img_feature_dim=512, multi_frame=False).cuda()
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR
@@ -43,6 +47,7 @@ def get_model(args):
             Loader=yaml.Loader,
         )
         detr_args.device = args.device
+        detr_args.num_queries = 10
         backbone = build_backbone(detr_args)
 
         transformer = build_deforamble_transformer(detr_args)
@@ -145,7 +150,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
     use_pose_loss = args.pose_loss_name in ["add"]
     criterion_pose = compute_add_loss if use_pose_loss else None
 
-    if args.model_name == "videopose":
+    if args.model_name in ["videopose", "pizza"]:
         trainer_cls = TrainerVideopose
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
@@ -267,15 +272,20 @@ def get_video_ds(
 def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     ds_kwargs = ds_kwargs.copy()
     video_dir = Path(ds_kwargs.pop("video_dir"))
+    model_name = ds_kwargs.pop("model_name", None)
     if ds_name == "ycbi":
-        ds = YCBineoatDataset(video_dir=video_dir / ds_video_subdir, **ds_kwargs)
+        if model_name == "pizza":
+            ds_cls = YCBineoatDatasetPizza
+        else:
+            ds_cls = YCBineoatDataset
+        ds = ds_cls(video_dir=video_dir / ds_video_subdir, **ds_kwargs)
     elif ds_name == "cube_sim":
         ds = CustomSimDatasetCube(
             **ds_kwargs,
         )
     elif ds_name == "ikea":
         ds = CustomSimDatasetIkea(
-            video_dir=f"{video_dir}/{ds_video_subdir}",
+            video_dir=video_dir / ds_video_subdir,
             **ds_kwargs,
         )
     else:

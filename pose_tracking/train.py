@@ -347,7 +347,8 @@ def get_datasets(
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
     is_detr_model = "detr" in model_name
     is_roi_model = "_sep" in model_name
-    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model
+    is_pizza_model = "pizza" in model_name
+    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
@@ -358,6 +359,7 @@ def get_datasets(
         mask_pixels_prob=mask_pixels_prob,
         do_normalize_bbox=True if is_detr_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",
+        model_name="pizza" if is_pizza_model else model_name,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(
