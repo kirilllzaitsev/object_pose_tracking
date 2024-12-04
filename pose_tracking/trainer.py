@@ -25,6 +25,7 @@ from pose_tracking.utils.misc import print_cls, reduce_dict, reduce_metric
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,
+    convert_r_t_to_rt,
 )
 from pose_tracking.utils.rotation_conversions import (
     matrix_to_axis_angle,
@@ -302,7 +303,11 @@ class Trainer:
             # -- t_pred/rot_pred can be rel or abs
 
             if self.use_pose_loss:
-                loss_pose = self.criterion_pose(pose_mat_pred_abs, pose_mat_gt_abs, pts)
+                if self.do_predict_rel_pose:
+                    pose_mat_gt_rel = convert_r_t_to_rt(rot_gt_rel_mat, t_gt_rel)
+                    loss_pose = self.criterion_pose(pose_mat_pred, pose_mat_gt_rel, pts)
+                else:
+                    loss_pose = self.criterion_pose(pose_mat_pred_abs, pose_mat_gt_abs, pts)
                 loss = loss_pose.clone()
             else:
                 # t loss
@@ -499,8 +504,12 @@ class Trainer:
                     self.processed_data["loss_rot"].append(loss_rot)
                     self.processed_data["loss_t"].append(loss_t)
                 if self.do_predict_rel_pose:
-                    self.processed_data["t_gt_rel"].append(t_gt_rel)
-                    self.processed_data["rot_gt_rel"].append(rot_gt_rel)
+                    if self.use_pose_loss:
+                        self.processed_data["pose_mat_pred"].append(pose_mat_pred)
+                        self.processed_data["pose_mat_gt_rel"].append(pose_mat_gt_rel)
+                    else:
+                        self.processed_data["t_gt_rel"].append(t_gt_rel)
+                        self.processed_data["rot_gt_rel"].append(rot_gt_rel)
 
         if do_opt_in_the_end:
             total_loss /= seq_length
