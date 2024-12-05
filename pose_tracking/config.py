@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROJ_DIR = Path(__file__).resolve().parents[1]
-WORKSPACE_DIR = PROJ_DIR.parent
+WORKSPACE_DIR = PROJ_DIR if os.path.exists("/home/kirillz") else PROJ_DIR.parent
 
 DATA_DIR = PROJ_DIR / "data"
 RELATED_DIR = WORKSPACE_DIR / "related_work"

@@ -89,6 +89,7 @@ def get_parser():
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
+    model_args.add_argument("--do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
@@ -97,7 +98,14 @@ def get_parser():
         type=str,
         default="cnnlstm",
         help="Model name",
-        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr", "detr_basic"],
+        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr", "detr_basic", "detr_kpt", "pizza"],
+    )
+    model_args.add_argument(
+        "--kpt_spatial_dim",
+        type=int,
+        default=2,
+        help="Spatial dimension of keypoints",
+        choices=[2, 3],
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
@@ -206,6 +214,9 @@ def postprocess_args(args):
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"
+
+    # TODO
+    args.num_classes = 84 if "_large" in args.ds_folder_name_train else 21
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"

@@ -68,7 +68,7 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0, rans
 
     inliers1 = mkpts0_em[mask.ravel() == 1]
     inliers2 = mkpts1_em[mask.ravel() == 1]
-    
+
     best_num_inliers = -1
     res = {}
     for _E in np.split(E, len(E) / 3):
@@ -173,19 +173,7 @@ def load_kpt_det_and_match_loftr(ckpt_filename="indoor_ds_new", use_quadattn=Fal
 
 def load_kpt_det_and_match(features, filter_threshold=0.1):
     # TODO: provide configs for extractor/matcher
-    if features == "superpoint":
-        extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
-    elif features == "disk":
-        # or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
-        extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
-    elif features == "sift":
-        extractor = SIFT(max_num_keypoints=2048).eval().cuda()  # load the extractor
-    elif features == "aliked":
-        extractor = ALIKED(max_num_keypoints=2048).eval().cuda()
-    elif features == "doghardnet":
-        extractor = DoGHardNet(max_num_keypoints=2048).eval().cuda()
-    else:
-        raise ValueError(features)
+    extractor = load_extractor(features)
 
     matcher = LightGlue(features=features, filter_threshold=filter_threshold).eval().cuda()  # load the matcher
 
@@ -195,6 +183,23 @@ def load_kpt_det_and_match(features, filter_threshold=0.1):
         p.requires_grad = False
 
     return extractor, matcher
+
+
+def load_extractor(features, max_num_keypoints=1024):
+    if features == "superpoint":
+        extractor = SuperPoint(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
+    elif features == "disk":
+        # or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
+        extractor = DISK(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
+    elif features == "sift":
+        extractor = SIFT(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
+    elif features == "aliked":
+        extractor = ALIKED(max_num_keypoints=max_num_keypoints).eval()
+    elif features == "doghardnet":
+        extractor = DoGHardNet(max_num_keypoints=max_num_keypoints).eval()
+    else:
+        raise ValueError(features)
+    return extractor
 
 
 def load_tracker(use_stream_tracker=True, use_online_tracker=True, use_v2=False, stream_window_len=16):

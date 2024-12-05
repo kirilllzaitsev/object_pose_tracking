@@ -82,6 +82,7 @@ def load_artifacts_from_comet(
     api: t.Optional[API] = None,
     epoch: t.Optional[int] = None,
     use_epoch: bool = False,
+    do_load_model: bool = True,
 ) -> dict:
     """Downloads artifacts from comet.ml if they don't exist locally and returns the paths to them.
     Args:
@@ -105,7 +106,7 @@ def load_artifacts_from_comet(
     args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
     model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
     args_not_exist = not os.path.exists(args_file_path)
-    weights_not_exist = not os.path.exists(model_checkpoint_path)
+    weights_not_exist = not os.path.exists(model_checkpoint_path) and do_load_model
 
     if any([args_not_exist, weights_not_exist]):
         os.makedirs(exp_dir, exist_ok=True)
@@ -150,7 +151,8 @@ def load_artifacts_from_comet(
                     except IndexError:
                         print(f"No session found with name {session_artifact_name}")
                         session_checkpoint_path = None
-    assert os.path.exists(model_checkpoint_path), f"Model checkpoint not found at {model_checkpoint_path}"
+    if do_load_model:
+        assert os.path.exists(model_checkpoint_path), f"Model checkpoint not found at {model_checkpoint_path}"
     assert os.path.exists(args_file_path), f"Args file not found at {args_file_path}"
     results = {
         "checkpoint_path": model_checkpoint_path,
