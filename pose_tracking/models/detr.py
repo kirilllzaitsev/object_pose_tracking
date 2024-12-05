@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from pose_tracking.models.pos_encoding import SpatialPositionalEncoding
+from pose_tracking.models.pos_encoding import SpatialPosEncoding
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     backproj_2d_to_3d_batch,
@@ -119,7 +119,7 @@ class KeypointDETR(nn.Module):
         descriptor_dim = 256
         self.conv1x1 = nn.Conv1d(descriptor_dim, d_model, kernel_size=1, stride=1)
 
-        self.pe_encoder = SpatialPositionalEncoding(d_model, ndim=kpt_spatial_dim)
+        self.pe_encoder = SpatialPosEncoding(d_model, ndim=kpt_spatial_dim)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.1
