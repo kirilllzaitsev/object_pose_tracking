@@ -13,6 +13,7 @@ from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
+from pose_tracking.trainer import TrainerPizza
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -65,6 +66,10 @@ def get_model(args):
         from pose_tracking.models.detr import DETR
 
         model = DETR(num_classes=num_classes)
+    elif args.model_name == "detr_kpt":
+        from pose_tracking.models.detr import KeypointDETR
+
+        model = KeypointDETR(num_classes=num_classes, n_queries=args.num_queries, kpt_spatial_dim=args.kpt_spatial_dim)
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR
@@ -150,8 +155,10 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
     use_pose_loss = args.pose_loss_name in ["add"]
     criterion_pose = compute_add_loss if use_pose_loss else None
 
-    if args.model_name in ["videopose", "pizza"]:
+    if args.model_name in ["videopose"]:
         trainer_cls = TrainerVideopose
+    elif args.model_name in ["pizza"]:
+        trainer_cls = TrainerPizza
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
     else:
@@ -166,6 +173,13 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
                 {
                     "num_dec_layers": 6,
                     "aux_loss": True,
+                }
+            )
+        if "detr_kpt" in args.model_name:
+            extra_kwargs.update(
+                {
+                    "kpt_spatial_dim": args.kpt_spatial_dim,
+                    "do_calibrate_kpt": args.do_calibrate_kpt,
                 }
             )
     else:
@@ -275,7 +289,7 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     model_name = ds_kwargs.pop("model_name", None)
     if ds_name == "ycbi":
         if model_name == "pizza":
-            ds_cls = YCBineoatDatasetPizza
+            ds_cls = YCBineoatDataset
         else:
             ds_cls = YCBineoatDataset
         ds = ds_cls(video_dir=video_dir / ds_video_subdir, **ds_kwargs)

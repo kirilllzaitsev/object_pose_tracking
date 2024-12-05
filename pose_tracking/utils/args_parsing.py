@@ -76,6 +76,22 @@ def get_parser():
         choices=["geodesic", "mse", "mae", "huber", "videopose"],
     )
 
+    poseformer_args = parser.add_argument_group("PoseFormer arguments")
+    poseformer_args.add_argument("--do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
+    poseformer_args.add_argument(
+        "--kpt_spatial_dim",
+        type=int,
+        default=2,
+        help="Spatial dimension of keypoints",
+        choices=[2, 3],
+    )
+    poseformer_args.add_argument(
+        "--num_queries",
+        type=int,
+        default=100,
+        help="Number of object queries for the transformer",
+    )
+
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
         "--do_predict_2d_t", action="store_true", help="Predict object 2D center and depth separately"
@@ -89,7 +105,6 @@ def get_parser():
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
-    model_args.add_argument("--do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
@@ -99,13 +114,6 @@ def get_parser():
         default="cnnlstm",
         help="Model name",
         choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr", "detr_basic", "detr_kpt", "pizza"],
-    )
-    model_args.add_argument(
-        "--kpt_spatial_dim",
-        type=int,
-        default=2,
-        help="Spatial dimension of keypoints",
-        choices=[2, 3],
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
