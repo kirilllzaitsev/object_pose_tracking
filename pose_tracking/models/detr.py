@@ -2,7 +2,15 @@ import copy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
+from pose_tracking.models.pos_encoding import SpatialPositionalEncoding
+from pose_tracking.utils.geom import (
+    backproj_2d_to_3d,
+    backproj_2d_to_3d_batch,
+    calibrate_2d_pts_batch,
+)
+from pose_tracking.utils.kpt_utils import load_extractor
 from torchvision.models import resnet50
 
 
@@ -26,6 +34,7 @@ class DETR(nn.Module):
         self.n_queries = n_queries
 
         self.backbone = resnet50()
+        self.backbone.fc = nn.Identity()
 
         self.conv1x1 = nn.Conv2d(2048, d_model, kernel_size=1, stride=1)
 
@@ -68,6 +77,118 @@ class DETR(nn.Module):
         tokens = rearrange(tokens, "b c h w -> b (h w) c")
 
         out_encoder = self.t_encoder(tokens + self.pe_encoder)
+
+        out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
+
+        outs = []
+        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
+            pred_logits = self.class_mlps[layer_idx](o)
+            pred_boxes = self.bbox_mlps[layer_idx](o)
+            pred_boxes = torch.sigmoid(pred_boxes)
+            outs.append({"pred_logits": pred_logits, "pred_boxes": pred_boxes})
+        last_out = outs.pop()
+        return {
+            "pred_logits": last_out["pred_logits"],
+            "pred_boxes": last_out["pred_boxes"],
+            "aux_outputs": outs,
+        }
+
+
+class KeypointDETR(nn.Module):
+
+    def __init__(
+        self,
+        num_classes,
+        kpt_extractor_name="superpoint",
+        d_model=256,
+        n_tokens=15 * 20,
+        n_layers=6,
+        n_heads=8,
+        n_queries=100,
+        kpt_spatial_dim=2,
+    ):
+        super().__init__()
+
+        self.num_classes = num_classes
+        self.d_model = d_model
+        self.n_tokens = n_tokens
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.n_queries = n_queries
+
+        descriptor_dim = 256
+        self.conv1x1 = nn.Conv1d(descriptor_dim, d_model, kernel_size=1, stride=1)
+
+        self.pe_encoder = SpatialPositionalEncoding(d_model, ndim=kpt_spatial_dim)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.1
+        )
+
+        self.t_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+
+        self.queries = nn.Parameter(torch.rand((1, n_queries, d_model)), requires_grad=True)
+
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.1
+        )
+
+        self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
+
+        self.class_mlps = get_clones(nn.Linear(d_model, num_classes), n_layers)
+        self.bbox_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
+
+        # Add hooks to get intermediate outcomes
+        self.decoder_outs = {}
+        for i, layer in enumerate(self.t_decoder.layers):
+            name = f"layer_{i}"
+            layer.register_forward_hook(get_hook(self.decoder_outs, name))
+
+        self.kpt_extractor_name = kpt_extractor_name
+        self.extractor = load_extractor(kpt_extractor_name)
+
+    def forward(self, x, intrinsics=None, depth=None, mask=None):
+        if mask is not None:
+            x = x * mask
+        bs, c, h, w = x.shape
+        if bs > 1:
+            extracted_kpts = [self.extractor.extract(x[i : i + 1]) for i in range(bs)]
+            extracted_kpts = [{k: v[0] for k, v in kpts.items()} for kpts in extracted_kpts]
+            # pad with zeros up to the max number of keypoints
+            max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
+            extracted_kpts = copy.deepcopy(extracted_kpts)
+            for kpts in extracted_kpts:
+                for k in kpts.keys():
+                    pad_len = max_kpts - len(kpts[k])
+                    if pad_len > 0:
+                        if k in ["keypoints", "descriptors"]:
+                            kpts[k] = F.pad(kpts[k], (0, 0, 0, pad_len), value=0)
+            extracted_kpts = {
+                k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors"]
+            }
+        else:
+            extracted_kpts = self.extractor.extract(x)
+
+        descriptors = extracted_kpts["descriptors"]
+        kpt_pos = extracted_kpts["keypoints"]
+
+        # TODO: check kpt norm
+        kpt_pos = kpt_pos / torch.tensor([w, h], dtype=kpt_pos.dtype).to(kpt_pos.device)
+
+        if depth is not None:
+            assert intrinsics is not None
+            # get depth_1d by sampling depth map at kpt_pos as int (ignoring zero kpt pos)
+            raise NotImplementedError("Need to implement depth sampling")
+            # TODO: get mask of padded keypoints
+            kpt_pos = backproj_2d_to_3d_batch(kpt_pos, depth=depth, K=intrinsics)
+        elif intrinsics is not None:
+            kpt_pos = calibrate_2d_pts_batch(kpt_pos, K=intrinsics)
+        tokens = descriptors
+        tokens = self.conv1x1(tokens.transpose(-1, -2))
+        tokens = rearrange(tokens, "b c hw -> b hw c")
+
+        pos_enc = self.pe_encoder(kpt_pos)
+        out_encoder = self.t_encoder(tokens + pos_enc)
 
         out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
 
