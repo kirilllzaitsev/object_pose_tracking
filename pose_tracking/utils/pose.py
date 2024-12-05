@@ -18,20 +18,24 @@ def convert_r_t_to_rt(r, t, scale_translation=1.0):
 
 
 def convert_pose_quaternion_to_matrix(pose):
-    t = pose[:3]
-    q = pose[3:]
+    t = pose[..., :3]
+    q = pose[..., 3:]
     pose_matrix = torch.eye(4, device=pose.device)
-    pose_matrix[:3, :3] = quaternion_to_matrix(q)
-    pose_matrix[:3, 3] = t
+    if len(t.shape) == 2:
+        pose_matrix = pose_matrix[None].repeat(t.shape[0], 1, 1)
+    pose_matrix[..., :3, :3] = quaternion_to_matrix(q)
+    pose_matrix[..., :3, 3] = t
     return pose_matrix
 
 
 def convert_pose_axis_angle_to_matrix(pose):
-    t = pose[:3]
-    axis_angle = pose[3:]
+    t = pose[..., :3]
+    axis_angle = pose[..., 3:]
     pose_matrix = torch.eye(4, device=pose.device)
-    pose_matrix[:3, :3] = axis_angle_to_matrix(axis_angle)
-    pose_matrix[:3, 3] = t
+    if len(t.shape) == 2:
+        pose_matrix = pose_matrix[None].repeat(t.shape[0], 1, 1)
+    pose_matrix[..., :3, :3] = axis_angle_to_matrix(axis_angle)
+    pose_matrix[..., :3, 3] = t
     return pose_matrix
 
 

@@ -10,11 +10,11 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from pose_tracking.dataset.ds_common import convert_seq_batch_to_batch_seq
 import pyrender
 import torch
 import torchvision
 from PIL import Image, ImageDraw
+from pose_tracking.dataset.ds_common import convert_seq_batch_to_batch_seq
 from pose_tracking.utils.common import (
     adjust_depth_for_plt,
     adjust_img_for_plt,
@@ -274,16 +274,11 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
 
 
 def plot_kpts(img_PIL, points_2d, color="blue"):
-    img_PIL = Image.fromarray(adjust_img_for_plt(img_PIL))
-    points_2d = cast_to_numpy(points_2d)
-    draw = ImageDraw.Draw(img_PIL)
+    img = adjust_img_for_plt(img_PIL)
+    points_2d = cast_to_numpy(points_2d).astype(int)
     for point in points_2d:
-        draw.rectangle(
-            ((point[0] - 0.1, point[1] + 0.1), (point[0] - 0.1, point[1] + 0.1)),
-            outline=color,
-            width=5,
-        )
-    return img_PIL
+        img = cv2.circle(img, tuple(point), 5, (255, 0, 0), -1)
+    return np.array(img)
 
 
 def add_border(image, color=[255, 0, 0], border_size=5):

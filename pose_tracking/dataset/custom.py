@@ -30,5 +30,6 @@ class CustomDataset(TrackingDataset):
         **kwargs,
     ):
         kwargs["do_convert_depth_to_m"] = True
+        kwargs["pose_dirname"] = "poses"
         super().__init__(*args, **kwargs)
         self.set_up_obj_mesh(mesh_path)
