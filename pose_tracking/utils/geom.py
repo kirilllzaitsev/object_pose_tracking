@@ -151,7 +151,7 @@ def backproj_depth_torch(depth, intrinsics, instance_mask=None, do_flip_xy=True)
 
 
 def backproj_2d_to_3d_batch(pts, depth, K):
-    return [backproj_2d_to_3d(pt, d, Ki) for pt, d, Ki in zip(pts, depth, K)]
+    return torch.stack([backproj_2d_to_3d(p, d, K) for p, d in zip(pts, depth)]).to(pts.device)
 
 
 def backproj_2d_to_3d(pts, depth, K):
@@ -171,6 +171,30 @@ def backproj_2d_to_3d(pts, depth, K):
     pts = lib.hstack((pts, ones))
     pts = pts * depth.reshape(-1, 1)
     pts = lib.linalg.inv(K) @ pts.T
+    return pts.T
+
+
+def calibrate_2d_pts_batch(pts, K):
+    return torch.stack([calibrate_2d_pts(p, K[i]) for i,p in enumerate(pts)]).to(pts.device)
+
+
+def calibrate_2d_pts(pts, K):
+    """
+    Calibrate 2D points to 3D points
+    Args:
+        pts: (N, 2) or (2, N)
+        K: 3x3 camera intrinsic matrix
+    """
+    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
+    lib = pick_library(pts)
+    if pts.shape[1] != 2:
+        pts = pts.T
+    ones = lib.ones((pts.shape[0], 1))
+    if lib == torch:
+        ones = ones.to(pts.device)
+    pts = lib.hstack((pts, ones))
+    pts = lib.linalg.inv(K) @ pts.T
+    pts = pts[:2, ...] / pts[2, ...]
     return pts.T
 
 
