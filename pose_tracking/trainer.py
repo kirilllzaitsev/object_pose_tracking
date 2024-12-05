@@ -567,12 +567,14 @@ class TrainerDeformableDETR:
         do_predict_rel_pose=False,
         do_predict_kpts=False,
         use_prev_latent=False,
+        do_calibrate_kpt=False,
         logger=None,
         vis_epoch_freq=None,
         do_vis=False,
         exp_dir=None,
         model_name=None,
         focal_alpha=0.25,
+        kpt_spatial_dim=2,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -601,6 +603,8 @@ class TrainerDeformableDETR:
         self.model_name = model_name
         self.model = model
         self.device = device
+        self.kpt_spatial_dim = kpt_spatial_dim
+        self.do_calibrate_kpt = do_calibrate_kpt
         self.hidden_dim = hidden_dim
         self.rnn_type = rnn_type
         self.criterion_trans = criterion_trans
@@ -735,7 +739,7 @@ class TrainerDeformableDETR:
             if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["rgb"]
-            seg_masks = batch_t["mask"]
+            mask = batch_t["mask"]
             pose_gt_abs = batch_t["pose"]
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
@@ -749,9 +753,17 @@ class TrainerDeformableDETR:
             targets = {
                 "labels": [v if v.ndim > 0 else v[None] for v in class_id],
                 "boxes": [v.float() for v in [v if v.ndim > 1 else v[None] for v in bbox_2d]],
-                "masks": seg_masks,
+                "masks": mask,
             }
-            out = self.model(rgb)
+            if self.model_name == "detr_kpt":
+                extra_kwargs = {}
+                if self.do_calibrate_kpt:
+                    extra_kwargs["intrinsics"] = intrinsics
+                if self.kpt_spatial_dim > 2:
+                    extra_kwargs["depth"] = depth
+                out = self.model(rgb, **extra_kwargs)
+            else:
+                out = self.model(rgb)
 
             # POSTPROCESS OUTPUTS
 
@@ -820,7 +832,7 @@ class TrainerDeformableDETR:
                 # add everything to processed_data
                 self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
                 self.processed_data["rgb"].append(rgb)
-                self.processed_data["seg_masks"].append(seg_masks)
+                self.processed_data["mask"].append(mask)
                 # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
                 # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
                 self.processed_data["depth"].append(depth)
