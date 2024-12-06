@@ -69,7 +69,12 @@ def get_model(args):
     elif args.model_name == "detr_kpt":
         from pose_tracking.models.detr import KeypointDETR
 
-        model = KeypointDETR(num_classes=num_classes, n_queries=args.num_queries, kpt_spatial_dim=args.kpt_spatial_dim)
+        model = KeypointDETR(
+            num_classes=num_classes,
+            n_queries=args.num_queries,
+            kpt_spatial_dim=args.kpt_spatial_dim,
+            encoding_type=args.encoding_type,
+        )
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR

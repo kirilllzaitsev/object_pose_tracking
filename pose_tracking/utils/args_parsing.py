@@ -86,6 +86,13 @@ def get_parser():
         choices=[2, 3],
     )
     poseformer_args.add_argument(
+        "--encoding_type",
+        type=str,
+        default="spatial",
+        help="Encoding type for positional encoding",
+        choices=["spatial", "sin"],
+    )
+    poseformer_args.add_argument(
         "--num_queries",
         type=int,
         default=100,
@@ -224,7 +231,8 @@ def postprocess_args(args):
     args.use_cuda = args.device == "cuda"
 
     # TODO
-    args.num_classes = 84 if "_large" in args.ds_folder_name_train else 21
+    if args.ds_name == "ikea":
+        args.num_classes = 84 if "_large" in args.ds_folder_name_train else 21
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
