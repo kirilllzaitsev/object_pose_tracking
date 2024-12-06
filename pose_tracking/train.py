@@ -407,8 +407,7 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_train,
                 ds_name=ds_name,
-                seq_len=args.seq_len,
-                # seq_len=None,
+                seq_len=None,
                 seq_step=1,
                 seq_start=seq_start,
                 ds_kwargs=train_ds_kwargs,
