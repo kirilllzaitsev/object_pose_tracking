@@ -17,6 +17,7 @@ from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     DATA_DIR,
     IS_CLUSTER,
+    IS_LOCAL,
     PROJ_DIR,
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
@@ -166,7 +167,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
 
-    collate_fn = batch_seq_collate_fn if args.model_name in ["videopose"] else seq_collate_fn
+    collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
         train_loader = DataLoader(
@@ -177,9 +178,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             num_workers=args.num_workers,
         )
         val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank)
+        val_batch_size = args.batch_size if len(val_dataset) > 8 else len(val_dataset)
         val_loader = DataLoader(
             val_dataset,
-            batch_size=args.batch_size if len(val_dataset) > 8 else len(val_dataset),
+            batch_size=val_batch_size,
             sampler=val_sampler,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
@@ -193,9 +195,13 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
+        if IS_LOCAL:
+            val_batch_size = 1
+        else:
+            val_batch_size = args.batch_size if len(val_dataset) > 8 else len(val_dataset)
         val_loader = DataLoader(
             val_dataset,
-            batch_size=args.batch_size if len(val_dataset) > 8 else len(val_dataset),
+            batch_size=val_batch_size,
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
@@ -268,7 +274,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         for param_group in optimizer.param_groups:
             param_group["lr"] = max(param_group["lr"], 1e-6)
 
-        if epoch % args.val_epoch_freq == 0 and not args.do_overfit:
+        if epoch % args.val_epoch_freq == 0:
             model.eval()
             with torch.no_grad():
                 val_stats = trainer.loader_forward(
@@ -380,9 +386,9 @@ def get_datasets(
 
     res = {}
 
+    train_ds_kwargs = copy.deepcopy(ds_kwargs)
+    train_ds_kwargs["video_dir"] = ds_video_dir_train
     if "train" in ds_types:
-        train_ds_kwargs = copy.deepcopy(ds_kwargs)
-        train_ds_kwargs["video_dir"] = ds_video_dir_train
         train_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_train,
             ds_name=ds_name,
@@ -398,7 +404,18 @@ def get_datasets(
 
     if "val" in ds_types:
         if do_overfit:
-            val_dataset = train_dataset
+            val_dataset = get_video_ds(
+                ds_video_subdirs=ds_video_subdirs_train,
+                ds_name=ds_name,
+                seq_len=args.seq_len,
+                # seq_len=None,
+                seq_step=1,
+                seq_start=seq_start,
+                ds_kwargs=train_ds_kwargs,
+                num_samples=num_samples,
+                do_preload=do_preload_ds,
+                transforms_rgb=None,
+            )
         else:
             assert ds_video_dir_val and ds_video_subdirs_val
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
@@ -407,8 +424,8 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
-                seq_len=None,
-                seq_step=1,
+                seq_len=args.seq_len if is_pizza_model else None,
+                seq_step=args.seq_step if is_pizza_model else 1,
                 seq_start=0,
                 ds_kwargs=val_ds_kwargs,
                 num_samples=num_samples,
