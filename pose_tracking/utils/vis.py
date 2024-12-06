@@ -380,8 +380,11 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
 def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
     if "rgb" in seq:
         seq = [s[batch_idx] for s in convert_seq_batch_to_batch_seq(seq)]
-    take_n = take_n or len(seq)
+    take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
     results = {}
+    if any("pose" in key for key in keys_to_plot):
+        if "rgb" in keys_to_plot:
+            keys_to_plot.remove("rgb")
     if len(seq[0]["rgb"].shape) == 4:
         print(f"Taking {batch_idx} image from the batch of size {seq[0]['rgb'].shape[0]}")
     else:
@@ -396,11 +399,14 @@ def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(img[batch_idx][None])
                 dtype = np.uint8
-            elif key in ["pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
+            elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
+                pose = img[batch_idx]
+                if pose.shape[-1] == 7:
+                    pose = convert_pose_quaternion_to_matrix(pose)
                 grid_img = draw_pose_on_img(
                     seq[i]["rgb"][batch_idx],
                     seq[i]["intrinsics"][batch_idx],
-                    img[batch_idx],
+                    pose,
                     bbox=seq[i]["mesh_bbox"][batch_idx],
                     bbox_color=(255, 255, 0),
                     scale=0.1,
@@ -411,7 +417,7 @@ def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
                 dtype = np.uint8
             arr.append(grid_img)
         res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype)
-        plt.figure(figsize=(20, 20))
+        plt.figure(figsize=(5 * take_n, 5 * take_n))
         plt.imshow(res)
         plt.axis("off")
         results[key] = res

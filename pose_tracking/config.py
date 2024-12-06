@@ -9,8 +9,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+IS_REMOTE = os.path.exists("/home/kirillz")
+IS_CLUSTER = os.path.exists("/cluster")
+IS_LOCAL = not (IS_REMOTE or IS_CLUSTER)
 PROJ_DIR = Path(__file__).resolve().parents[1]
-WORKSPACE_DIR = PROJ_DIR if os.path.exists("/home/kirillz") else PROJ_DIR.parent
+WORKSPACE_DIR = PROJ_DIR if IS_REMOTE else PROJ_DIR.parent
 
 DATA_DIR = PROJ_DIR / "data"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
@@ -24,8 +27,6 @@ HO3D_ROOT = DATA_DIR / "ho3d"
 
 PROJ_NAME = "pose-tracking"
 COMET_WORKSPACE = "kirilllzaitsev"
-
-IS_CLUSTER = os.path.exists("/cluster")
 
 
 def prepare_logger(logpath=None, level="INFO"):
