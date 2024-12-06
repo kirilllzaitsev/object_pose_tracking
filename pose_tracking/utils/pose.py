@@ -18,6 +18,8 @@ def convert_r_t_to_rt(r, t, scale_translation=1.0):
 
 
 def convert_pose_quaternion_to_matrix(pose):
+    if pose.shape[-1] == 3:
+        return pose
     t = pose[..., :3]
     q = pose[..., 3:]
     pose_matrix = torch.eye(4, device=pose.device)

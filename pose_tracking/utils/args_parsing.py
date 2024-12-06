@@ -98,6 +98,30 @@ def get_parser():
         default=100,
         help="Number of object queries for the transformer",
     )
+    poseformer_args.add_argument(
+        "--d_model",
+        type=int,
+        default=256,
+        help="Number of features for the transformer",
+    )
+    poseformer_args.add_argument(
+        "--n_tokens",
+        type=int,
+        default=300,
+        help="Number of tokens for the transformer",
+    )
+    poseformer_args.add_argument(
+        "--n_layers",
+        type=int,
+        default=6,
+        help="Number of transformer layers",
+    )
+    poseformer_args.add_argument(
+        "--n_heads",
+        type=int,
+        default=8,
+        help="Number of transformer heads",
+    )
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(

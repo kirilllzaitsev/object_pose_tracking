@@ -140,3 +140,8 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None):
             continue
         msg += f"{k}: {v}\n"
     return msg
+
+
+def split_arr(arr, num_chunks):
+    k, m = divmod(len(arr), num_chunks)
+    return [arr[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)] for i in range(num_chunks)]

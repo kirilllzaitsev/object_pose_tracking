@@ -65,7 +65,14 @@ def get_model(args):
     elif args.model_name == "detr_basic":
         from pose_tracking.models.detr import DETR
 
-        model = DETR(num_classes=num_classes)
+        model = DETR(
+            num_classes=num_classes,
+            n_queries=args.num_queries,
+            d_model=args.d_model,
+            n_tokens=args.n_tokens,
+            n_layers=args.n_layers,
+            n_heads=args.n_heads,
+        )
     elif args.model_name == "detr_kpt":
         from pose_tracking.models.detr import KeypointDETR
 
@@ -74,6 +81,10 @@ def get_model(args):
             n_queries=args.num_queries,
             kpt_spatial_dim=args.kpt_spatial_dim,
             encoding_type=args.encoding_type,
+            d_model=args.d_model,
+            n_tokens=args.n_tokens,
+            n_layers=args.n_layers,
+            n_heads=args.n_heads,
         )
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
@@ -199,6 +210,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
         writer=writer,
+        seq_len=args.seq_len,
         do_predict_2d_t=args.do_predict_2d_t,
         do_predict_6d_rot=args.do_predict_6d_rot,
         do_predict_3d_rot=args.do_predict_3d_rot,
