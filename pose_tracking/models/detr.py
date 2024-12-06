@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from pose_tracking.models.pos_encoding import SpatialPosEncoding
+from pose_tracking.models.pos_encoding import PosEncoding, SpatialPosEncoding
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     backproj_2d_to_3d_batch,
@@ -106,6 +106,7 @@ class KeypointDETR(nn.Module):
         n_heads=8,
         n_queries=100,
         kpt_spatial_dim=2,
+        encoding_type="spatial",
     ):
         super().__init__()
 
@@ -119,7 +120,11 @@ class KeypointDETR(nn.Module):
         descriptor_dim = 256
         self.conv1x1 = nn.Conv1d(descriptor_dim, d_model, kernel_size=1, stride=1)
 
-        self.pe_encoder = SpatialPosEncoding(d_model, ndim=kpt_spatial_dim)
+        if encoding_type == "spatial":
+            self.pe_encoder = SpatialPosEncoding(d_model, ndim=kpt_spatial_dim)
+        else:
+            self.pe_encoder = PosEncoding(d_model, max_len=1024)
+
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.1
@@ -187,7 +192,7 @@ class KeypointDETR(nn.Module):
         tokens = self.conv1x1(tokens.transpose(-1, -2))
         tokens = rearrange(tokens, "b c hw -> b hw c")
 
-        pos_enc = self.pe_encoder(kpt_pos)
+        pos_enc = self.pe_encoder(kpt_pos).to(tokens.device)
         out_encoder = self.t_encoder(tokens + pos_enc)
 
         out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
