@@ -22,6 +22,7 @@ def calc_metrics(
     diameter=None,
     is_meters=True,
     log_fn=print,
+    include_adds=False,
 ):
     """
     Calculate required metrics for pose estimation. Metric units are mm and degrees.
@@ -50,13 +51,10 @@ def calc_metrics(
     res = {}
     try:
         add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
-        adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
-        res.update(
-            {
-                "add": add,
-                "adds": adds,
-            }
-        )
+        res["add"] = add
+        if include_adds:
+            adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
+            res["adds"] = adds
     except Exception as e:
         log_fn(f"Error calculating metrics: {e}\nInputs:\n{pred_rt=},\n{gt_rt=}")
         res.update(
@@ -98,7 +96,8 @@ def calc_metrics(
             diameter *= 1000
         thresh = diameter * 0.1
         res["add10"] = add < thresh
-        res["adds10"] = adds < thresh
+        if include_adds:
+            res["adds10"] = adds < thresh
 
     return res
 
@@ -335,4 +334,3 @@ def accuracy(pred_logits, gt_labels, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
-

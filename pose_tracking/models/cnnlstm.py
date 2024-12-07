@@ -104,6 +104,9 @@ class BeliefEncoder(nn.Module):
             "cx": cx_new,
         }
 
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__())
+
 
 class BeliefDecoder(nn.Module):
     def __init__(
@@ -121,15 +124,13 @@ class BeliefDecoder(nn.Module):
         dropout=0.0,
     ):
         super().__init__()
-        self.hidden_attn = nn.Sequential(
-            MLP(
-                in_dim=state_dim,
-                out_dim=depth_decoder_out_dim,
-                hidden_dim=hidden_attn_hidden_dim,
-                num_layers=hidden_attn_num_layers,
-                dropout=dropout,
-            ),
-            nn.Sigmoid(),
+        self.hidden_attn = MLP(
+            in_dim=state_dim,
+            out_dim=depth_decoder_out_dim,
+            hidden_dim=hidden_attn_hidden_dim,
+            num_layers=hidden_attn_num_layers,
+            dropout=dropout,
+            act_out=nn.Sigmoid(),
         )
         self.depth_decoder = MLP(
             in_dim=state_dim,
@@ -166,6 +167,9 @@ class BeliefDecoder(nn.Module):
 
         return res
 
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__())
+
 
 class MLP(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="gelu", act_out=None, dropout=0.0):
@@ -196,6 +200,9 @@ class MLP(nn.Module):
         if self.act_out is not None:
             x = self.act_out(x)
         return x
+
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__())
 
 
 class RecurrentCNN(nn.Module):
@@ -249,6 +256,7 @@ class RecurrentCNN(nn.Module):
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
         self.dropout = dropout
+        self.rt_mlps_num_layers = rt_mlps_num_layers
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot

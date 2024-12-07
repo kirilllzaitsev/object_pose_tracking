@@ -131,7 +131,7 @@ class NestedTensor(object):
 
 
 def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
-    msg = ""
+    msg = f"self: {type(cls)}\n"
     excluded_attrs = excluded_attrs or []
     for k, v in cls.__dict__.items():
         if exclude_private and k.startswith("_"):

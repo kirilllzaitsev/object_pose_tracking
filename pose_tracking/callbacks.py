@@ -29,7 +29,8 @@ class EarlyStopping:
             self.best = current
         elif current < self.best + self.delta:
             self.counter += 1
-            print(f"EarlyStopping: {current=:0.4f} and {self.best=:0.4f}. Patience: {self.counter}/{self.patience}")
+            if self.verbose:
+                print(f"EarlyStopping: {current=:0.4f} and {self.best=:0.4f}. Patience: {self.counter}/{self.patience}")
             if self.counter >= self.patience:
                 self.do_stop = True
         else:
