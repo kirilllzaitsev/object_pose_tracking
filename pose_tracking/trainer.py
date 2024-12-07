@@ -23,7 +23,7 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
-from pose_tracking.utils.misc import print_cls, reduce_dict, reduce_metric
+from pose_tracking.utils.misc import print_cls, reduce_dict, reduce_metric, split_arr
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,
@@ -45,6 +45,7 @@ class Trainer:
         device,
         hidden_dim,
         rnn_type,
+        seq_len,
         criterion_trans=None,
         criterion_rot=None,
         criterion_pose=None,
@@ -103,6 +104,7 @@ class Trainer:
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
         self.writer = writer
+        self.seq_len = seq_len
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -133,14 +135,33 @@ class Trainer:
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-            seq_stats = self.batched_seq_forward(
-                batched_seq=batched_seq,
-                optimizer=optimizer,
-                save_preds=save_preds,
-                preds_dir=preds_dir,
-                stage=stage,
-                do_vis=do_vis,
-            )
+            if stage != "train":
+                batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
+                seq_stats = defaultdict(lambda: defaultdict(float))
+                for chunk in tqdm(batched_seq_chunks, desc="Subseq", leave=False):
+                    seq_stats_chunk = self.batched_seq_forward(
+                        batched_seq=chunk,
+                        optimizer=optimizer,
+                        save_preds=save_preds,
+                        preds_dir=preds_dir,
+                        stage=stage,
+                        do_vis=do_vis,
+                    )
+                    for k, v in seq_stats_chunk.items():
+                        for kk, vv in v.items():
+                            seq_stats[k][kk] += vv
+                for k, v in seq_stats.items():
+                    for kk, vv in v.items():
+                        seq_stats[k][kk] /= len(batched_seq_chunks)
+            else:
+                seq_stats = self.batched_seq_forward(
+                    batched_seq=batched_seq,
+                    optimizer=optimizer,
+                    save_preds=save_preds,
+                    preds_dir=preds_dir,
+                    stage=stage,
+                    do_vis=do_vis,
+                )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
