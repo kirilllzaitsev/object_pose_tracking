@@ -1,4 +1,6 @@
 import argparse
+import re
+import sys
 
 import yaml
 
@@ -25,10 +27,14 @@ def get_parser():
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
     pipe_args.add_argument("--do_profile", action="store_true", help="Profile the code")
     pipe_args.add_argument("--do_print_seq_stats", action="store_true", help="Print sequence-level stats")
+    pipe_args.add_argument(
+        "--do_ignore_file_args_with_provided", action="store_true", help="Ignore file args if provided via CLI"
+    )
     pipe_args.add_argument("--exp_tags", nargs="*", default=[], help="Tags for the experiment to log.")
     pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
     pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")
     pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
+    pipe_args.add_argument("--args_from_exp_name", type=str, help="Exp name to load args from")
     pipe_args.add_argument(
         "--ignored_file_args",
         nargs="*",
@@ -73,7 +79,7 @@ def get_parser():
         type=str,
         default="geodesic",
         help="Rotation loss name",
-        choices=["geodesic", "mse", "mae", "huber", "videopose"],
+        choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement"],
     )
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
@@ -154,7 +160,9 @@ def get_parser():
     )
     model_args.add_argument("--encoder_img_weights", type=str, default="imagenet", help="Weights for the image encoder")
     model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
-    model_args.add_argument("--norm_layer_type", type=str, default="batch", help="Type of normalization layer for encoders")
+    model_args.add_argument(
+        "--norm_layer_type", type=str, default="batch", help="Type of normalization layer for encoders"
+    )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
     model_args.add_argument(
         "--benc_belief_enc_hidden_dim", type=int, default=512, help="Hidden dimension for belief encoder"
@@ -231,11 +239,18 @@ def postprocess_args(args):
 
     args = fix_outdated_args(args)
 
-    if args.args_path:
-        import yaml
+    if args.args_path or getattr(args, "args_from_exp_name"):
+        if getattr(args, "args_from_exp_name"):
+            from pose_tracking.utils.comet_utils import load_artifacts_from_comet
 
-        with open(args.args_path, "r") as f:
-            loaded_args = yaml.load(f, Loader=yaml.FullLoader)
+            print(f"Overriding with args from exp {args.args_from_exp_name}")
+            loaded_args = load_artifacts_from_comet(args.args_from_exp_name, do_load_model=False)["args"]
+            loaded_args = vars(loaded_args)
+        else:
+            import yaml
+
+            with open(args.args_path, "r") as f:
+                loaded_args = yaml.load(f, Loader=yaml.FullLoader)
 
         default_ignored_file_args = [
             "device",
@@ -244,7 +259,11 @@ def postprocess_args(args):
             "exp_disabled",
             "batch_size",
         ]
-        ignored_file_args = set(args.ignored_file_args) | set(default_ignored_file_args)
+        if args.do_ignore_file_args_with_provided:
+            provided_ignored_args = re.findall("--(\w+)", " ".join(sys.argv[1:]))
+        else:
+            provided_ignored_args = args.ignored_file_args
+        ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args)
         for k, v in loaded_args.items():
             if k in ignored_file_args:
                 print(f"Ignoring overriding {k}")
