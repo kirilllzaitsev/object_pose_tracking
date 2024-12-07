@@ -597,10 +597,13 @@ class TrainerDeformableDETR:
         model_name=None,
         focal_alpha=0.25,
         kpt_spatial_dim=2,
+        **kwargs,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
         ), "Either pose or rot & trans criteria must be provided"
+        if kwargs:
+            print(f"Ignored {kwargs=}")
 
         self.do_debug = do_debug
         self.do_predict_2d_t = do_predict_2d_t

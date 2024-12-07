@@ -130,7 +130,7 @@ class NestedTensor(object):
         return str(self.tensors)
 
 
-def print_cls(cls, exclude_private=True, excluded_attrs=None):
+def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
     msg = ""
     excluded_attrs = excluded_attrs or []
     for k, v in cls.__dict__.items():
@@ -139,6 +139,8 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None):
         if k in excluded_attrs:
             continue
         msg += f"{k}: {v}\n"
+    if extra_str:
+        msg += f"\n{extra_str}"
     return msg
 
 

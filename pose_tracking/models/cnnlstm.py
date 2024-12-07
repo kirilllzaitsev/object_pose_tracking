@@ -219,6 +219,9 @@ class RecurrentCNN(nn.Module):
         dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
+        encoder_img_weights="imagenet",
+        encoder_depth_weights=None,
+        norm_layer_type="batch",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
@@ -366,13 +369,19 @@ class RecurrentCNN(nn.Module):
         if encoder_name is None:
             self.encoder_img = self.encoder_depth = None
         else:
-            self.encoder_img, self.encoder_depth = get_encoders(encoder_name, do_freeze=do_freeze_encoders)
+            self.encoder_img, self.encoder_depth = get_encoders(
+                encoder_name,
+                do_freeze=do_freeze_encoders,
+                weights_img=encoder_img_weights,
+                weights_depth=encoder_depth_weights,
+                norm_layer_type=norm_layer_type,
+            )
 
         self.hx = None
         self.cx = None
 
     def __repr__(self):
-        return print_cls(self)
+        return print_cls(self, extra_str=super().__repr__())
 
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
@@ -492,6 +501,9 @@ class RecurrentCNNSeparated(nn.Module):
         dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
+        encoder_img_weights="imagenet",
+        encoder_depth_weights=None,
+        norm_layer_type="batch",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
@@ -653,7 +665,13 @@ class RecurrentCNNSeparated(nn.Module):
             )
 
         self.encoder_name = encoder_name
-        self.encoder_img, self.encoder_depth = get_encoders(encoder_name, do_freeze=do_freeze_encoders)
+        self.encoder_img, self.encoder_depth = get_encoders(
+            encoder_name,
+            do_freeze=do_freeze_encoders,
+            weights_img=encoder_img_weights,
+            weights_depth=encoder_depth_weights,
+            norm_layer_type=norm_layer_type,
+        )
         self.hx = None
         self.cx = None
 

@@ -9,7 +9,13 @@ def get_encoders(
     weights_depth=None,
     do_freeze=False,
     disable_bn_running_stats=False,
+    norm_layer_type="batch",
 ):
+    if norm_layer_type == "batch":
+        norm_layer = nn.BatchNorm2d
+    else:
+        norm_layer = nn.Identity
+
     assert model_name in ["regnet_y_800mf", "efficientnet_b1", "efficientnet_v2_s", "mobilenet_v3_small"], model_name
     if model_name == "regnet_y_800mf":
         weights = torchvision.models.RegNet_Y_800MF_Weights.IMAGENET1K_V2
@@ -31,9 +37,11 @@ def get_encoders(
             )
     elif model_name == "mobilenet_v3_small":
         weights = torchvision.models.MobileNet_V3_Small_Weights.DEFAULT
-        encoder_s_img = torchvision.models.mobilenet_v3_small(weights=weights if weights_img == "imagenet" else None)
+        encoder_s_img = torchvision.models.mobilenet_v3_small(
+            weights=weights if weights_img == "imagenet" else None, norm_layer=norm_layer
+        )
         encoder_s_depth = torchvision.models.mobilenet_v3_small(
-            weights=weights if weights_depth == "imagenet" else None
+            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
         )
         encoder_s_depth.features[0][0] = nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:

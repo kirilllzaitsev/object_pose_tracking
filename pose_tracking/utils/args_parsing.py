@@ -152,6 +152,9 @@ def get_parser():
     model_args.add_argument(
         "--encoder_name", type=str, default="regnet_y_800mf", help="Encoder name for both RGB and depth"
     )
+    model_args.add_argument("--encoder_img_weights", type=str, default="imagenet", help="Weights for the image encoder")
+    model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
+    model_args.add_argument("--norm_layer_type", type=str, default="batch", help="Type of normalization layer for encoders")
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
     model_args.add_argument(
         "--benc_belief_enc_hidden_dim", type=int, default=512, help="Hidden dimension for belief encoder"

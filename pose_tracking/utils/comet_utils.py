@@ -10,6 +10,7 @@ import comet_ml
 import yaml
 from comet_ml.api import API
 from pose_tracking.config import ARTIFACTS_DIR, COMET_WORKSPACE, PROJ_DIR, PROJ_NAME
+from pose_tracking.utils.args_parsing import load_args_from_file
 
 
 def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_map=None) -> None:
@@ -103,6 +104,7 @@ def load_artifacts_from_comet(
 
     include_session = session_artifact_name is not None and session_checkpoint_path is not None
     exp_dir = f"{local_artifacts_dir}/{exp_name}"
+    os.makedirs(exp_dir, exist_ok=True)
     args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
     model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
     args_not_exist = not os.path.exists(args_file_path)
@@ -159,6 +161,7 @@ def load_artifacts_from_comet(
     }
     if args_file_path is not None:
         results["args_path"] = args_file_path
+        results["args"] = load_args_from_file(args_file_path)
     if include_session:
         results["session_checkpoint_path"] = session_checkpoint_path
     return results

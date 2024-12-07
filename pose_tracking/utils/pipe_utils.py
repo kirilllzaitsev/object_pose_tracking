@@ -158,6 +158,9 @@ def get_model(args):
             use_prev_pose_condition=args.use_prev_pose_condition,
             use_prev_latent=args.use_prev_latent,
             do_predict_kpts=args.do_predict_kpts,
+            encoder_depth_weights=args.encoder_depth_weights,
+            encoder_img_weights=args.encoder_img_weights,
+            norm_layer_type=args.norm_layer_type,
         )
 
     return model
