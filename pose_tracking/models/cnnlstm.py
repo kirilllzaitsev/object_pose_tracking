@@ -381,7 +381,7 @@ class RecurrentCNN(nn.Module):
             self.encoder_img, self.encoder_depth = get_encoders(
                 encoder_name,
                 do_freeze=do_freeze_encoders,
-                weights_img=encoder_img_weights,
+                weights_rgb=encoder_img_weights,
                 weights_depth=encoder_depth_weights,
                 norm_layer_type=norm_layer_type,
                 out_dim=encoder_out_dim,
@@ -686,7 +686,7 @@ class RecurrentCNNSeparated(nn.Module):
         self.encoder_img, self.encoder_depth = get_encoders(
             encoder_name,
             do_freeze=do_freeze_encoders,
-            weights_img=encoder_img_weights,
+            weights_rgb=encoder_img_weights,
             weights_depth=encoder_depth_weights,
             norm_layer_type=norm_layer_type,
             out_dim=encoder_out_dim,
