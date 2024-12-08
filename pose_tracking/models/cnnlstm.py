@@ -489,10 +489,8 @@ class RecurrentCNN(nn.Module):
 
 def reset_state_rnn(hidden_dim, batch_size, device, rnn_type):
     # should be called at the beginning of each sequence
-    hx = torch.nn.init.xavier_uniform_(torch.zeros(batch_size, hidden_dim, device=device))
-    cx = (
-        None if "gru" in rnn_type else torch.nn.init.xavier_uniform_(torch.zeros(batch_size, hidden_dim, device=device))
-    )
+    hx = torch.zeros(batch_size, hidden_dim, device=device)
+    cx = None if "gru" in rnn_type else torch.zeros(batch_size, hidden_dim, device=device)
     return hx, cx
 
 
