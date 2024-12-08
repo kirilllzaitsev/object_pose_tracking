@@ -6,6 +6,7 @@ from pose_tracking.dataset.transforms import (
     get_transforms_video,
 )
 from pose_tracking.utils.common import adjust_img_for_plt
+from pose_tracking.utils.misc import print_cls
 from torch.utils.data import Dataset
 
 
@@ -21,16 +22,29 @@ class VideoDataset(Dataset):
     """
 
     def __init__(
-        self, ds, seq_len=None, seq_start=0, seq_step=1, num_samples=None, do_preload=False, transforms_rgb=None
+        self,
+        ds,
+        seq_len=None,
+        seq_start=0,
+        seq_step=1,
+        num_samples=None,
+        do_preload=False,
+        transforms_rgb=None,
+        max_random_seq_step=10,
     ):
         self.do_preload = do_preload
 
         self.ds = ds
         self.seq_start = seq_start
         self.seq_step = seq_step
+        self.max_random_seq_step = max_random_seq_step
 
         self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
-        self.num_samples = len(ds) if num_samples is None else num_samples
+        if seq_start is not None:
+            self.num_samples = 1 if self.seq_step else self.max_random_seq_step - 1  # because of the fixed start idx
+        else:
+            # not very meaningful. can sample much more different subsequences given random seq_step/seq_start
+            self.num_samples = max(1, len(ds) // self.seq_len) if num_samples is None else num_samples
         self.transforms_rgb = get_transforms_video(transforms_rgb) if transforms_rgb is not None else None
 
         if do_preload:
@@ -39,6 +53,9 @@ class VideoDataset(Dataset):
     def __len__(self):
         return self.num_samples
 
+    def __repr__(self) -> str:
+        return print_cls(self, excluded_attrs=["seq"])
+
     def __getitem__(self, idx):
         seq = []
         timesteps = self.seq_len
@@ -46,7 +63,7 @@ class VideoDataset(Dataset):
         seq_step = self.seq_step
 
         if not seq_step:
-            seq_step = torch.randint(1, 10, (1,)).item()
+            seq_step = torch.randint(1, self.max_random_seq_step, (1,)).item()
 
         if seq_start is None:
             seq_start = torch.randint(
