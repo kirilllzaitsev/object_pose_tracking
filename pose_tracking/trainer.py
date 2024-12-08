@@ -424,10 +424,8 @@ class Trainer:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
                 if self.do_debug:
-                    grad_norms = [
-                        cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None
-                    ]
-                    self.processed_data["grad_norm"].append(sum(grad_norms) / len(grad_norms))
+                    grad_norms, grad_norm = self.get_grad_info()
+                    self.processed_data["grad_norm"].append(grad_norm)
                     self.processed_data["grad_norms"].append(grad_norms)
                 optimizer.step()
             elif do_opt_in_the_end:
@@ -520,6 +518,9 @@ class Trainer:
                 vis_data["t_pred"].append(detach_and_cpu(t_pred[vis_batch_idxs]))
                 vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
+                grad_norms, grad_norm = self.get_grad_info()
+                vis_data["grad_norm"].append(grad_norm)
+                vis_data["grad_norms"].append(grad_norms)
 
             if self.do_debug:
                 # add everything to processed_data
@@ -586,6 +587,11 @@ class Trainer:
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
+
+    def get_grad_info(self):
+        grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
+        grad_norm = sum(grad_norms) / len(grad_norms)
+        return grad_norms, grad_norm
 
 
 class TrainerDeformableDETR:
