@@ -65,7 +65,7 @@ def get_parser():
     train_args.add_argument("--batch_size", type=int, default=8, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
-    train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
+    train_args.add_argument("--es_delta", type=float, default=1e-4, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
@@ -163,7 +163,7 @@ def get_parser():
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
     )
     model_args.add_argument(
-        "--encoder_name", type=str, default="efficientnet_b1", help="Encoder name for both RGB and depth"
+        "--encoder_name", type=str, default="efficientnet_b0", help="Encoder name for both RGB and depth"
     )
     model_args.add_argument("--encoder_img_weights", type=str, help="Weights for the image encoder")
     model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
@@ -302,6 +302,9 @@ def postprocess_args(args, use_if_provided=True):
             args.ds_folder_name_val = args.ds_folder_name_train
         else:
             assert args.ds_folder_name_val, "Validation dataset folder name is required for training"
+
+    if args.exp_name.startswith("args_"):
+        args.exp_name = args.exp_name.replace("args_", "")
 
     return args
 

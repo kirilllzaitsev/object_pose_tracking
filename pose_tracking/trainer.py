@@ -268,6 +268,8 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
 
+                    # prev_latent = torch.cat([self.model.encoder_img(rgb), self.model.encoder_depth(depth)], dim=1)
+
                     continue
 
             if self.use_prev_pose_condition:
