@@ -119,8 +119,9 @@ def get_model(args):
 
         model = DETR(num_classes=num_classes)
     else:
-        priv_dim = 256 * 3
-        latent_dim = 256  # defined by the encoders
+        num_pts = 256
+        priv_dim = num_pts * 3
+        latent_dim = args.encoder_out_dim  # defined by the encoders
         depth_dim = latent_dim
         rgb_dim = latent_dim
         if args.model_name == "cnnlstm":
@@ -161,6 +162,7 @@ def get_model(args):
             encoder_depth_weights=args.encoder_depth_weights,
             encoder_img_weights=args.encoder_img_weights,
             norm_layer_type=args.norm_layer_type,
+            encoder_out_dim=args.encoder_out_dim,
         )
 
     return model
@@ -234,6 +236,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         model_name=args.model_name,
         do_debug=args.do_debug,
         do_print_seq_stats=args.do_print_seq_stats,
+        criterion_rot_name=args.rot_loss_name,
         **extra_kwargs,
     )
 
@@ -290,7 +293,7 @@ def get_video_ds(
             seq_len=seq_len,
             seq_step=seq_step,
             seq_start=seq_start,
-            num_samples=max(1, len(ds) // seq_len) if num_samples is None else num_samples,
+            num_samples=num_samples,
             do_preload=do_preload,
             transforms_rgb=transforms_rgb,
         )

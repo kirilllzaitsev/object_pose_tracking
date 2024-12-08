@@ -186,6 +186,9 @@ def get_parser():
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
     model_args.add_argument(
+        "--encoder_out_dim", type=int, default=256, help="Output dimension of the img/depth encoder"
+    )
+    model_args.add_argument(
         "--priv_decoder_num_layers", type=int, default=1, help="Number of layers for privileged info decoder"
     )
     model_args.add_argument(
@@ -235,11 +238,11 @@ def get_parser():
     return parser
 
 
-def postprocess_args(args):
+def postprocess_args(args, use_if_provided=True):
 
     args = fix_outdated_args(args)
 
-    if args.args_path or getattr(args, "args_from_exp_name"):
+    if use_if_provided and (args.args_path or getattr(args, "args_from_exp_name")):
         if getattr(args, "args_from_exp_name"):
             from pose_tracking.utils.comet_utils import load_artifacts_from_comet
 
@@ -262,8 +265,8 @@ def postprocess_args(args):
         if args.do_ignore_file_args_with_provided:
             provided_ignored_args = re.findall("--(\w+)", " ".join(sys.argv[1:]))
         else:
-            provided_ignored_args = args.ignored_file_args
-        ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args)
+            provided_ignored_args = []
+        ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
         for k, v in loaded_args.items():
             if k in ignored_file_args:
                 print(f"Ignoring overriding {k}")
@@ -282,8 +285,8 @@ def postprocess_args(args):
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
-    assert (
-        not args.do_predict_6d_rot and not args.do_predict_2d_t
+    assert not (
+        args.do_predict_rel_pose and (args.do_predict_6d_rot or args.do_predict_2d_t)
     ), "Relative pose prediction is not supported with 6d rot or 2d t"
 
     if args.ds_name not in ["ycbi", "cube"]:
