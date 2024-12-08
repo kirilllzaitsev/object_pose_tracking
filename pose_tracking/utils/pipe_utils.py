@@ -48,7 +48,6 @@ def get_model(args):
             Loader=yaml.Loader,
         )
         detr_args.device = args.device
-        detr_args.num_queries = 10
         backbone = build_backbone(detr_args)
 
         transformer = build_deforamble_transformer(detr_args)
@@ -56,7 +55,7 @@ def get_model(args):
             backbone,
             transformer,
             num_classes=num_classes,
-            num_queries=detr_args.num_queries,
+            num_queries=args.mt_num_queries,
             num_feature_levels=detr_args.num_feature_levels,
             aux_loss=detr_args.aux_loss,
             with_box_refine=detr_args.with_box_refine,
@@ -67,57 +66,35 @@ def get_model(args):
 
         model = DETR(
             num_classes=num_classes,
-            n_queries=args.num_queries,
-            d_model=args.d_model,
-            n_tokens=args.n_tokens,
-            n_layers=args.n_layers,
-            n_heads=args.n_heads,
+            n_queries=args.mt_num_queries,
+            d_model=args.mt_d_model,
+            n_tokens=args.mt_n_tokens,
+            n_layers=args.mt_n_layers,
+            n_heads=args.mt_n_heads,
         )
     elif args.model_name == "detr_kpt":
         from pose_tracking.models.detr import KeypointDETR
 
         model = KeypointDETR(
             num_classes=num_classes,
-            n_queries=args.num_queries,
-            kpt_spatial_dim=args.kpt_spatial_dim,
-            encoding_type=args.encoding_type,
-            d_model=args.d_model,
-            n_tokens=args.n_tokens,
-            n_layers=args.n_layers,
-            n_heads=args.n_heads,
-        )
-    elif args.model_name == "detr":
-        from deformable_detr.models.backbone import build_backbone
-        from deformable_detr.models.deformable_detr import DeformableDETR
-        from deformable_detr.models.deformable_transformer import (
-            build_deforamble_transformer,
-        )
-
-        detr_args = yaml.load(
-            open(
-                f"{RELATED_DIR}/transformers/Deformable-DETR/deformable_detr/config.yaml",
-                "r",
-            ),
-            Loader=yaml.Loader,
-        )
-        detr_args.device = args.device
-        backbone = build_backbone(detr_args)
-
-        transformer = build_deforamble_transformer(detr_args)
-        model = DeformableDETR(
-            backbone,
-            transformer,
-            num_classes=num_classes,
-            num_queries=detr_args.num_queries,
-            num_feature_levels=detr_args.num_feature_levels,
-            aux_loss=detr_args.aux_loss,
-            with_box_refine=detr_args.with_box_refine,
-            two_stage=detr_args.two_stage,
+            n_queries=args.mt_num_queries,
+            kpt_spatial_dim=args.mt_kpt_spatial_dim,
+            encoding_type=args.mt_encoding_type,
+            d_model=args.mt_d_model,
+            n_tokens=args.mt_n_tokens,
+            n_layers=args.mt_n_layers,
+            n_heads=args.mt_n_heads,
         )
     elif args.model_name == "detr_basic":
         from pose_tracking.models.detr import DETR
 
-        model = DETR(num_classes=num_classes)
+        model = DETR(
+            num_classes=num_classes,
+            d_model=args.mt_d_model,
+            n_tokens=args.mt_n_tokens,
+            n_layers=args.mt_n_layers,
+            n_heads=args.mt_n_heads,
+        )
     else:
         num_pts = 256
         priv_dim = num_pts * 3

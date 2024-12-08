@@ -226,7 +226,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         ],
         weight_decay=args.weight_decay,
     )
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.lrs_step_size, gamma=args.lrs_gamma)
+    lr_scheduler = optim.lr_scheduler.StepLR(
+        optimizer, step_size=args.lrs_step_size if args.use_lrs else 1000, gamma=args.lrs_gamma
+    )
 
     trainer = get_trainer(
         args,

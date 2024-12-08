@@ -57,16 +57,17 @@ def get_parser():
     train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
-    train_args.add_argument("--vis_epoch_freq", type=int, default=5, help="Visualize a random sequence every N epochs")
+    train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
+    train_args.add_argument("--vis_epoch_freq", type=int, default=3, help="Visualize a random sequence every N epochs")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
     train_args.add_argument("--val_epoch_freq", type=int, default=1, help="Validate every N epochs")
     train_args.add_argument("--save_epoch_freq", type=int, default=1, help="Save model every N epochs")
-    train_args.add_argument("--batch_size", type=int, default=2, help="Batch size for training")
+    train_args.add_argument("--batch_size", type=int, default=8, help="Batch size for training")
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-3, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    train_args.add_argument("--lr_encoders", type=float, default=5e-5, help="Learning rate")
+    train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
@@ -83,53 +84,53 @@ def get_parser():
     train_args.add_argument(
         "--rot_loss_name",
         type=str,
-        default="geodesic",
+        default="mse",
         help="Rotation loss name",
         choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement"],
     )
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
-    poseformer_args.add_argument("--do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
+    poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     poseformer_args.add_argument(
-        "--kpt_spatial_dim",
+        "--mt_kpt_spatial_dim",
         type=int,
         default=2,
         help="Spatial dimension of keypoints",
         choices=[2, 3],
     )
     poseformer_args.add_argument(
-        "--encoding_type",
+        "--mt_encoding_type",
         type=str,
         default="spatial",
         help="Encoding type for positional encoding",
         choices=["spatial", "sin"],
     )
     poseformer_args.add_argument(
-        "--num_queries",
+        "--mt_num_queries",
         type=int,
         default=100,
         help="Number of object queries for the transformer",
     )
     poseformer_args.add_argument(
-        "--d_model",
+        "--mt_d_model",
         type=int,
         default=256,
         help="Number of features for the transformer",
     )
     poseformer_args.add_argument(
-        "--n_tokens",
+        "--mt_n_tokens",
         type=int,
         default=300,
         help="Number of tokens for the transformer",
     )
     poseformer_args.add_argument(
-        "--n_layers",
+        "--mt_n_layers",
         type=int,
         default=6,
         help="Number of transformer layers",
     )
     poseformer_args.add_argument(
-        "--n_heads",
+        "--mt_n_heads",
         type=int,
         default=8,
         help="Number of transformer heads",
@@ -166,12 +167,10 @@ def get_parser():
     )
     model_args.add_argument("--encoder_img_weights", type=str, help="Weights for the image encoder")
     model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
-    model_args.add_argument(
-        "--norm_layer_type", type=str, help="Type of normalization layer for encoders"
-    )
+    model_args.add_argument("--norm_layer_type", type=str, help="Type of normalization layer for encoders")
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
     model_args.add_argument(
-        "--benc_belief_enc_hidden_dim", type=int, default=512, help="Hidden dimension for belief encoder"
+        "--benc_belief_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief encoder"
     )
     model_args.add_argument(
         "--benc_belief_depth_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief depth encoder"
@@ -192,16 +191,16 @@ def get_parser():
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
     model_args.add_argument(
-        "--encoder_out_dim", type=int, default=784, help="Output dimension of the img/depth encoder"
+        "--encoder_out_dim", type=int, default=1024, help="Output dimension of the img/depth encoder"
     )
     model_args.add_argument(
-        "--priv_decoder_num_layers", type=int, default=1, help="Number of layers for privileged info decoder"
+        "--priv_decoder_num_layers", type=int, default=2, help="Number of layers for privileged info decoder"
     )
     model_args.add_argument(
-        "--depth_decoder_num_layers", type=int, default=1, help="Number of layers for depth decoder from hidden state"
+        "--depth_decoder_num_layers", type=int, default=2, help="Number of layers for depth decoder from hidden state"
     )
     model_args.add_argument(
-        "--hidden_attn_num_layers", type=int, default=1, help="Number of layers for hidden attention in decoder"
+        "--hidden_attn_num_layers", type=int, default=2, help="Number of layers for hidden attention in decoder"
     )
     model_args.add_argument(
         "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"
@@ -216,13 +215,13 @@ def get_parser():
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
-    data_args.add_argument("--num_samples", type=int, help="Number of sequence frames to take")
+    data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds))")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
-    data_args.add_argument("--obj_names", nargs="*", default=["mustard0"], help="Object names to use in the dataset")
+    data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(
         "--obj_names_val",
         nargs="*",
-        default=["mustard_easy_00_02"],
+        default=[],
         help="Object names to use in the validation dataset",
     )
     data_args.add_argument(
