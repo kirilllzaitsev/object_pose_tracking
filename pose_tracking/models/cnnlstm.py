@@ -223,6 +223,7 @@ class RecurrentCNN(nn.Module):
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
         rt_mlps_num_layers=1,
+        encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
@@ -251,6 +252,7 @@ class RecurrentCNN(nn.Module):
         self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
         self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
         self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
+        self.encoder_out_dim = encoder_out_dim
         self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
         self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
         self.rnn_type = rnn_type
@@ -270,7 +272,6 @@ class RecurrentCNN(nn.Module):
         self.do_predict_rot = do_predict_rot
 
         self.input_dim = depth_dim + rgb_dim
-        self.encoder_out_dim = 256
 
         if use_rnn:
             if rnn_type == "lstm":
@@ -383,6 +384,7 @@ class RecurrentCNN(nn.Module):
                 weights_img=encoder_img_weights,
                 weights_depth=encoder_depth_weights,
                 norm_layer_type=norm_layer_type,
+                out_dim=encoder_out_dim,
             )
 
         self.hx = None
@@ -394,6 +396,12 @@ class RecurrentCNN(nn.Module):
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
         self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
+
+    def detach_state(self):
+        if self.training:
+            self.hx = self.hx.detach()
+            if self.cx is not None:
+                self.cx = self.cx.detach()
 
     def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
 
@@ -474,6 +482,8 @@ class RecurrentCNN(nn.Module):
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
 
+        self.detach_state()
+
         return res
 
 
@@ -506,6 +516,7 @@ class RecurrentCNNSeparated(nn.Module):
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
         rt_mlps_num_layers=1,
+        encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
         encoder_name="regnet_y_800mf",
@@ -534,6 +545,7 @@ class RecurrentCNNSeparated(nn.Module):
         self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
         self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
         self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
+        self.encoder_out_dim = encoder_out_dim
         self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
         self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
         self.rnn_type = rnn_type
@@ -679,6 +691,7 @@ class RecurrentCNNSeparated(nn.Module):
             weights_img=encoder_img_weights,
             weights_depth=encoder_depth_weights,
             norm_layer_type=norm_layer_type,
+            out_dim=encoder_out_dim,
         )
         self.hx = None
         self.cx = None

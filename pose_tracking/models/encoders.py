@@ -10,6 +10,7 @@ def get_encoders(
     do_freeze=False,
     disable_bn_running_stats=False,
     norm_layer_type="batch",
+    out_dim=256,
 ):
     if norm_layer_type == "batch":
         norm_layer = nn.BatchNorm2d
@@ -24,7 +25,7 @@ def get_encoders(
         encoder_s_depth.stem[0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:
             m.fc = nn.Sequential(
-                nn.Linear(784, 256),
+                nn.Linear(784, out_dim),
             )
     elif model_name == "efficientnet_b1":
         weights = torchvision.models.EfficientNet_B1_Weights.IMAGENET1K_V2
@@ -33,7 +34,7 @@ def get_encoders(
         encoder_s_depth.stem[0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:
             m.classifier = nn.Sequential(
-                nn.Linear(1280, 256),
+                nn.Linear(1280, out_dim),
             )
     elif model_name == "mobilenet_v3_small":
         weights = torchvision.models.MobileNet_V3_Small_Weights.DEFAULT
@@ -46,7 +47,7 @@ def get_encoders(
         encoder_s_depth.features[0][0] = nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:
             m.classifier = nn.Sequential(
-                nn.Linear(576, 256),
+                nn.Linear(576, out_dim),
             )
     else:
         weights = torchvision.models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
@@ -55,7 +56,7 @@ def get_encoders(
         encoder_s_depth.features[0][0] = nn.Conv2d(1, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:
             m.classifier = nn.Sequential(
-                nn.Linear(1280, 256),
+                nn.Linear(1280, out_dim),
             )
     for m in [encoder_s_img, encoder_s_depth]:
         m.to(device)
