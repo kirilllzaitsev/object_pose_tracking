@@ -192,7 +192,7 @@ def get_parser():
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
     model_args.add_argument(
-        "--encoder_out_dim", type=int, default=256, help="Output dimension of the img/depth encoder"
+        "--encoder_out_dim", type=int, default=784, help="Output dimension of the img/depth encoder"
     )
     model_args.add_argument(
         "--priv_decoder_num_layers", type=int, default=1, help="Number of layers for privileged info decoder"
