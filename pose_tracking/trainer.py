@@ -342,24 +342,28 @@ class Trainer:
 
                 # rot loss
 
-                if self.do_predict_6d_rot:
-                    loss_rot = torch.abs(
-                        rotate_pts_batch(rot_mat_pred_abs, pts) - rotate_pts_batch(rot_mat_gt_abs, pts)
-                    ).mean()
-                else:
-                    if self.do_predict_rel_pose:
-                        if self.do_predict_rel_pose:
-                            if self.do_predict_3d_rot:
-                                rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
-                            else:
-                                rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
+                if self.criterion_rot_name == "displacement":
+                    self.criterion_rot = functools.partial(self.criterion_rot, pts=pts)
+
+                if self.do_predict_rel_pose:
+                    if self.use_rot_mat_for_loss:
+                        loss_rot = self.criterion_rot(rot_mat_pred, rot_gt_rel_mat)
+                    else:
+                        if self.do_predict_3d_rot:
+                            rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
+                        else:
+                            rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
+                else:
+                    if self.use_rot_mat_for_loss:
+                        loss_rot = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
                     else:
                         if self.do_predict_3d_rot:
                             rot_gt = quaternion_to_axis_angle(rot_gt_abs)
                         else:
                             rot_gt = rot_gt_abs
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
+
                 loss = loss_rot + loss_t
 
             # depth loss
