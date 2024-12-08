@@ -1,3 +1,4 @@
+import functools
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -14,7 +15,7 @@ from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results
-from pose_tracking.utils.common import cast_to_numpy
+from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
@@ -48,6 +49,7 @@ class Trainer:
         seq_len,
         criterion_trans=None,
         criterion_rot=None,
+        criterion_rot_name=None,
         criterion_pose=None,
         writer=None,
         do_debug=False,
@@ -102,6 +104,7 @@ class Trainer:
         self.rnn_type = rnn_type
         self.criterion_trans = criterion_trans
         self.criterion_rot = criterion_rot
+        self.criterion_rot_name = criterion_rot_name
         self.criterion_pose = criterion_pose
         self.writer = writer
         self.seq_len = seq_len
@@ -110,11 +113,17 @@ class Trainer:
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
+        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement"]
 
         self.processed_data = defaultdict(list)
         self.seq_counts_per_stage = defaultdict(int)
         self.ts_counts_per_stage = defaultdict(int)
         self.train_epoch_count = 0
+
+        if do_predict_6d_rot:
+            assert criterion_rot_name in ["displacement"], criterion_rot_name
+        if do_predict_3d_rot:
+            assert criterion_rot_name not in ["geodesic", "videopose"], criterion_rot_name
 
     def __repr__(self):
         return print_cls(self, excluded_attrs=["processed_data", "model"])
@@ -135,33 +144,12 @@ class Trainer:
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-            if stage != "train":
-                batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
-                seq_stats = defaultdict(lambda: defaultdict(float))
-                for chunk in tqdm(batched_seq_chunks, desc="Subseq", leave=False):
-                    seq_stats_chunk = self.batched_seq_forward(
-                        batched_seq=chunk,
-                        optimizer=optimizer,
-                        save_preds=save_preds,
-                        preds_dir=preds_dir,
-                        stage=stage,
-                        do_vis=do_vis,
-                    )
-                    for k, v in seq_stats_chunk.items():
-                        for kk, vv in v.items():
-                            seq_stats[k][kk] += vv
-                for k, v in seq_stats.items():
-                    for kk, vv in v.items():
-                        seq_stats[k][kk] /= len(batched_seq_chunks)
+
+            batch_size = len(batched_seq[0]["rgb"])
+            if self.use_ddp:
+                self.model.module.reset_state(batch_size, device=self.device)
             else:
-                seq_stats = self.batched_seq_forward(
-                    batched_seq=batched_seq,
-                    optimizer=optimizer,
-                    save_preds=save_preds,
-                    preds_dir=preds_dir,
-                    stage=stage,
-                    do_vis=do_vis,
-                )
+                self.model.reset_state(batch_size, device=self.device)
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
@@ -215,12 +203,8 @@ class Trainer:
             optimizer.zero_grad()
             total_loss = 0
 
-        if self.use_ddp:
-            self.model.module.reset_state(batch_size, device=self.device)
-        else:
-            self.model.reset_state(batch_size, device=self.device)
         if self.do_debug:
-            self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
+            self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
 
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 16)))
@@ -300,6 +284,8 @@ class Trainer:
                 pose_mat_pred = torch.stack(
                     [pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
                 )
+
+            rot_mat_pred = pose_mat_pred[:, :3, :3]
 
             if self.do_predict_rel_pose:
                 pose_mat_prev_pred_abs = torch.stack(
@@ -489,50 +475,56 @@ class Trainer:
                     if k in batch_t and len(batch_t[k]) > 0:
                         vis_keys.append(k)
                 for k in vis_keys:
-                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
-                vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
-                vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
-                vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
+                    vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
+                vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
+                vis_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred[vis_batch_idxs]))
+                vis_data["intrinsics"].append(detach_and_cpu(intrinsics[vis_batch_idxs]))
+                vis_data["out"].append(
+                    ({k: detach_and_cpu(v[vis_batch_idxs]) for k, v in out.items() if k in ["t", "rot"]})
+                )
+                vis_data["t_pred"].append(detach_and_cpu(t_pred[vis_batch_idxs]))
+                vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
+                vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
 
             if self.do_debug:
                 # add everything to processed_data
-                self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
-                self.processed_data["rgb"].append(rgb)
-                self.processed_data["mask"].append(mask)
-                self.processed_data["pose_gt_abs"].append(pose_gt_abs)
-                self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
-                self.processed_data["depth"].append(depth)
-                self.processed_data["rot_pred"].append(rot_pred)
-                self.processed_data["t_pred"].append(t_pred)
+                self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
+                self.processed_data["rgb"].append(detach_and_cpu(rgb))
+                self.processed_data["mask"].append(detach_and_cpu(mask))
+                self.processed_data["pose_gt_abs"].append(detach_and_cpu(pose_gt_abs))
+                self.processed_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs))
+                self.processed_data["depth"].append(detach_and_cpu(depth))
+                self.processed_data["rot_pred"].append(detach_and_cpu(rot_pred))
+                self.processed_data["t_pred"].append(detach_and_cpu(t_pred))
                 if self.do_predict_2d_t:
-                    self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
-                    self.processed_data["depth_gt"].append(depth_gt)
-                    self.processed_data["center_depth_pred"].append(center_depth_pred)
-                    self.processed_data["t_pred_2d_denorm"].append(t_pred_2d_denorm)
-                    self.processed_data["t_pred_2d"].append(t_pred_2d)
+                    self.processed_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
+                    self.processed_data["depth_gt"].append(detach_and_cpu(depth_gt))
+                    self.processed_data["center_depth_pred"].append(detach_and_cpu(center_depth_pred))
+                    self.processed_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
+                    self.processed_data["t_pred_2d"].append(detach_and_cpu(t_pred_2d))
                 if "priv_decoded" in out:
-                    self.processed_data["priv_decoded"].append(out["priv_decoded"])
-                self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
-                self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["pts"].append(pts)
-                self.processed_data["bbox_3d"].append(bbox_3d)
-                self.processed_data["diameter"].append(diameter)
-                self.processed_data["loss"].append(loss)
-                self.processed_data["m_batch"].append(m_batch)
-                self.processed_data["loss_depth"].append(loss_depth)
-                self.processed_data["out_prev"].append(out_prev)
+                    self.processed_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
+                self.processed_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs))
+                self.processed_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
+                self.processed_data["pts"].append(detach_and_cpu(pts))
+                self.processed_data["bbox_3d"].append(detach_and_cpu(bbox_3d))
+                self.processed_data["diameter"].append(detach_and_cpu(diameter))
+                self.processed_data["loss"].append(detach_and_cpu(loss))
+                self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
+                self.processed_data["loss_depth"].append(detach_and_cpu(loss_depth))
+                self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.use_pose_loss:
-                    self.processed_data["loss_pose"].append(loss_pose)
+                    self.processed_data["loss_pose"].append(detach_and_cpu(loss_pose))
                 else:
-                    self.processed_data["loss_rot"].append(loss_rot)
-                    self.processed_data["loss_t"].append(loss_t)
+                    self.processed_data["loss_rot"].append(detach_and_cpu(loss_rot))
+                    self.processed_data["loss_t"].append(detach_and_cpu(loss_t))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
-                        self.processed_data["pose_mat_pred"].append(pose_mat_pred)
-                        self.processed_data["pose_mat_gt_rel"].append(pose_mat_gt_rel)
+                        self.processed_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred))
+                        self.processed_data["pose_mat_gt_rel"].append(detach_and_cpu(pose_mat_gt_rel))
                     else:
-                        self.processed_data["t_gt_rel"].append(t_gt_rel)
-                        self.processed_data["rot_gt_rel"].append(rot_gt_rel)
+                        self.processed_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
+                        self.processed_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
 
         if do_opt_in_the_end:
             total_loss /= seq_length
@@ -549,7 +541,9 @@ class Trainer:
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
-            save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
+            save_vis_path = (
+                f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}_step_{self.ts_counts_per_stage[stage]}.pt"
+            )
             torch.save(vis_data, save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
