@@ -1,5 +1,7 @@
 import json
 import os
+import random
+import time
 from glob import glob
 from pathlib import Path
 
@@ -82,14 +84,20 @@ def read_preds(pred_dir):
     return {"rgbs": rgbs, "poses": poses, "frame_ids": frame_ids, "poses_gt": poses_gt}
 
 
-def load_pose(path):
+def load_pose(path, num_trials=3):
+    if num_trials == 0:
+        raise RuntimeError(f"failed to read {path=} in allocated num_trials")
     path = str(path)
-    if path.endswith(".npy"):
-        return np.load(path)
-    elif path.endswith(".txt"):
-        return np.loadtxt(path).reshape(4, 4)
-    else:
-        raise ValueError(f"Unknown pose format: {path}")
+    try:
+        if path.endswith(".npy"):
+            return np.load(path)
+        elif path.endswith(".txt"):
+            return np.loadtxt(path).reshape(4, 4)
+        else:
+            raise ValueError(f"Unknown pose format: {path}")
+    except SystemError:
+        time.sleep(random.random())
+        return load_pose(path, num_trials=num_trials - 1)
 
 
 def load_depth_(path):
