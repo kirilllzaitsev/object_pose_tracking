@@ -115,10 +115,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"CLI command:\npython {' '.join(sys.argv)}")
     print_args(args, logger=logger)
 
-    if is_main_process and not args.exp_disabled:
-        logger.info(f"# Experiment created at {exp._get_experiment_url()}")
-        logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
-
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
     logger.info(f"{logpath=}")
@@ -242,6 +238,12 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         do_vis=args.do_vis and is_main_process,
         exp_dir=logdir,
     )
+
+    logger.info(trainer)
+    logger.info(f"{logdir=} {os.path.basename(logdir)}")
+    if is_main_process and not args.exp_disabled:
+        logger.info(f"# Experiment created at {exp._get_experiment_url()}")
+        logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
 
     early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
     artifacts = {
