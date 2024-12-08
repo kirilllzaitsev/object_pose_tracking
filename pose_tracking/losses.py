@@ -1,3 +1,5 @@
+import functools
+
 import torch
 from pose_tracking.utils.geom import rotate_pts_batch, transform_pts_batch
 from pose_tracking.utils.misc import pick_library
@@ -26,9 +28,18 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
-def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts):
-    loss_rot = torch.abs(rotate_pts_batch(pred_rot_mat, pts) - rotate_pts_batch(true_rot_mat, pts))
-    return torch.mean(loss_rot)
+def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts, dist_loss="mse"):
+    pred = rotate_pts_batch(pred_rot_mat, pts)
+    true = rotate_pts_batch(true_rot_mat, pts)
+    if dist_loss == "mae":
+        loss_rot = F.l1_loss(pred, true)
+    elif dist_loss == "mse":
+        loss_rot = F.mse_loss(pred, true)
+    elif dist_loss == "huber":
+        loss_rot = F.huber_loss(pred, true)
+    else:
+        raise ValueError(f"Unknown distance loss: {dist_loss}")
+    return loss_rot
 
 
 def videopose_loss(pred_quat, true_quat, eps=1e-8):
@@ -189,7 +200,7 @@ def get_t_loss(t_loss_name):
 
 def get_rot_loss(rot_loss_name):
     if rot_loss_name == "displacement":
-        criterion_rot = rot_pts_displacement_loss
+        criterion_rot = functools.partial(rot_pts_displacement_loss, dist_loss="mse")
     elif rot_loss_name == "geodesic":
         criterion_rot = geodesic_loss
     elif rot_loss_name == "mse":
