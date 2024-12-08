@@ -1,5 +1,5 @@
 import torch
-from pose_tracking.utils.geom import transform_pts_batch
+from pose_tracking.utils.geom import rotate_pts_batch, transform_pts_batch
 from pose_tracking.utils.misc import pick_library
 from torch import nn
 from torch.nn import functional as F
@@ -24,6 +24,11 @@ def geodesic_loss(pred_quat, true_quat):
 
     angles = 2 * torch.acos(torch.abs(dot_product))
     return torch.mean(angles)
+
+
+def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts):
+    loss_rot = torch.abs(rotate_pts_batch(pred_rot_mat, pts) - rotate_pts_batch(true_rot_mat, pts))
+    return torch.mean(loss_rot)
 
 
 def videopose_loss(pred_quat, true_quat, eps=1e-8):
@@ -183,7 +188,9 @@ def get_t_loss(t_loss_name):
 
 
 def get_rot_loss(rot_loss_name):
-    if rot_loss_name == "geodesic":
+    if rot_loss_name == "displacement":
+        criterion_rot = rot_pts_displacement_loss
+    elif rot_loss_name == "geodesic":
         criterion_rot = geodesic_loss
     elif rot_loss_name == "mse":
         criterion_rot = nn.MSELoss()
