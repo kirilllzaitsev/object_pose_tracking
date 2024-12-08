@@ -13,11 +13,16 @@ def get_encoders(
     out_dim=256,
 ):
     if norm_layer_type == "batch":
+        print(f"WARN: {norm_layer_type=}")
         norm_layer = nn.BatchNorm2d
     else:
         norm_layer = nn.Identity
 
     assert model_name in ["regnet_y_800mf", "efficientnet_b1", "efficientnet_v2_s", "mobilenet_v3_small"], model_name
+
+    if model_name in ["regnet_y_800mf", "efficientnet_v2_s"]:
+        print(f"WARN: {model_name} should not be used with CNNLSTM because of the batchnorm")
+
     if model_name == "regnet_y_800mf":
         weights = torchvision.models.RegNet_Y_800MF_Weights.IMAGENET1K_V2
         encoder_s_img = torchvision.models.regnet_y_800mf(weights=weights if weights_img == "imagenet" else None)
@@ -29,9 +34,13 @@ def get_encoders(
             )
     elif model_name == "efficientnet_b1":
         weights = torchvision.models.EfficientNet_B1_Weights.IMAGENET1K_V2
-        encoder_s_img = torchvision.models.efficientnet_b1(weights=weights if weights_img == "imagenet" else None)
-        encoder_s_depth = torchvision.models.efficientnet_b1(weights=weights if weights_depth == "imagenet" else None)
-        encoder_s_depth.stem[0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        encoder_s_img = torchvision.models.efficientnet_b1(
+            weights=weights if weights_img == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_s_depth = torchvision.models.efficientnet_b1(
+            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_s_depth.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_s_img, encoder_s_depth]:
             m.classifier = nn.Sequential(
                 nn.Linear(1280, out_dim),
