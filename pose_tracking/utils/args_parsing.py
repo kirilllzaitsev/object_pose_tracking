@@ -41,6 +41,12 @@ def get_parser():
         default=[],
         help="List of args to ignore when loading from file.",
     )
+    pipe_args.add_argument(
+        "--provided_ignored_args",
+        nargs="*",
+        default=[],
+        help="Filled in by the code.",
+    )
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
@@ -266,7 +272,10 @@ def postprocess_args(args, use_if_provided=True):
             provided_ignored_args = re.findall("--(\w+)", " ".join(sys.argv[1:]))
         else:
             provided_ignored_args = []
-        ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
+        args.provided_ignored_args += provided_ignored_args
+        ignored_file_args = (
+            set(args.provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
+        )
         for k, v in loaded_args.items():
             if k in ignored_file_args:
                 print(f"Ignoring overriding {k}")

@@ -139,12 +139,13 @@ def batch_seq_collate_fn(batch):
     return new_b
 
 
-def convert_seq_batch_to_batch_seq(batch):
+def convert_seq_batch_to_batch_seq(batch, keys=None):
     # from keyxseq_lenxbatch to batchxseq_lenxkey
     res = []
+    keys = keys or batch.keys()
     for bidx in range(len(batch["rgb"][0])):
         news = []
         for sidx in range(len(batch["rgb"])):
-            news.append({k: v[sidx][bidx] for k, v in batch.items() if len(v) > 0})
+            news.append({k: v[sidx][bidx] for k, v in batch.items() if len(v) > 0 if k in keys})
         res.append(news)
     return res

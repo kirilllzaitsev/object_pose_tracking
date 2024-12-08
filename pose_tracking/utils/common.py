@@ -39,12 +39,26 @@ def adjust_depth_for_plt(img):
 def cast_to_numpy(x, dtype=None) -> np.ndarray:
     if isinstance(x, list):
         return np.array([cast_to_numpy(xx) for xx in x])
+    elif isinstance(x, dict):
+        return {k: cast_to_numpy(v) for k, v in x.items()}
     elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)):
         return x
     arr = x.detach().cpu().numpy()
     if dtype is not None:
         arr = arr.astype(dtype)
     return arr
+
+
+def detach_and_cpu(x):
+    if isinstance(x, list):
+        return [detach_and_cpu(xx) for xx in x]
+    elif isinstance(x, dict):
+        return {k: detach_and_cpu(v) for k, v in x.items()}
+    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)) or np.isscalar(x):
+        return x
+    elif x is None:
+        return x
+    return x.detach().cpu()
 
 
 def convert_arr_to_tensor(v):
@@ -58,9 +72,9 @@ def istensor(x):
     return isinstance(x, torch.Tensor)
 
 
-def get_ordered_paths(pattern):
+def get_ordered_paths(pattern, sort_fn=None):
     pattern = str(pattern)
     if "*" not in pattern:
         assert os.path.isdir(pattern), f"Check {pattern=}"
         pattern = f"{pattern}/*"
-    return sorted(glob.glob(pattern))
+    return sorted(glob.glob(pattern), key=sort_fn)
