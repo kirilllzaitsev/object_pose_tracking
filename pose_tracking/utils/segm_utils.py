@@ -67,3 +67,17 @@ def mask_erode(prev_mask, kernel_size=11):
     if is_tensor:
         res = torch.from_numpy(res).to(device)
     return res
+
+
+def infer_bounding_box(mask):
+    assert len(mask.shape) == 2, "Mask must be 2D"
+    idxs = np.nonzero(mask)
+    rows, cols = idxs
+
+    if len(rows) == 0 or len(cols) == 0:
+        return None
+
+    y_min, y_max = rows.min(), rows.max()
+    x_min, x_max = cols.min(), cols.max()
+
+    return np.array([[x_min, y_min], [x_max, y_max]])

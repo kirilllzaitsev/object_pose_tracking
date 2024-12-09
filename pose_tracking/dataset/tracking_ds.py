@@ -14,7 +14,7 @@ from pose_tracking.utils.geom import (
     world_to_2d,
 )
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
-from pose_tracking.utils.segm_utils import mask_erode
+from pose_tracking.utils.segm_utils import infer_bounding_box, mask_erode
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 
@@ -119,7 +119,7 @@ class TrackingDataset(Dataset):
             sample["mesh_diameter"] = self.mesh_diameter
 
         if self.include_bbox_2d:
-            bbox_2d = convert_3d_bbox_to_2d(self.mesh_bbox, self.K, hw=(self.h, self.w), pose=sample["pose"])
+            bbox_2d = infer_bounding_box(sample["mask"])
             bbox_2d = bbox_2d.astype(np.float32)
             if self.do_normalize_bbox:
                 bbox_2d[:, 0] /= self.w

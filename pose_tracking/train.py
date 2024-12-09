@@ -227,7 +227,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         weight_decay=args.weight_decay,
     )
     lr_scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=args.lrs_step_size if args.use_lrs else 1000, gamma=args.lrs_gamma
+        optimizer, step_size=args.lrs_step_size if args.use_lrs else 1000, gamma=args.lrs_gamma, verbose=args.use_lrs
     )
 
     trainer = get_trainer(
@@ -276,7 +276,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
         # clip lr to min value 1e-6
         for param_group in optimizer.param_groups:
-            param_group["lr"] = max(param_group["lr"], 1e-6)
+            param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
 
         if epoch % args.val_epoch_freq == 0:
             model.eval()
@@ -319,8 +319,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
         printer.saved_artifacts(epoch)
 
-    logger.info(f"# {logdir=}")
+    logger.info(f"# {logdir=} {os.path.basename(logdir)}")
     logger.info(f"# {logpath=}")
+
+    if is_main_process and not args.exp_disabled:
+        logger.info(f"# Experiment finished {exp._get_experiment_url()}")
 
     if not external_tools and is_main_process:
         exp.end()
