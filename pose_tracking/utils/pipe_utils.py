@@ -85,16 +85,6 @@ def get_model(args):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
         )
-    elif args.model_name == "detr_basic":
-        from pose_tracking.models.detr import DETR
-
-        model = DETR(
-            num_classes=num_classes,
-            d_model=args.mt_d_model,
-            n_tokens=args.mt_n_tokens,
-            n_layers=args.mt_n_layers,
-            n_heads=args.mt_n_heads,
-        )
     else:
         num_pts = 256
         priv_dim = num_pts * 3
@@ -176,8 +166,8 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         if "detr_kpt" in args.model_name:
             extra_kwargs.update(
                 {
-                    "kpt_spatial_dim": args.kpt_spatial_dim,
-                    "do_calibrate_kpt": args.do_calibrate_kpt,
+                    "kpt_spatial_dim": args.mt_kpt_spatial_dim,
+                    "do_calibrate_kpt": args.mt_do_calibrate_kpt,
                 }
             )
     else:

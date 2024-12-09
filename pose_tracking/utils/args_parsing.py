@@ -70,6 +70,7 @@ def get_parser():
     train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="Learning rate")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
+    train_args.add_argument("--lrs_min_lr", type=float, default=1e-4, help="Minimum learning rate")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
     train_args.add_argument(
         "--pose_loss_name", type=str, default="separate", help="Pose loss name", choices=["separate", "add"]

@@ -379,7 +379,9 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
 
 def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
     if "rgb" in seq:
-        seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])[batch_idx]
+        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
+        seq = batch_seq[batch_idx]
+        print(f"taking {batch_idx=} of {len(batch_seq)}")
     print(f"{len(seq)=}")
     take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
     results = {}

@@ -133,7 +133,9 @@ class NestedTensor(object):
 def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
     msg = f"self: {type(cls)}\n"
     excluded_attrs = excluded_attrs or []
-    for k, v in cls.__dict__.items():
+    attrs = cls.__dict__.items()
+    attrs = sorted(attrs, key=lambda x: x[0])
+    for k, v in attrs:
         if exclude_private and k.startswith("_"):
             continue
         if k in excluded_attrs:

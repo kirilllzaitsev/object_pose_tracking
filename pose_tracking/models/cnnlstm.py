@@ -611,7 +611,7 @@ class RecurrentCNNSeparated(nn.Module):
                 in_dim=self.input_dim,
                 out_dim=hidden_dim,
                 hidden_dim=hidden_dim,
-                num_layers=1,
+                num_layers=2,
                 dropout=dropout,
             )
 
