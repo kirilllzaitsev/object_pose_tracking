@@ -14,6 +14,7 @@ from pose_tracking.utils.geom import (
     world_to_2d,
 )
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
+from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import infer_bounding_box, mask_erode
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
@@ -184,6 +185,9 @@ class TrackingDataset(Dataset):
         self.mesh_diameter = load_res["diameter"]
         self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, self.num_mesh_pts)[0]).float()
         self.mesh_path = mesh_path
+
+    def __repr__(self):
+        return print_cls(self, excluded_attrs=["color_files", "pose_files", "id_strs", "init_mask", "mesh_pts"])
 
 
 class TrackingDatasetEval:

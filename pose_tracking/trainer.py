@@ -786,8 +786,6 @@ class TrainerDeformableDETR:
         #     self.model.module.reset_state(batch_size, device=self.device)
         # else:
         #     self.model.reset_state(batch_size, device=self.device)
-        if self.do_debug:
-            self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
 
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 16)))
@@ -821,7 +819,7 @@ class TrainerDeformableDETR:
             }
             if self.model_name == "detr_kpt":
                 extra_kwargs = {}
-                if self.do_calibrate_kpt:
+                if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
                     extra_kwargs["intrinsics"] = intrinsics
                 if self.kpt_spatial_dim > 2:
                     extra_kwargs["depth"] = depth
