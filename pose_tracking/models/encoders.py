@@ -24,6 +24,8 @@ def get_encoders(
         "efficientnet_b1",
         "efficientnet_v2_s",
         "mobilenet_v3_small",
+        "resnet18",
+        "resnet50",
     ], model_name
 
     if model_name in ["regnet_y_800mf", "efficientnet_v2_s"]:
@@ -76,6 +78,32 @@ def get_encoders(
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
                 nn.Linear(576, out_dim),
+            )
+    elif model_name == "resnet18":
+        weights = torchvision.models.ResNet18_Weights.DEFAULT
+        encoder_rgb = torchvision.models.resnet18(
+            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_depth = torchvision.models.resnet18(
+            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        for m in [encoder_rgb, encoder_depth]:
+            m.fc = nn.Sequential(
+                nn.Linear(512, out_dim),
+            )
+    elif model_name == "resnet50":
+        weights = torchvision.models.ResNet50_Weights.DEFAULT
+        encoder_rgb = torchvision.models.resnet50(
+            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_depth = torchvision.models.resnet50(
+            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        for m in [encoder_rgb, encoder_depth]:
+            m.fc = nn.Sequential(
+                nn.Linear(512, out_dim),
             )
     else:
         weights = torchvision.models.EfficientNet_V2_Weights.IMAGENET1K_V1
