@@ -66,11 +66,14 @@ def get_parser():
     train_args.add_argument("--seed", type=int, default=10, help="Random seed")
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-4, help="Early stopping delta")
-    train_args.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="Learning rate")
+    train_args.add_argument("--lr", type=float, default=1e-4, help="lr for the rest of the model")
+    train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="lr for encoders")
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
-    train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for learning rate scheduler")
-    train_args.add_argument("--lrs_min_lr", type=float, default=1e-4, help="Minimum learning rate")
+    train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for lr scheduler")
+    train_args.add_argument("--lrs_min_lr", type=float, default=1e-6, help="Minimum lr")
+    train_args.add_argument("--lrs_patience", type=int, default=3, help="Patience for lr scheduler")
+    train_args.add_argument("--lrs_delta", type=float, default=0.0, help="Delta between scores for lr scheduler")
+    train_args.add_argument("--lrs_threshold_mode", type="str", default="abs", help="Threshold mode for lr scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
     train_args.add_argument(
         "--pose_loss_name", type=str, default="separate", help="Pose loss name", choices=["separate", "add"]

@@ -226,9 +226,23 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         ],
         weight_decay=args.weight_decay,
     )
-    lr_scheduler = optim.lr_scheduler.StepLR(
-        optimizer, step_size=args.lrs_step_size if args.use_lrs else 1000, gamma=args.lrs_gamma, verbose=args.use_lrs
-    )
+    if args.lrs_type == "step" or not args.use_lrs:
+        lr_scheduler = optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=args.lrs_step_size if args.use_lrs else 1000,
+            gamma=args.lrs_gamma,
+            verbose=args.use_lrs,
+        )
+    else:
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer,
+            mode="min",
+            factor=args.lrs_gamma,
+            patience=args.lrs_patience,
+            threshold=args.lrs_delta,
+            threshold_mode=args.lrs_threshold_mode,
+            verbose=True,
+        )
 
     trainer = get_trainer(
         args,
@@ -272,7 +286,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         for k, v in train_stats.items():
             history["train"][k].append(v)
 
-        lr_scheduler.step()
+        if args.lrs_type == "step" or not args.use_lrs:
+            lr_scheduler.step()
+        else:
+            lr_scheduler.step(history["train"]["loss"][-1])
 
         # clip lr to min value 1e-6
         for param_group in optimizer.param_groups:
