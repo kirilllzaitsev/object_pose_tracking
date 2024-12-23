@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torchvision
 
@@ -11,6 +12,7 @@ def get_encoders(
     disable_bn_running_stats=False,
     norm_layer_type=None,
     out_dim=256,
+    ignored_modalities="",
 ):
     if norm_layer_type == "batch":
         print(f"WARN: {norm_layer_type=}")
@@ -131,6 +133,15 @@ def get_encoders(
                 if name.startswith("classifier") or name.startswith("fc"):
                     continue
                 param.requires_grad = False
+    if ignored_modalities:
+
+        def tmp(x, *args, **kwargs):
+            return torch.zeros((x.shape[0], out_dim), device=x.device)
+
+        if "depth" in ignored_modalities:
+            encoder_depth = tmp
+        if "rgb" in ignored_modalities:
+            encoder_rgb = tmp
     return encoder_rgb, encoder_depth
 
 
