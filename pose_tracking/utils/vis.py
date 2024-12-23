@@ -183,6 +183,7 @@ def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normali
         bbox_xy_ur = bbox[2:]
     if format == "cxcywh":
         bbox_xyxy = box_cxcywh_to_xyxy(bbox)
+        bbox_xyxy = cast_to_numpy(bbox_xyxy)
         bbox_xy_bl = bbox_xyxy[:2]
         bbox_xy_ur = bbox_xyxy[2:]
 
@@ -370,9 +371,10 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
     """
-    grid = torchvision.utils.make_grid(
-        torch.as_tensor(np.asarray(imgs)).permute(0, 3, 1, 2), nrow=nrow, padding=padding, pad_value=pad_value
-    )
+    imgs = torch.as_tensor(np.asarray(imgs))
+    if imgs.shape[-1] == 3:
+        imgs = imgs.permute(0, 3, 1, 2)
+    grid = torchvision.utils.make_grid(imgs, nrow=nrow, padding=padding, pad_value=pad_value)
     grid = grid.permute(1, 2, 0).contiguous().data.cpu().numpy().astype(dtype)
     return grid
 

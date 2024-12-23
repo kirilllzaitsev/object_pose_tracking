@@ -566,6 +566,10 @@ class Trainer:
             total_loss /= seq_length
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            if self.do_debug:
+                grad_norms, grad_norm = self.get_grad_info()
+                self.processed_data["grad_norm"].append(grad_norm)
+                self.processed_data["grad_norms"].append(grad_norms)
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:
@@ -864,7 +868,9 @@ class TrainerDeformableDETR:
             seq_stats["loss"] += losses_reduced_scaled.item()
             for k, v in {**loss_dict_reduced_scaled, **loss_dict_reduced_unscaled}.items():
                 seq_stats[k] += v
-            seq_stats["class_error"] += loss_dict_reduced["class_error"]
+            for k in ["class_error"]:
+                if k in loss_dict_reduced:
+                    seq_stats[k] += loss_dict_reduced[k]
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
