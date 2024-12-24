@@ -270,10 +270,7 @@ def get_video_ds(
         )
         video_datasets.append(video_ds)
 
-    if len(video_datasets) > 1:
-        full_ds = MultiVideoDataset(video_datasets)
-    else:
-        full_ds = video_datasets[0]
+    full_ds = MultiVideoDataset(video_datasets)
     return full_ds
 
 
