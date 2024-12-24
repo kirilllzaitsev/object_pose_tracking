@@ -14,7 +14,7 @@ def get_encoders(
     out_dim=256,
     ignored_modalities="",
 ):
-    if norm_layer_type == "batch":
+    if norm_layer_type == "bn":
         print(f"WARN: {norm_layer_type=}")
         norm_layer = nn.BatchNorm2d
     elif norm_layer_type == "frozen_bn":

@@ -226,7 +226,7 @@ def create_tools(args: argparse.Namespace) -> dict:
         exp_name = f"{args.exp_name}/{now}"
         if len(args.exp_tags) > 0:
             exp_name = f"{exp_name}_{'_'.join(args.exp_tags)}"
-    logdir = f"{ARTIFACTS_DIR}/{exp_name}"
+    logdir = Path(f"{ARTIFACTS_DIR}/{exp_name}")
     os.makedirs(logdir, exist_ok=True)
     preds_base_dir = f"{logdir}/preds"
     preds_dir = Path(preds_base_dir)
