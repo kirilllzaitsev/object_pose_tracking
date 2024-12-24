@@ -58,12 +58,12 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
         save_video(images, save_path, frame_height, frame_width, fps, live_preview=False)
 
 
-def save_videos_for_obj(exp_dir, exp_name, save_dir, obj_name, intrinsics=None, bbox=None, fps=10):
+def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=None, fps=10):
     poses_pred = []
     poses_gt = []
     rgbs = []
-    exp_dir = Path(exp_dir)
-    preds_dir = exp_dir / "preds" / obj_name
+
+    preds_dir = Path(preds_dir)
     if intrinsics is None:
         intrinsics = np.loadtxt(preds_dir / "intrinsics.txt")
     paths = sorted(glob(str(preds_dir / "rgb" / "*.png")))
@@ -88,10 +88,9 @@ def save_videos_for_obj(exp_dir, exp_name, save_dir, obj_name, intrinsics=None, 
     images = rgb_bbox
     frame_height, frame_width = images[0].shape[:2]
 
-    video_dir = f"{save_dir}/{obj_name}"
-    save_path = os.path.join(video_dir, f"{exp_name}.mp4")
-
-    save_video(images, save_path, frame_height, frame_width, fps)
+    if video_save_path is None:
+        video_save_path = preds_dir / "video.mp4"
+    save_video(images, video_save_path, frame_height, frame_width, fps)
 
 
 if __name__ == "__main__":

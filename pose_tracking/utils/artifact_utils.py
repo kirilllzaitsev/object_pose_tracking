@@ -4,6 +4,7 @@ from pathlib import Path
 
 import comet_ml
 import cv2
+import numpy as np
 import torch
 import torch.nn as nn
 from pose_tracking.utils.comet_utils import (
@@ -22,7 +23,8 @@ def save_results(batch_t, pose_pred, preds_dir):
     # batch_t contains data for the t-th timestep in N sequences
     batch_size = len(batch_t["rgb"])
     for seq_idx in range(batch_size):
-        rgb = batch_t["rgb"][seq_idx].cpu().numpy()
+        rgb = cast_to_numpy(batch_t["rgb"][seq_idx])
+        intrinsics = cast_to_numpy(batch_t["intrinsics"][seq_idx])
         name = Path(batch_t["rgb_path"][seq_idx]).stem
         pose = torch.eye(4)
         pose = pose_pred[seq_idx]
@@ -34,6 +36,7 @@ def save_results(batch_t, pose_pred, preds_dir):
         seq_dir = preds_dir if batch_size == 1 else preds_dir / f"seq_{seq_idx}"
         pose_path = seq_dir / "poses" / f"{name}.txt"
         gt_path = seq_dir / "poses_gt" / f"{name}.txt"
+        intrinsics_path = seq_dir / "intrinsics.txt"
         rgb_path = seq_dir / "rgb" / f"{name}.png"
         pose_path.parent.mkdir(parents=True, exist_ok=True)
         rgb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,6 +51,7 @@ def save_results(batch_t, pose_pred, preds_dir):
         rgb = rgb[..., ::-1]
         rgb_path = str(rgb_path)
         cv2.imwrite(rgb_path, rgb)
+        np.savetxt(intrinsics_path, intrinsics)
 
 
 def load_model_from_ckpt(model, ckpt_path):
