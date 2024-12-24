@@ -170,7 +170,7 @@ def get_parser():
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
     )
     model_args.add_argument(
-        "--encoder_name", type=str, default="efficientnet_b0", help="Encoder name for both RGB and depth"
+        "--encoder_name", type=str, default="resnet18", help="Encoder name for both RGB and depth"
     )
     model_args.add_argument("--encoder_img_weights", type=str, help="Weights for the image encoder")
     model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
