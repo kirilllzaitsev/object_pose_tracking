@@ -32,9 +32,6 @@ def get_encoders(
         "resnet50",
     ], model_name
 
-    if model_name in ["regnet_y_800mf", "efficientnet_v2_s"]:
-        print(f"WARN: {model_name} should not be used with CNNLSTM because of the batchnorm")
-
     if model_name == "regnet_y_800mf":
         weights = torchvision.models.RegNet_Y_800MF_Weights.IMAGENET1K_V2
         encoder_rgb = torchvision.models.regnet_y_800mf(weights=weights if weights_rgb == "imagenet" else None)
@@ -46,12 +43,8 @@ def get_encoders(
             )
     elif model_name == "efficientnet_b0":
         weights = torchvision.models.EfficientNet_B0_Weights.DEFAULT
-        encoder_rgb = torchvision.models.efficientnet_b0(
-            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth = torchvision.models.efficientnet_b0(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
+        encoder_rgb = torchvision.models.efficientnet_b0(weights=weights if weights_rgb == "imagenet" else None)
+        encoder_depth = torchvision.models.efficientnet_b0(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
@@ -59,12 +52,8 @@ def get_encoders(
             )
     elif model_name == "efficientnet_b1":
         weights = torchvision.models.EfficientNet_B1_Weights.IMAGENET1K_V2
-        encoder_rgb = torchvision.models.efficientnet_b1(
-            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth = torchvision.models.efficientnet_b1(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
+        encoder_rgb = torchvision.models.efficientnet_b1(weights=weights if weights_rgb == "imagenet" else None)
+        encoder_depth = torchvision.models.efficientnet_b1(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
@@ -72,12 +61,8 @@ def get_encoders(
             )
     elif model_name == "mobilenet_v3_small":
         weights = torchvision.models.MobileNet_V3_Small_Weights.DEFAULT
-        encoder_rgb = torchvision.models.mobilenet_v3_small(
-            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth = torchvision.models.mobilenet_v3_small(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
+        encoder_rgb = torchvision.models.mobilenet_v3_small(weights=weights if weights_rgb == "imagenet" else None)
+        encoder_depth = torchvision.models.mobilenet_v3_small(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth.features[0][0] = nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
@@ -85,12 +70,8 @@ def get_encoders(
             )
     elif model_name == "resnet18":
         weights = torchvision.models.ResNet18_Weights.DEFAULT
-        encoder_rgb = torchvision.models.resnet18(
-            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth = torchvision.models.resnet18(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
+        encoder_rgb = torchvision.models.resnet18(weights=weights if weights_rgb == "imagenet" else None)
+        encoder_depth = torchvision.models.resnet18(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
@@ -107,10 +88,10 @@ def get_encoders(
         encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
-                nn.Linear(512, out_dim),
+                nn.Linear(2048, out_dim),
             )
     else:
-        weights = torchvision.models.EfficientNet_V2_Weights.IMAGENET1K_V1
+        weights = torchvision.models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
         encoder_rgb = torchvision.models.efficientnet_v2_s(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth = torchvision.models.efficientnet_v2_s(weights=weights if weights_depth == "imagenet" else None)
         encoder_depth.features[0][0] = nn.Conv2d(1, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
@@ -122,6 +103,8 @@ def get_encoders(
         m.to(device)
         if disable_bn_running_stats:
             disable_running_stats(m)
+        if norm_layer_type != "bn":
+            m = replace_batchnorm(m, norm_layer)
     if do_freeze:
         to_freeze = []
         if weights_rgb is not None:
@@ -155,6 +138,26 @@ def disable_running_stats(model):
 
 def is_param_part_of_encoders(name):
     return "encoder_rgb" in name or "encoder_depth" in name
+
+
+def replace_batchnorm(model, norm_layer):
+    """
+    Recursively replace all nn.BatchNorm2d layers in a model with some other layer.
+
+    Args:
+        model (nn.Module): The model to modify.
+
+    Returns:
+        nn.Module: The modified model with nn.BatchNorm2d replaced.
+    """
+    for name, module in model.named_children():
+        # Recursively replace in child modules
+        if isinstance(module, nn.BatchNorm2d):
+            # Replace nn.BatchNorm2d with nn.FrozenBatchNorm2d
+            setattr(model, name, norm_layer(module.num_features))
+        else:
+            replace_batchnorm(module, norm_layer)  # Recurse for submodules
+    return model
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
