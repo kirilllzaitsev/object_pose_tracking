@@ -250,11 +250,15 @@ def get_video_ds(
     num_samples=None,
     do_preload=False,
     transforms_rgb=None,
+    mesh_paths_to_take=None
 ):
     video_datasets = []
     for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         seq_len = len(ds) if seq_len is None else seq_len
+        if mesh_paths_to_take is not None:
+            if ds.mesh_path_orig not in mesh_paths_to_take:
+                continue
         video_ds = VideoDataset(
             ds=ds,
             seq_len=seq_len,

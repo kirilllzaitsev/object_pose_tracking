@@ -424,7 +424,10 @@ def get_datasets(
             do_preload=do_preload_ds,
             transforms_rgb=transform_rgb,
         )
+        mesh_paths_orig_train = [d.ds.metadata[0]['usd_path'] for d in train_dataset.video_datasets]
         res["train"] = train_dataset
+    else:
+        mesh_paths_orig_train = None
 
     if "val" in ds_types:
         if do_overfit:
@@ -453,6 +456,7 @@ def get_datasets(
                 ds_kwargs=val_ds_kwargs,
                 num_samples=num_samples,
                 do_preload=True,
+                mesh_paths_to_take=mesh_paths_orig_train,
             )
         res["val"] = val_dataset
 
