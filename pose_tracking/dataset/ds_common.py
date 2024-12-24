@@ -125,7 +125,8 @@ def dict_collate_fn(batch):
 def seq_collate_fn(batch):
     # result is a list of size seq_len with dicts having values of size batch_size x ...
     new_b = []
-    for i in range(len(batch[0])):
+    seq_lens = [len(d) for d in batch]
+    for i in range(min(seq_lens)):
         new_b.append(dict_collate_fn([d[i] for d in batch]))
     return new_b
 
