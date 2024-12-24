@@ -176,6 +176,7 @@ class CustomSimDatasetIkea(CustomSimDataset):
         metadata_path = f"{self.video_dir}/metadata.json"
         assert os.path.exists(metadata_path)
         self.metadata = json.load(open(metadata_path))
+        self.mesh_path_orig = self.metadata[0]['usd_path']
 
         if do_load_bbox_from_metadata:
             assert self.metadata is not None, f"metadata not found at {metadata_path}"

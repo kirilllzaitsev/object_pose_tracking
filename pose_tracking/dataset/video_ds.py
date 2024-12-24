@@ -30,7 +30,7 @@ class VideoDataset(Dataset):
         num_samples=None,
         do_preload=False,
         transforms_rgb=None,
-        max_random_seq_step=10,
+        max_random_seq_step=8,
     ):
         self.do_preload = do_preload
 

@@ -185,6 +185,7 @@ class TrackingDataset(Dataset):
         self.mesh_diameter = load_res["diameter"]
         self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, self.num_mesh_pts)[0]).float()
         self.mesh_path = mesh_path
+        self.mesh_path_orig = mesh_path
 
     def __repr__(self):
         return print_cls(self, excluded_attrs=["color_files", "pose_files", "id_strs", "init_mask", "mesh_pts"])
