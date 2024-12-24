@@ -38,6 +38,7 @@ from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
+    get_datasets,
     get_model,
     get_trainer,
     get_video_ds,
@@ -347,137 +348,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     if args.use_ddp:
         dist.destroy_process_group()
-
-
-def get_datasets(
-    ds_name,
-    seq_len,
-    seq_step,
-    seq_start,
-    ds_video_dir_train=None,
-    ds_video_dir_val=None,
-    ds_video_dir_test=None,
-    ds_video_subdirs_train=None,
-    ds_video_subdirs_val=None,
-    ds_video_subdirs_test=None,
-    transform_names=None,
-    transform_prob=0.0,
-    mask_pixels_prob=0.0,
-    num_samples=None,
-    ds_types=("train", "val"),
-    model_name="",
-    do_predict_kpts=False,
-    use_priv_decoder=False,
-    do_overfit=False,
-    do_preload_ds=False,
-    include_mask=False,
-    do_convert_pose_to_quat=True,
-):
-
-    transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
-    is_detr_model = "detr" in model_name
-    is_roi_model = "_sep" in model_name
-    is_pizza_model = "pizza" in model_name
-    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model
-    ds_kwargs_common = dict(
-        shorter_side=None,
-        zfar=np.inf,
-        include_mask=include_mask,
-        include_bbox_2d=include_bbox_2d,
-        start_frame_idx=0,
-        do_convert_pose_to_quat=do_convert_pose_to_quat,
-        mask_pixels_prob=mask_pixels_prob,
-        do_normalize_bbox=True if is_detr_model else False,
-        bbox_format="cxcywh" if is_detr_model else "xyxy",
-        model_name="pizza" if is_pizza_model else model_name,
-    )
-    if ds_name == "ycbi":
-        ycbi_kwargs = dict(
-            ycb_meshes_dir=YCB_MESHES_DIR,
-        )
-        ds_kwargs_custom = ycbi_kwargs
-    elif ds_name == "ikea":
-        ikea_kwargs = dict()
-        ds_kwargs_custom = ikea_kwargs
-    else:
-        cube_sim_kwargs = dict(
-            mesh_path=f"{ds_video_dir_train}/mesh/cube.obj",
-            use_priv_info=use_priv_decoder,
-        )
-        ds_kwargs_custom = cube_sim_kwargs
-
-    ds_kwargs = {**ds_kwargs_common, **ds_kwargs_custom}
-
-    res = {}
-
-    train_ds_kwargs = copy.deepcopy(ds_kwargs)
-    train_ds_kwargs["video_dir"] = ds_video_dir_train
-    if "train" in ds_types:
-        train_dataset = get_video_ds(
-            ds_video_subdirs=ds_video_subdirs_train,
-            ds_name=ds_name,
-            seq_len=seq_len,
-            seq_step=seq_step,
-            seq_start=seq_start,
-            ds_kwargs=train_ds_kwargs,
-            num_samples=num_samples,
-            do_preload=do_preload_ds,
-            transforms_rgb=transform_rgb,
-        )
-        mesh_paths_orig_train = [d.ds.mesh_path_orig for d in train_dataset.video_datasets]
-        res["train"] = train_dataset
-    else:
-        mesh_paths_orig_train = None
-
-    if "val" in ds_types:
-        if do_overfit:
-            val_dataset = get_video_ds(
-                ds_video_subdirs=ds_video_subdirs_train,
-                ds_name=ds_name,
-                seq_len=None,
-                seq_step=1,
-                seq_start=seq_start,
-                ds_kwargs=train_ds_kwargs,
-                num_samples=None,
-                do_preload=do_preload_ds,
-                transforms_rgb=None,
-            )
-        else:
-            assert ds_video_dir_val and ds_video_subdirs_val
-            val_ds_kwargs = copy.deepcopy(ds_kwargs)
-            val_ds_kwargs.pop("mask_pixels_prob")
-            val_ds_kwargs["video_dir"] = ds_video_dir_val
-            val_dataset = get_video_ds(
-                ds_video_subdirs=ds_video_subdirs_val,
-                ds_name=ds_name,
-                seq_len=args.seq_len if is_pizza_model else None,
-                seq_step=args.seq_step if is_pizza_model else 1,
-                seq_start=0,
-                ds_kwargs=val_ds_kwargs,
-                num_samples=num_samples,
-                do_preload=True,
-                mesh_paths_to_take=mesh_paths_orig_train,
-            )
-        res["val"] = val_dataset
-
-    if "test" in ds_types:
-        assert ds_video_dir_test and ds_video_subdirs_test
-        test_ds_kwargs = copy.deepcopy(ds_kwargs)
-        test_ds_kwargs.pop("mask_pixels_prob")
-        test_ds_kwargs["video_dir"] = ds_video_dir_test
-        test_dataset = get_video_ds(
-            ds_video_subdirs=ds_video_subdirs_test,
-            ds_name=ds_name,
-            seq_len=seq_len,
-            seq_step=1,
-            seq_start=0,
-            ds_kwargs=test_ds_kwargs,
-            num_samples=num_samples,
-            do_preload=True,
-        )
-        res["test"] = test_dataset
-
-    return res
 
 
 if __name__ == "__main__":
