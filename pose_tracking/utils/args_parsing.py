@@ -73,7 +73,7 @@ def get_parser():
     )
     train_args.add_argument("--lrs_step_size", type=int, default=10, help="Number of epochs before changing lr")
     train_args.add_argument("--lrs_gamma", type=float, default=0.5, help="Scaler for lr scheduler")
-    train_args.add_argument("--lrs_min_lr", type=float, default=1e-6, help="Minimum lr")
+    train_args.add_argument("--lrs_min_lr", type=float, default=5e-6, help="Minimum lr")
     train_args.add_argument("--lrs_patience", type=int, default=3, help="Patience for lr scheduler")
     train_args.add_argument("--lrs_delta", type=float, default=0.0, help="Delta between scores for lr scheduler")
     train_args.add_argument("--lrs_threshold_mode", type=str, default="abs", help="Threshold mode for lr scheduler")

@@ -194,10 +194,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
-        if IS_LOCAL:
-            val_batch_size = 1
-        else:
-            val_batch_size = args.batch_size if len(val_dataset) > 8 else len(val_dataset)
+        val_batch_size = max(1, args.num_workers)
         val_loader = DataLoader(
             val_dataset,
             batch_size=val_batch_size,
