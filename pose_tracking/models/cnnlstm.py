@@ -695,33 +695,54 @@ class RecurrentCNNSeparated(nn.Module):
         self.cx = None
 
         self.intermediate_outputs = {}
+        if encoder_name == "resnet50":
+            self.mid_feature_dim = 1024
+            self.mid_layer_name = "layer3"
+        elif encoder_name == "resnet18":
+            self.mid_feature_dim = 256
+            self.mid_layer_name = "layer3"
+        elif encoder_name == "regnet_y_800mf":
+            self.mid_feature_dim = 320
+            self.mid_layer_name = "trunk_output.block3"
+        else:
+            raise ValueError(f"Unknown encoder_name: {encoder_name}")
 
         def hook_function(module, input, output):
-            self.intermediate_outputs["block3_output"] = output
+            self.intermediate_outputs[self.mid_layer_name] = output
 
         # Register the hook
-        assert encoder_name == "regnet_y_800mf"
-        self.hook_img = self.encoder_img.trunk_output.block3.register_forward_hook(hook_function)
-        self.hook_depth = self.encoder_depth.trunk_output.block3.register_forward_hook(hook_function)
+        getattr(self.encoder_img, self.mid_layer_name).register_forward_hook(hook_function)
+        getattr(self.encoder_depth, self.mid_layer_name).register_forward_hook(hook_function)
 
         self.rgb_roi_cnn = nn.Sequential(
-            nn.Conv2d(320, 256, 3, 1, 1),
+            nn.Conv2d(self.mid_feature_dim, 256, 3, 1, 1),
             nn.ReLU(),
             nn.Conv2d(256, 256, 3, 1, 1),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((1, 1)),
         )
         self.depth_roi_cnn = nn.Sequential(
-            nn.Conv2d(320, 256, 3, 1, 1),
+            nn.Conv2d(self.mid_feature_dim, 256, 3, 1, 1),
             nn.ReLU(),
             nn.Conv2d(256, 256, 3, 1, 1),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((1, 1)),
         )
 
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__())
+
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
+        self.t_rnn.reset_state(batch_size, device)
         self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
+
+    def detach_state(self):
+        if self.training:
+            self.hx = self.hx.detach()
+            if self.cx is not None:
+                self.cx = self.cx.detach()
+            self.t_rnn.detach_state()
 
     def forward(self, rgb, depth, bbox=None, prev_pose=None, prev_latent=None):
 
@@ -730,8 +751,8 @@ class RecurrentCNNSeparated(nn.Module):
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
 
-        block3_output_rgb = self.intermediate_outputs["block3_output"]
-        block3_output_depth = self.intermediate_outputs["block3_output"]
+        mid_layer_output_rgb = self.intermediate_outputs[self.mid_layer_name]
+        mid_layer_output_depth = self.intermediate_outputs[self.mid_layer_name]
         if isinstance(bbox, torch.Tensor):
             ind = torch.arange(bbox.shape[0]).unsqueeze(1)
             ind = ind.type_as(bbox)
@@ -739,8 +760,8 @@ class RecurrentCNNSeparated(nn.Module):
         else:
             bbox_roi = bbox
 
-        latent_rgb_roi = roi_align(block3_output_rgb, bbox_roi, self.roi_size)
-        latent_depth_roi = roi_align(block3_output_depth, bbox_roi, self.roi_size)
+        latent_rgb_roi = roi_align(mid_layer_output_rgb, bbox_roi, self.roi_size)
+        latent_depth_roi = roi_align(mid_layer_output_depth, bbox_roi, self.roi_size)
         latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi).view(B, -1)
         latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(B, -1)
 
@@ -796,5 +817,7 @@ class RecurrentCNNSeparated(nn.Module):
             kpts = self.kpts_mlp(extracted_obs)
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
+
+        self.detach_state()
 
         return res
