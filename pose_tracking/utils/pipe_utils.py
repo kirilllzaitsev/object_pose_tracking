@@ -206,6 +206,7 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         model_name=args.model_name,
         do_debug=args.do_debug,
         do_print_seq_stats=args.do_print_seq_stats,
+        opt_only=args.opt_only,
         criterion_rot_name=args.rot_loss_name,
         **extra_kwargs,
     )

@@ -95,6 +95,12 @@ def get_parser():
         help="Rotation loss name",
         choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement"],
     )
+    train_args.add_argument(
+        "--opt_only",
+        nargs="*",
+        help="List of tasks to optimize",
+        choices=["rot", "trans", "labels", "boxes", "cardinality"],
+    )
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
@@ -169,9 +175,7 @@ def get_parser():
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
     )
-    model_args.add_argument(
-        "--encoder_name", type=str, default="resnet18", help="Encoder name for both RGB and depth"
-    )
+    model_args.add_argument("--encoder_name", type=str, default="resnet18", help="Encoder name for both RGB and depth")
     model_args.add_argument("--encoder_img_weights", type=str, help="Weights for the image encoder")
     model_args.add_argument("--encoder_depth_weights", type=str, help="Weights for the depth encoder")
     model_args.add_argument(

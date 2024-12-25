@@ -72,6 +72,7 @@ class Trainer:
         do_vis=False,
         exp_dir=None,
         model_name=None,
+        opt_only=None,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -108,6 +109,7 @@ class Trainer:
         self.criterion_pose = criterion_pose
         self.writer = writer
         self.seq_len = seq_len
+        self.opt_only = opt_only
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -395,7 +397,15 @@ class Trainer:
                             rot_gt = rot_gt_abs
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
 
-                loss = loss_rot + loss_t
+                if self.opt_only is not None:
+                    if "rot" in self.opt_only:
+                        loss = loss_rot
+                    elif "trans" in self.opt_only:
+                        loss = loss_t
+                    else:
+                        raise ValueError(f"Invalid opt_only: {self.opt_only}")
+                else:
+                    loss = loss_rot + loss_t
 
             # depth loss
             if self.use_obs_belief:
@@ -636,6 +646,7 @@ class TrainerDeformableDETR:
         model_name=None,
         focal_alpha=0.25,
         kpt_spatial_dim=2,
+        opt_only=None,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -675,10 +686,10 @@ class TrainerDeformableDETR:
         self.criterion_rot = criterion_rot
         self.criterion_pose = criterion_pose
         self.writer = writer
+        self.opt_only = opt_only
 
         cost_class, cost_bbox, cost_giou = (2, 5, 2)
         self.matcher = HungarianMatcher(cost_class=cost_class, cost_bbox=cost_bbox, cost_giou=cost_giou)
-        self.losses = ["labels", "boxes", "cardinality"]
         self.weight_dict = {
             "loss_ce": 1,
             "loss_bbox": 5,
@@ -693,6 +704,13 @@ class TrainerDeformableDETR:
                 aux_weight_dict.update({k + f"_{i}": v for k, v in self.weight_dict.items()})
             aux_weight_dict.update({f"{k}_enc": v for k, v in self.weight_dict.items()})
             self.weight_dict.update(aux_weight_dict)
+        self.losses = [
+            "labels",
+            "boxes",
+        ]
+        if opt_only is not None:
+            self.losses = [v for v in self.losses if v in opt_only]
+        self.losses += ["cardinality"]
         self.criterion = SetCriterion(num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha)
 
         self.use_pose_loss = criterion_pose is not None
