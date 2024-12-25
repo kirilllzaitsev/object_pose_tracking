@@ -114,6 +114,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         logger.remove()
     logger.info(f"CLI command:\npython {' '.join(sys.argv)}")
+    if "SLURM_JOB_ID" in os.environ:
+        logger.info(f"SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
     print_args(args, logger=logger)
 
     logger.info(f"{PROJ_DIR=}")

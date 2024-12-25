@@ -276,7 +276,7 @@ def get_datasets(
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
-        include_mask=include_mask,
+        include_mask=include_mask or include_bbox_2d,  # mask is needed for 2d bbox
         include_bbox_2d=include_bbox_2d,
         start_frame_idx=0,
         do_convert_pose_to_quat=do_convert_pose_to_quat,
