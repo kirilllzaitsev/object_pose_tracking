@@ -688,8 +688,20 @@ class TrainerDeformableDETR:
         self.writer = writer
         self.opt_only = opt_only
 
-        cost_class, cost_bbox, cost_giou = (2, 5, 2)
-        self.matcher = HungarianMatcher(cost_class=cost_class, cost_bbox=cost_bbox, cost_giou=cost_giou)
+        self.cost_class, self.cost_bbox, self.cost_giou = (2, 5, 2)
+        self.losses = [
+            "labels",
+            "boxes",
+        ]
+        if opt_only is not None:
+            self.losses = [v for v in self.losses if v in opt_only]
+            if "labels" not in opt_only:
+                self.cost_class = 0
+            if "boxes" not in opt_only:
+                self.cost_bbox = 0
+                self.cost_giou = 0
+
+        self.matcher = HungarianMatcher(cost_class=self.cost_class, cost_bbox=self.cost_bbox, cost_giou=self.cost_giou)
         self.weight_dict = {
             "loss_ce": 1,
             "loss_bbox": 5,
@@ -704,12 +716,6 @@ class TrainerDeformableDETR:
                 aux_weight_dict.update({k + f"_{i}": v for k, v in self.weight_dict.items()})
             aux_weight_dict.update({f"{k}_enc": v for k, v in self.weight_dict.items()})
             self.weight_dict.update(aux_weight_dict)
-        self.losses = [
-            "labels",
-            "boxes",
-        ]
-        if opt_only is not None:
-            self.losses = [v for v in self.losses if v in opt_only]
         self.losses += ["cardinality"]
         self.criterion = SetCriterion(num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha)
 
