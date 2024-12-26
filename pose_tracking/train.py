@@ -1,5 +1,6 @@
 import copy
 import functools
+import json
 import os
 import shutil
 import sys
@@ -140,6 +141,12 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
+    if args.ds_name == "ikea":
+        metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
+        num_classes = metadata["num_classes"] + 1
+        logger.info(f"{num_classes=}")
+    else:
+        num_classes = None
 
     datasets = get_datasets(
         ds_name=args.ds_name,
@@ -203,7 +210,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             num_workers=args.num_workers,
         )
 
-    model = get_model(args).to(device)
+    model = get_model(args, num_classes=num_classes).to(device)
 
     log_model_meta(model, exp=exp, logger=logger)
 
@@ -253,6 +260,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         logger=logger,
         do_vis=args.do_vis and is_main_process,
         exp_dir=logdir,
+        num_classes=num_classes
     )
 
     logger.info(trainer)
