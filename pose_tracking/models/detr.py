@@ -33,10 +33,20 @@ class DETR(nn.Module):
         self.n_heads = n_heads
         self.n_queries = n_queries
 
-        self.backbone = resnet50()
-        self.backbone.fc = nn.Identity()
+        if backbone_name == "resnet50":
+            self.final_layer_name = "layer4"
+            self.final_feature_dim = 2048
+            self.backbone_cls = resnet50
+        elif backbone_name == "resnet18":
+            self.final_feature_dim = 512
+            self.final_layer_name = "layer4"
+            self.backbone_cls = resnet18
+        else:
+            raise ValueError(f"Unknown backbone {backbone_name}")
+        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d)
+        self.conv1x1 = nn.Conv2d(self.final_feature_dim, d_model, kernel_size=1, stride=1)
 
-        self.conv1x1 = nn.Conv2d(2048, d_model, kernel_size=1, stride=1)
+        self.backbone.fc = nn.Identity()
 
         self.pe_encoder = nn.Parameter(torch.rand((1, n_tokens, d_model)), requires_grad=True)
 
