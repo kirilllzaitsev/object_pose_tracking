@@ -172,7 +172,7 @@ class BeliefDecoder(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="gelu", act_out=None, dropout=0.0):
+    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="leaky_relu", act_out=None, dropout=0.0):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -190,7 +190,14 @@ class MLP(nn.Module):
         else:
             self.layers = [nn.Linear(in_dim, out_dim)]
         self.layers = nn.ModuleList(self.layers)
-        self.act = nn.GELU() if act == "gelu" else nn.LeakyReLU()
+        if act == "gelu":
+            self.act = nn.GELU()
+        elif act == "relu":
+            self.act = nn.ReLU()
+        elif act == "leaky_relu":
+            self.act = nn.LeakyReLU()
+        else:
+            raise ValueError(f"Unknown activation function {act}")
         self.act_out = act_out
 
     def forward(self, x):
