@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+from pose_tracking.models.cnnlstm import MLP
+from pose_tracking.models.encoders import FrozenBatchNorm2d
 from pose_tracking.models.pos_encoding import PosEncoding, SpatialPosEncoding
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
@@ -11,7 +13,7 @@ from pose_tracking.utils.geom import (
     calibrate_2d_pts_batch,
 )
 from pose_tracking.utils.kpt_utils import load_extractor
-from torchvision.models import resnet50
+from torchvision.models import resnet18, resnet50
 
 
 def get_hook(outs, name):

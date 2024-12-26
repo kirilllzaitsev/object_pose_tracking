@@ -136,8 +136,8 @@ def disable_running_stats(model):
             module.running_var = None
 
 
-def is_param_part_of_encoders(name):
-    return "encoder_rgb" in name or "encoder_depth" in name
+def is_param_part_of_encoders(name, encoder_module_prefix="encoder"):
+    return encoder_module_prefix in name
 
 
 def replace_batchnorm(model, norm_layer):

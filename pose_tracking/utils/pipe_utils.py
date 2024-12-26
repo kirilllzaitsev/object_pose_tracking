@@ -22,9 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 
-def get_model(args):
-    num_classes = getattr(args, "num_classes", 21)
-
+def get_model(args, num_classes=None):
     if args.model_name == "videopose":
         from videopose.arguments import parse_args
         from videopose.models.model import VideoPose
@@ -51,6 +49,13 @@ def get_model(args):
             Loader=yaml.Loader,
         )
         detr_args.device = args.device
+        detr_args.dropout = args.dropout
+        detr_args.num_queries = args.mt_num_queries
+        detr_args.enc_layers = args.mt_n_layers
+        detr_args.dec_layers = args.mt_n_layers
+        detr_args.dim_feedforward = args.hidden_dim
+        detr_args.hidden_dim = args.hidden_dim
+        detr_args.nheads = args.mt_n_heads
         backbone = build_backbone(detr_args)
 
         transformer = build_deforamble_transformer(detr_args)
@@ -74,6 +79,7 @@ def get_model(args):
             n_tokens=args.mt_n_tokens,
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
+            backbone_name=args.encoder_name,
         )
     elif args.model_name == "detr_kpt":
         from pose_tracking.models.detr import KeypointDETR
@@ -138,7 +144,7 @@ def get_model(args):
     return model
 
 
-def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None):
+def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None):
     from pose_tracking.trainer import Trainer, TrainerDeformableDETR, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
@@ -156,13 +162,14 @@ def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_
         trainer_cls = Trainer
 
     if "detr" in args.model_name:
+        assert num_classes is not None
         extra_kwargs = {
-            "num_classes": 21,
+            "num_classes": num_classes,
         }
         if "detr" in args.model_name:
             extra_kwargs.update(
                 {
-                    "num_dec_layers": 6,
+                    "num_dec_layers": args.mt_n_layers,
                     "aux_loss": True,
                 }
             )

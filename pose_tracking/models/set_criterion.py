@@ -82,7 +82,7 @@ class SetCriterion(nn.Module):
     def loss_boxes(self, pred_bbox, gt_bbox, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
         targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
-        The target boxes are expected in format (center_x, center_y, h, w), normalized by the image size.
+        The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
         """
         idx = self._get_src_permutation_idx(indices)
         src_boxes = pred_bbox[idx]

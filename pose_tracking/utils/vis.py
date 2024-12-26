@@ -171,6 +171,7 @@ def plot_bbox_2d(img, bbox, ax=None, format="xyxy", is_normalized=False, **kwarg
 
 
 def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
+    img = adjust_img_for_plt(img)
     img = np.ascontiguousarray(adjust_img_for_plt(img))
     if bbox.shape == (4, 2):
         bbox_xy_bl = bbox[0]
@@ -436,11 +437,18 @@ def get_cmap(np_img):
     return tmp
 
 
+def plot_rgb(color, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    color = adjust_img_for_plt(color)
+    ax.imshow(color)
+    return ax
+
+
 def plot_rgb_depth(color, depth, axs=None):
     if axs is None:
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-    color = adjust_img_for_plt(color)
-    axs[0].imshow(color)
+    plot_rgb(color, ax=axs[0])
     plot_depth(depth, ax=axs[1])
     return axs
 
