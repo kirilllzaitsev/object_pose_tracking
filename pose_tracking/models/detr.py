@@ -23,7 +23,18 @@ def get_hook(outs, name):
 
 class DETR(nn.Module):
 
-    def __init__(self, num_classes, d_model=256, n_tokens=15 * 20, n_layers=6, n_heads=8, n_queries=100):
+    def __init__(
+        self,
+        num_classes,
+        d_model=256,
+        n_tokens=15 * 20,
+        n_layers=6,
+        n_heads=8,
+        n_queries=100,
+        head_hidden_dim=256,
+        head_num_layers=3,
+        backbone_name="resnet18",
+    ):
         super().__init__()
 
         self.num_classes = num_classes
@@ -64,8 +75,13 @@ class DETR(nn.Module):
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
 
-        self.class_mlps = get_clones(nn.Linear(d_model, num_classes), n_layers)
-        self.bbox_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
+        self.class_mlps = get_clones(nn.Linear(d_model, self.num_classes), n_layers)
+        self.bbox_mlps = get_clones(
+            MLP(in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers),
+            n_layers,
+        )
+        # self.t_mlps = get_clones(nn.Linear(d_model, 3), n_layers)
+        # self.rot_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
