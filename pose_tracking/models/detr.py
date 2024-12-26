@@ -125,6 +125,9 @@ class DETR(nn.Module):
             "aux_outputs": outs,
         }
 
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__(), excluded_attrs=["decoder_outs", "backbone_feats"])
+
 
 class KeypointDETR(nn.Module):
 

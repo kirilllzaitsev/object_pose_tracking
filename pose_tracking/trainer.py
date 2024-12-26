@@ -608,7 +608,7 @@ class Trainer:
         return grad_norms, grad_norm
 
 
-class TrainerDeformableDETR:
+class TrainerDeformableDETR(Trainer):
 
     def __init__(
         self,
@@ -866,6 +866,10 @@ class TrainerDeformableDETR:
             if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                if self.do_debug:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    self.processed_data["grad_norm"].append(grad_norm)
+                    self.processed_data["grad_norms"].append(grad_norms)
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -919,14 +923,16 @@ class TrainerDeformableDETR:
                 # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
                 # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
                 # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["loss"].append(loss)
-                self.processed_data["loss_dict_reduced_scaled"].append(loss_dict_reduced_scaled)
-                self.processed_data["targets"].append(targets)
-                self.processed_data["m_batch"].append(m_batch)
-                self.processed_data["out_prev"].append(out_prev)
-                self.processed_data["out"].append(out)
-                self.processed_data["pred_classes"].append(out["pred_logits"].argmax(-1) + 1)
+                self.processed_data["loss"].append(detach_and_cpu(loss))
+                self.processed_data["loss_dict_reduced_scaled"].append(detach_and_cpu(loss_dict_reduced_scaled))
+                self.processed_data["targets"].append(detach_and_cpu(targets))
+                # self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
+                # self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
+                self.processed_data["out"].append(detach_and_cpu(out))
+                # self.processed_data["pred_classes"].append(detach_and_cpu(out["pred_logits"].argmax(-1) + 1))
                 for k, v in batch_t.items():
+                    if k not in ['rgb', 'intrinsics', 'mesh_bbox', 'bbox_2d', 'class_id']:
+                        continue
                     if isinstance(v, torch.Tensor):
                         v = v.cpu()
                     self.processed_data[k].append(v)
@@ -937,6 +943,10 @@ class TrainerDeformableDETR:
             total_loss /= seq_length
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            if self.do_debug:
+                grad_norms, grad_norm = self.get_grad_info()
+                self.processed_data["grad_norm"].append(grad_norm)
+                self.processed_data["grad_norms"].append(grad_norms)
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:

@@ -37,7 +37,9 @@ def adjust_depth_for_plt(img):
 
 
 def cast_to_numpy(x, dtype=None) -> np.ndarray:
-    if isinstance(x, list):
+    if x is None:
+        return x
+    elif isinstance(x, list):
         return np.array([cast_to_numpy(xx) for xx in x])
     elif isinstance(x, dict):
         return {k: cast_to_numpy(v) for k, v in x.items()}
