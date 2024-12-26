@@ -741,8 +741,8 @@ class TrainerDeformableDETR:
         if stage == "train":
             self.train_epoch_count += 1
         running_stats = defaultdict(float)
-        seq_pbar = tqdm(loader, desc="Seq", leave=False)
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+        seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
             seq_stats = self.batched_seq_forward(
@@ -800,16 +800,13 @@ class TrainerDeformableDETR:
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
-        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
+        ts_pbar = tqdm(
+            enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=seq_length == 1
+        )
 
         if do_opt_in_the_end:
             optimizer.zero_grad()
             total_loss = 0
-
-        # if self.use_ddp:
-        #     self.model.module.reset_state(batch_size, device=self.device)
-        # else:
-        #     self.model.reset_state(batch_size, device=self.device)
 
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 16)))
@@ -918,35 +915,23 @@ class TrainerDeformableDETR:
 
             if self.do_debug:
                 # add everything to processed_data
-                self.processed_data["state"].append({"hx": self.model.hx, "cx": self.model.cx})
-                self.processed_data["rgb"].append(rgb)
-                self.processed_data["mask"].append(mask)
                 # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
                 # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
-                self.processed_data["depth"].append(depth)
-                self.processed_data["rot_pred"].append(rot_pred)
-                self.processed_data["t_pred"].append(t_pred)
-                if self.do_predict_2d_t:
-                    self.processed_data["t_gt_2d_norm"].append(t_gt_2d_norm)
-                if "priv_decoded" in out:
-                    self.processed_data["priv_decoded"].append(out["priv_decoded"])
                 # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
                 # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["pts"].append(pts)
-                self.processed_data["bbox_3d"].append(bbox_3d)
-                self.processed_data["diameter"].append(diameter)
                 self.processed_data["loss"].append(loss)
+                self.processed_data["loss_dict_reduced_scaled"].append(loss_dict_reduced_scaled)
+                self.processed_data["targets"].append(targets)
                 self.processed_data["m_batch"].append(m_batch)
-                self.processed_data["loss_depth"].append(loss_depth)
                 self.processed_data["out_prev"].append(out_prev)
-                if self.use_pose_loss:
-                    self.processed_data["loss_pose"].append(loss_pose)
-                else:
-                    self.processed_data["loss_rot"].append(loss_rot)
-                    self.processed_data["loss_t"].append(loss_t)
-                if self.do_predict_rel_pose:
-                    self.processed_data["t_gt_rel"].append(t_gt_rel)
-                    self.processed_data["rot_gt_rel"].append(rot_gt_rel)
+                self.processed_data["out"].append(out)
+                self.processed_data["pred_classes"].append(out["pred_logits"].argmax(-1) + 1)
+                for k, v in batch_t.items():
+                    if isinstance(v, torch.Tensor):
+                        v = v.cpu()
+                    self.processed_data[k].append(v)
+                # self.processed_data["rot_pred"].append(rot_pred)
+                # self.processed_data["t_pred"].append(t_pred)
 
         if do_opt_in_the_end:
             total_loss /= seq_length
