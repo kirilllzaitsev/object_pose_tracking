@@ -13,7 +13,7 @@ from pose_tracking.utils.geom import (
     calibrate_2d_pts_batch,
 )
 from pose_tracking.utils.kpt_utils import load_extractor
-from torchvision.models import resnet18, resnet50
+from torchvision.models import resnet18, resnet50, resnet101
 
 
 def get_hook(outs, name):
@@ -54,6 +54,10 @@ class DETR(nn.Module):
             self.final_feature_dim = 512
             self.final_layer_name = "layer4"
             self.backbone_cls = resnet18
+        elif backbone_name == "resnet101":
+            self.final_feature_dim = 2048
+            self.final_layer_name = "layer4"
+            self.backbone_cls = resnet101
         else:
             raise ValueError(f"Unknown backbone {backbone_name}")
         self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d)
@@ -211,7 +215,7 @@ class KeypointDETR(nn.Module):
             assert intrinsics is not None
             # get depth_1d by sampling depth map at kpt_pos as int (ignoring zero kpt pos)
             raise NotImplementedError("Need to implement depth sampling")
-            # TODO: get mask of padded keypoints
+            # TODO: get mask of padded keypoints (can provide as input to the nn.transformer)
             kpt_pos = backproj_2d_to_3d_batch(kpt_pos, depth=depth, K=intrinsics)
         elif intrinsics is not None:
             kpt_pos = calibrate_2d_pts_batch(kpt_pos, K=intrinsics)
