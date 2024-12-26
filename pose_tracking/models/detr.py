@@ -41,7 +41,7 @@ class DETR(nn.Module):
         self.pe_encoder = nn.Parameter(torch.rand((1, n_tokens, d_model)), requires_grad=True)
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.1
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
         )
 
         self.t_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
@@ -49,7 +49,7 @@ class DETR(nn.Module):
         self.queries = nn.Parameter(torch.rand((1, n_queries, d_model)), requires_grad=True)
 
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.1
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.0
         )
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
@@ -125,9 +125,8 @@ class KeypointDETR(nn.Module):
         else:
             self.pe_encoder = PosEncoding(d_model, max_len=1024)
 
-
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.1
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
         )
 
         self.t_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
@@ -135,12 +134,12 @@ class KeypointDETR(nn.Module):
         self.queries = nn.Parameter(torch.rand((1, n_queries, d_model)), requires_grad=True)
 
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.1
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.0
         )
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
 
-        self.class_mlps = get_clones(nn.Linear(d_model, num_classes), n_layers)
+        self.class_mlps = get_clones(nn.Linear(d_model, self.num_classes), n_layers)
         self.bbox_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
 
         # Add hooks to get intermediate outcomes
