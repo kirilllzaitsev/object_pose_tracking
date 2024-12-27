@@ -89,6 +89,7 @@ class SetCriterion(nn.Module):
         target_boxes = torch.cat([t[i] for t, (_, i) in zip(gt_bbox, indices)], dim=0)
 
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction="none")
+        # loss_bbox += F.l1_loss(torch.log(src_boxes + 1e-8), torch.log(target_boxes + 1e-8), reduction="none")
 
         losses = {}
         losses["loss_bbox"] = loss_bbox.sum() / num_boxes
@@ -137,14 +138,6 @@ class SetCriterion(nn.Module):
         return batch_idx, tgt_idx
 
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
-        # loss_map = {
-        #     "labels": self.loss_labels,
-        #     "cardinality": self.loss_cardinality,
-        #     "boxes": self.loss_boxes,
-        #     "masks": self.loss_masks,
-        # }
-        # assert loss in loss_map, f"do you really want to compute {loss} loss?"
-        # return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
         if loss == "labels":
             return self.loss_labels(outputs["pred_logits"], targets["labels"], indices, num_boxes, **kwargs)
         if loss == "cardinality":

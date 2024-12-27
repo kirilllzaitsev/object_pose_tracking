@@ -15,7 +15,7 @@ from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results
-from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
+from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
@@ -73,6 +73,7 @@ class Trainer:
         exp_dir=None,
         model_name=None,
         opt_only=None,
+        **kwargs,
     ):
         assert criterion_pose is not None or (
             criterion_rot is not None and criterion_trans is not None
@@ -238,7 +239,7 @@ class Trainer:
             self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
 
         if do_vis:
-            vis_batch_idxs = list(range(min(batch_size, 16)))
+            vis_batch_idxs = list(range(min(batch_size, 8)))
             vis_data = defaultdict(list)
 
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
@@ -603,8 +604,11 @@ class Trainer:
         }
 
     def get_grad_info(self):
+        return
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
         grad_norm = sum(grad_norms) / len(grad_norms)
+        self.processed_data["grad_norm"].append(grad_norm)
+        self.processed_data["grad_norms"].append(grad_norms)
         return grad_norms, grad_norm
 
 
@@ -660,17 +664,14 @@ class TrainerDeformableDETR(Trainer):
             aux_weight_dict.update({f"{k}_enc": v for k, v in self.weight_dict.items()})
             self.weight_dict.update(aux_weight_dict)
         self.losses += ["cardinality"]
-        self.criterion = SetCriterion(num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha)
-
-        self.use_pose_loss = criterion_pose is not None
-        self.do_log = writer is not None
-        self.use_optim_every_ts = not use_rnn
-        self.vis_dir = f"{self.exp_dir}/vis"
-
-        self.processed_data = defaultdict(list)
-        self.seq_counts_per_stage = defaultdict(int)
-        self.ts_counts_per_stage = defaultdict(int)
-        self.train_epoch_count = 0
+        self.criterion = SetCriterion(
+            # num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha
+            num_classes - 1,
+            self.matcher,
+            self.weight_dict,
+            self.losses,
+            focal_alpha=focal_alpha,
+        )
 
     def loader_forward(
         self,
