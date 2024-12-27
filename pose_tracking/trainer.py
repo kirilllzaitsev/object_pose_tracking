@@ -612,82 +612,25 @@ class TrainerDeformableDETR(Trainer):
 
     def __init__(
         self,
-        model,
-        device,
-        hidden_dim,
-        rnn_type,
+        *args,
         num_classes,
         aux_loss,
         num_dec_layers,
-        criterion_trans=None,
-        criterion_rot=None,
-        criterion_pose=None,
-        writer=None,
-        do_debug=False,
-        do_predict_2d_t=False,
-        do_predict_6d_rot=False,
-        do_predict_3d_rot=False,
-        use_rnn=True,
-        use_obs_belief=True,
-        world_size=1,
-        do_log_every_ts=False,
-        do_log_every_seq=True,
-        do_print_seq_stats=False,
-        use_ddp=False,
-        use_prev_pose_condition=False,
-        do_predict_rel_pose=False,
-        do_predict_kpts=False,
-        use_prev_latent=False,
-        do_calibrate_kpt=False,
-        logger=None,
-        vis_epoch_freq=None,
-        do_vis=False,
-        exp_dir=None,
-        model_name=None,
         focal_alpha=0.25,
         kpt_spatial_dim=2,
         opt_only=None,
         **kwargs,
     ):
-        assert criterion_pose is not None or (
-            criterion_rot is not None and criterion_trans is not None
-        ), "Either pose or rot & trans criteria must be provided"
-        if kwargs:
-            print(f"Ignored {kwargs=}")
+        super().__init__(*args, **kwargs)
 
-        self.do_debug = do_debug
-        self.do_predict_2d_t = do_predict_2d_t
-        self.do_predict_6d_rot = do_predict_6d_rot
-        self.do_predict_3d_rot = do_predict_3d_rot
-        self.use_rnn = use_rnn
-        self.use_obs_belief = use_obs_belief
-        self.do_log_every_ts = do_log_every_ts
-        self.do_log_every_seq = do_log_every_seq
-        self.use_ddp = use_ddp
-        self.use_prev_pose_condition = use_prev_pose_condition
-        self.do_predict_rel_pose = do_predict_rel_pose
-        self.use_prev_latent = use_prev_latent
-        self.do_predict_kpts = do_predict_kpts
-        self.do_vis = do_vis
-        self.do_print_seq_stats = do_print_seq_stats
-
-        self.world_size = world_size
-        self.logger = default_logger if logger is None else logger
-        self.vis_epoch_freq = vis_epoch_freq
-        self.exp_dir = exp_dir
-        self.model_name = model_name
-        self.model = model
-        self.device = device
-        self.kpt_spatial_dim = kpt_spatial_dim
-        self.do_calibrate_kpt = do_calibrate_kpt
-        self.hidden_dim = hidden_dim
-        self.rnn_type = rnn_type
-        self.criterion_trans = criterion_trans
-        self.criterion_rot = criterion_rot
-        self.criterion_pose = criterion_pose
-        self.writer = writer
         self.opt_only = opt_only
+        self.num_classes = num_classes
+        self.aux_loss = aux_loss
+        self.num_dec_layers = num_dec_layers
+        self.kpt_spatial_dim = kpt_spatial_dim
+        self.focal_alpha = focal_alpha
 
+        self.save_vis_paths = []
         self.cost_class, self.cost_bbox, self.cost_giou = (2, 5, 2)
         self.losses = [
             "labels",
@@ -793,6 +736,12 @@ class TrainerDeformableDETR(Trainer):
 
         seq_length = len(batched_seq)
         batch_size = len(batched_seq[0]["rgb"])
+        if self.do_debug:
+            for batch_t in batched_seq:
+                for k, v in batch_t.items():
+                    if k not in ["rgb", "intrinsics", "mesh_bbox", "bbox_2d", "class_id"]:
+                        continue
+                    self.processed_data[k].append(v)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
         pose_to_mat_converter_fn = (
             convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
@@ -809,7 +758,7 @@ class TrainerDeformableDETR(Trainer):
             total_loss = 0
 
         if do_vis:
-            vis_batch_idxs = list(range(min(batch_size, 16)))
+            vis_batch_idxs = list(range(min(batch_size, 8)))
             vis_data = defaultdict(list)
 
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
@@ -867,9 +816,7 @@ class TrainerDeformableDETR(Trainer):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
                 if self.do_debug:
-                    grad_norms, grad_norm = self.get_grad_info()
-                    self.processed_data["grad_norm"].append(grad_norm)
-                    self.processed_data["grad_norms"].append(grad_norms)
+                    self.get_grad_info()
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -908,11 +855,13 @@ class TrainerDeformableDETR(Trainer):
             if do_vis:
                 # save inputs to the exp dir
                 vis_keys = ["rgb", "depth", "intrinsics"]
-                for k in ["mask", "mesh_bbox", "pts", "class_id"]:
+                for k in ["mask", "mesh_bbox", "pts", "class_id", "bbox_2d"]:
                     if k in batch_t and len(batch_t[k]) > 0:
                         vis_keys.append(k)
                 for k in vis_keys:
                     vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
+                vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
+                vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
@@ -923,19 +872,11 @@ class TrainerDeformableDETR(Trainer):
                 # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
                 # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
                 # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["loss"].append(detach_and_cpu(loss))
-                self.processed_data["loss_dict_reduced_scaled"].append(detach_and_cpu(loss_dict_reduced_scaled))
                 self.processed_data["targets"].append(detach_and_cpu(targets))
                 # self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
                 # self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
                 self.processed_data["out"].append(detach_and_cpu(out))
                 # self.processed_data["pred_classes"].append(detach_and_cpu(out["pred_logits"].argmax(-1) + 1))
-                for k, v in batch_t.items():
-                    if k not in ['rgb', 'intrinsics', 'mesh_bbox', 'bbox_2d', 'class_id']:
-                        continue
-                    if isinstance(v, torch.Tensor):
-                        v = v.cpu()
-                    self.processed_data[k].append(v)
                 # self.processed_data["rot_pred"].append(rot_pred)
                 # self.processed_data["t_pred"].append(t_pred)
 
@@ -944,9 +885,7 @@ class TrainerDeformableDETR(Trainer):
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
             if self.do_debug:
-                grad_norms, grad_norm = self.get_grad_info()
-                self.processed_data["grad_norm"].append(grad_norm)
-                self.processed_data["grad_norms"].append(grad_norms)
+                self.get_grad_info()
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:
@@ -960,6 +899,7 @@ class TrainerDeformableDETR(Trainer):
             os.makedirs(self.vis_dir, exist_ok=True)
             save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
             torch.save(vis_data, save_vis_path)
+            self.save_vis_paths.append(save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
         return {
