@@ -96,6 +96,43 @@ class SetCriterion(nn.Module):
 
         loss_giou = 1 - torch.diag(generalized_box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(target_boxes)))
         losses["loss_giou"] = loss_giou.sum() / num_boxes
+
+        with torch.no_grad():
+            losses["loss_xy"] = loss_bbox[..., :2].sum() / num_boxes
+            losses["loss_hw"] = loss_bbox[..., 2:].sum() / num_boxes
+
+        return losses
+
+    def loss_rot(self, pred_rot, gt_rot, indices, num_boxes):
+        """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
+        targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
+        The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
+        """
+        idx = self._get_src_permutation_idx(indices)
+        src_rots = pred_rot[idx]
+        target_rots = torch.cat([t[i] for t, (_, i) in zip(gt_rot, indices)], dim=0)
+
+        losses = {}
+        loss_rot = F.mse_loss(src_rots, target_rots, reduction="none")
+        losses["loss_rot"] = loss_rot.sum() / num_boxes
+
+        losses = {k: v.sum() / num_boxes for k, v in losses.items()}
+        return losses
+
+    def loss_t(self, pred_t, gt_t, indices, num_boxes):
+        """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
+        targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
+        The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
+        """
+        idx = self._get_src_permutation_idx(indices)
+        src_ts = pred_t[idx]
+        target_ts = torch.cat([t[i] for t, (_, i) in zip(gt_t, indices)], dim=0)
+
+        losses = {}
+        loss_t = F.mse_loss(src_ts, target_ts, reduction="none")
+        losses["loss_t"] = loss_t.sum() / num_boxes
+
+        losses = {k: v.sum() / num_boxes for k, v in losses.items()}
         return losses
 
     def loss_masks(self, pred_mask, gt_mask, indices, num_boxes):
@@ -144,6 +181,10 @@ class SetCriterion(nn.Module):
             return self.loss_cardinality(outputs["pred_logits"], targets["labels"])
         if loss == "boxes":
             return self.loss_boxes(outputs["pred_boxes"], targets["boxes"], indices, num_boxes)
+        if loss == "rot":
+            return self.loss_rot(outputs["rot"], targets["rot"], indices, num_boxes)
+        if loss == "t":
+            return self.loss_t(outputs["t"], targets["t"], indices, num_boxes)
         if loss == "masks":
             return self.loss_masks(outputs["pred_masks"], targets["masks"], indices, num_boxes, **kwargs)
         raise ValueError(f"Unknown loss: {loss}")
