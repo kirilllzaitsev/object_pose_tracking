@@ -604,11 +604,8 @@ class Trainer:
         }
 
     def get_grad_info(self):
-        return
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
         grad_norm = sum(grad_norms) / len(grad_norms)
-        self.processed_data["grad_norm"].append(grad_norm)
-        self.processed_data["grad_norms"].append(grad_norms)
         return grad_norms, grad_norm
 
 
@@ -623,9 +620,13 @@ class TrainerDeformableDETR(Trainer):
         focal_alpha=0.25,
         kpt_spatial_dim=2,
         opt_only=None,
+        do_calibrate_kpt=False,
         **kwargs,
     ):
+
         super().__init__(*args, **kwargs)
+
+        self.do_calibrate_kpt = do_calibrate_kpt
 
         self.opt_only = opt_only
         self.num_classes = num_classes
@@ -639,6 +640,8 @@ class TrainerDeformableDETR(Trainer):
         self.losses = [
             "labels",
             "boxes",
+            "rot",
+            "t",
         ]
         if opt_only is not None:
             self.losses = [v for v in self.losses if v in opt_only]
@@ -651,6 +654,8 @@ class TrainerDeformableDETR(Trainer):
         self.matcher = HungarianMatcher(cost_class=self.cost_class, cost_bbox=self.cost_bbox, cost_giou=self.cost_giou)
         self.weight_dict = {
             "loss_ce": 1,
+            "loss_rot": 1,
+            "loss_t": 1,
             "loss_bbox": 5,
             "loss_giou": 2,
             "loss_ce_enc": 1,
@@ -665,7 +670,6 @@ class TrainerDeformableDETR(Trainer):
             self.weight_dict.update(aux_weight_dict)
         self.losses += ["cardinality"]
         self.criterion = SetCriterion(
-            # num_classes, self.matcher, self.weight_dict, self.losses, focal_alpha=focal_alpha
             num_classes - 1,
             self.matcher,
             self.weight_dict,
@@ -786,6 +790,8 @@ class TrainerDeformableDETR(Trainer):
             targets = {
                 "labels": [v if v.ndim > 0 else v[None] for v in class_id],
                 "boxes": [v.float() for v in [v if v.ndim > 1 else v[None] for v in bbox_2d]],
+                "rot": [v.float() for v in [v if v.ndim > 1 else v[None] for v in rot_gt_abs]],
+                "t": [v.float() for v in [v if v.ndim > 1 else v[None] for v in t_gt_abs]],
                 "masks": mask,
             }
             if self.model_name == "detr_kpt":
@@ -816,8 +822,15 @@ class TrainerDeformableDETR(Trainer):
             if do_opt_every_ts:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
-                if self.do_debug:
-                    self.get_grad_info()
+                if self.do_debug or do_vis:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    if do_vis:
+                        vis_data["grad_norm"].append(grad_norm)
+                        vis_data["grad_norms"].append(grad_norms)
+                    if self.do_debug:
+                        self.processed_data["grad_norm"].append(grad_norm)
+                        self.processed_data["grad_norms"].append(grad_norms)
+
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -885,8 +898,14 @@ class TrainerDeformableDETR(Trainer):
             total_loss /= seq_length
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
-            if self.do_debug:
-                self.get_grad_info()
+            if self.do_debug or do_vis:
+                grad_norms, grad_norm = self.get_grad_info()
+                if do_vis:
+                    vis_data["grad_norm"].append(grad_norm)
+                    vis_data["grad_norms"].append(grad_norms)
+                if self.do_debug:
+                    self.processed_data["grad_norm"].append(grad_norm)
+                    self.processed_data["grad_norms"].append(grad_norms)
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:
