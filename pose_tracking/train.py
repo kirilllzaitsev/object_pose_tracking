@@ -105,9 +105,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     exp = exp_tools["exp"]
     writer = exp_tools["writer"]
 
-    if is_main_process:
-        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
-
     logpath = f"{logdir}/log.log"
     logger = prepare_logger(logpath=logpath, level="INFO")
     if is_main_process:
@@ -117,11 +114,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"CLI command:\npython {' '.join(sys.argv)}")
     if "SLURM_JOB_ID" in os.environ:
         logger.info(f"SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
-    print_args(args, logger=logger)
-
-    logger.info(f"{PROJ_DIR=}")
-    logger.info(f"{logdir=}")
-    logger.info(f"{logpath=}")
 
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
@@ -144,9 +136,17 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
         num_classes = metadata["num_classes"] + 1
+        args.mt_num_queries = min(metadata["num_classes"], args.max_train_videos)
         logger.info(f"{num_classes=}")
     else:
         num_classes = None
+
+    if is_main_process:
+        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
+    print_args(args, logger=logger)
+    logger.info(f"{PROJ_DIR=}")
+    logger.info(f"{logdir=}")
+    logger.info(f"{logpath=}")
 
     datasets = get_datasets(
         ds_name=args.ds_name,
@@ -260,7 +260,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         logger=logger,
         do_vis=args.do_vis and is_main_process,
         exp_dir=logdir,
-        num_classes=num_classes
+        num_classes=num_classes,
     )
 
     logger.info(trainer)
