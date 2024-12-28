@@ -1,4 +1,5 @@
 import copy
+import math
 
 import torch
 import torch.nn as nn
@@ -13,6 +14,7 @@ from pose_tracking.utils.geom import (
     calibrate_2d_pts_batch,
 )
 from pose_tracking.utils.kpt_utils import load_extractor
+from pose_tracking.utils.misc import print_cls
 from torchvision.models import resnet18, resnet50, resnet101
 
 
@@ -81,13 +83,16 @@ class DETR(nn.Module):
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
 
-        self.class_mlps = get_clones(nn.Linear(d_model, self.num_classes), n_layers)
+        self.class_mlps = get_clones(
+            MLP(in_dim=d_model, out_dim=num_classes, hidden_dim=head_hidden_dim, num_layers=1),
+            n_layers,
+        )
         self.bbox_mlps = get_clones(
             MLP(in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers),
             n_layers,
         )
-        # self.t_mlps = get_clones(nn.Linear(d_model, 3), n_layers)
-        # self.rot_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
+        self.t_mlps = get_clones(MLP(d_model, 3, d_model, 1), n_layers)
+        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 1), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
@@ -120,11 +125,22 @@ class DETR(nn.Module):
             pred_logits = self.class_mlps[layer_idx](o)
             pred_boxes = self.bbox_mlps[layer_idx](o)
             pred_boxes = torch.sigmoid(pred_boxes)
-            outs.append({"pred_logits": pred_logits, "pred_boxes": pred_boxes})
+            pred_rot = self.rot_mlps[layer_idx](o)
+            pred_t = self.t_mlps[layer_idx](o)
+            outs.append(
+                {
+                    "pred_logits": pred_logits,
+                    "pred_boxes": pred_boxes,
+                    "rot": pred_rot,
+                    "t": pred_t,
+                }
+            )
         last_out = outs.pop()
         return {
             "pred_logits": last_out["pred_logits"],
             "pred_boxes": last_out["pred_boxes"],
+            "rot": last_out["rot"],
+            "t": last_out["t"],
             "aux_outputs": outs,
         }
 
@@ -179,6 +195,8 @@ class KeypointDETR(nn.Module):
 
         self.class_mlps = get_clones(nn.Linear(d_model, self.num_classes), n_layers)
         self.bbox_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
+        self.t_mlps = get_clones(MLP(d_model, 3, d_model, 2), n_layers)
+        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
@@ -239,11 +257,15 @@ class KeypointDETR(nn.Module):
             pred_logits = self.class_mlps[layer_idx](o)
             pred_boxes = self.bbox_mlps[layer_idx](o)
             pred_boxes = torch.sigmoid(pred_boxes)
-            outs.append({"pred_logits": pred_logits, "pred_boxes": pred_boxes})
+            pred_rot = self.rot_mlps[layer_idx](o)
+            pred_t = self.t_mlps[layer_idx](o)
+            outs.append({"pred_logits": pred_logits, "pred_boxes": pred_boxes, "rot": pred_rot, "t": pred_t})
         last_out = outs.pop()
         return {
             "pred_logits": last_out["pred_logits"],
             "pred_boxes": last_out["pred_boxes"],
+            "rot": last_out["rot"],
+            "t": last_out["t"],
             "aux_outputs": outs,
         }
 
