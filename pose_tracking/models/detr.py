@@ -102,11 +102,14 @@ class DETR(nn.Module):
 
         self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
 
+        for i in range(n_layers):
+            nn.init.constant_(self.bbox_mlps[i].layers[-1].bias, 0.5)
+
     def forward(self, x):
         _ = self.backbone(x)
         tokens = self.backbone_feats["layer4"]
         tokens = self.conv1x1(tokens)
-        tokens = rearrange(tokens, "b c h w -> b (h w) c")
+        tokens = rearrange(tokens, "b c h w -> b c (h w)").transpose(-1, -2)
 
         out_encoder = self.t_encoder(tokens + self.pe_encoder)
 
@@ -224,7 +227,7 @@ class KeypointDETR(nn.Module):
             kpt_pos = calibrate_2d_pts_batch(kpt_pos, K=intrinsics)
         tokens = descriptors
         tokens = self.conv1x1(tokens.transpose(-1, -2))
-        tokens = rearrange(tokens, "b c hw -> b hw c")
+        tokens = tokens.transpose(-1, -2)
 
         pos_enc = self.pe_encoder(kpt_pos).to(tokens.device)
         out_encoder = self.t_encoder(tokens + pos_enc)
