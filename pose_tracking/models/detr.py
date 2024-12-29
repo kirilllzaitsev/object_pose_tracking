@@ -4,6 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.encoders import FrozenBatchNorm2d
@@ -25,7 +26,7 @@ def get_hook(outs, name):
     return hook
 
 
-class DETR(nn.Module):
+class DETRBase(nn.Module):
 
     def __init__(
         self,
@@ -36,9 +37,7 @@ class DETR(nn.Module):
         n_heads=8,
         n_queries=100,
         head_hidden_dim=256,
-        head_num_layers=3,
-        backbone_name="resnet18",
-        use_pretrained_backbone=True,
+        head_num_layers=2,
         encoding_type="learned",
     ):
         super().__init__()
@@ -51,36 +50,7 @@ class DETR(nn.Module):
         self.n_queries = n_queries
         self.encoding_type = encoding_type
 
-        self.backbone_weights = None
-        if backbone_name == "resnet50":
-            self.final_layer_name = "layer4"
-            self.final_feature_dim = 2048
-            self.backbone_cls = resnet50
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet50_Weights.DEFAULT
-        elif backbone_name == "resnet18":
-            self.final_feature_dim = 512
-            self.final_layer_name = "layer4"
-            self.backbone_cls = resnet18
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet18_Weights.DEFAULT
-        elif backbone_name == "resnet101":
-            self.final_feature_dim = 2048
-            self.final_layer_name = "layer4"
-            self.backbone_cls = resnet101
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet101_Weights.DEFAULT
-        else:
-            raise ValueError(f"Unknown backbone {backbone_name}")
-        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
-        self.conv1x1 = nn.Conv2d(self.final_feature_dim, d_model, kernel_size=1, stride=1)
-
-        self.backbone.fc = nn.Identity()
-
-        if encoding_type == "learned":
-            self.pe_encoder = nn.Parameter(torch.rand((1, n_tokens, d_model)), requires_grad=True)
-        else:
-            self.pe_encoder = PosEncoding(d_model, max_len=1024)
+        self.pe_encoder = self.get_pos_encoder(encoding_type)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
@@ -113,18 +83,23 @@ class DETR(nn.Module):
             name = f"layer_{i}"
             layer.register_forward_hook(get_hook(self.decoder_outs, name))
 
-        self.backbone_feats = {}
+    def get_pos_encoder(self, encoding_type, sin_max_len=1024):
+        if encoding_type == "learned":
+            pe_encoder = nn.Parameter(torch.rand((1, self.n_tokens, self.d_model)), requires_grad=True)
+        elif encoding_type == "sin":
+            # tweak sin_max_len=1024 for img-based pe
+            pe_encoder = PosEncoding(self.d_model, max_len=sin_max_len)
+        else:
+            raise ValueError(f"Unknown encoding type {encoding_type}")
+        return pe_encoder
 
-        def hook_resnet50_feats(model, inp, out):
-            self.backbone_feats["layer4"] = out
+    def forward(self, x, *args, **kwargs):
+        tokens = self.extract_tokens(x, *args, **kwargs)
 
-        self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
+        return self.forward_tokens(tokens)
 
-    def forward(self, x):
-        _ = self.backbone(x)
-        tokens = self.backbone_feats["layer4"]
-        tokens = self.conv1x1(tokens)
-        tokens = rearrange(tokens, "b c h w -> b c (h w)").transpose(-1, -2)
+    def forward_tokens(self, tokens):
+        tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
         if self.encoding_type == "learned":
             pos_enc = self.pe_encoder
@@ -158,76 +133,106 @@ class DETR(nn.Module):
             "aux_outputs": outs,
         }
 
+    def extract_tokens(self, x, *args, **kwargs):
+        raise NotImplementedError
+
     def __repr__(self):
         return print_cls(self, extra_str=super().__repr__(), excluded_attrs=["decoder_outs", "backbone_feats"])
 
+    def to(self, *args, **kwargs):
+        self = super().to(*args, **kwargs)
+        self.pe_encoder = self.pe_encoder.to(*args, **kwargs)
+        return self
 
-class KeypointDETR(nn.Module):
+
+class DETR(DETRBase):
 
     def __init__(
         self,
-        num_classes,
-        kpt_extractor_name="superpoint",
-        d_model=256,
-        n_tokens=15 * 20,
-        n_layers=6,
-        n_heads=8,
-        n_queries=100,
-        kpt_spatial_dim=2,
-        encoding_type="spatial",
+        *args,
+        backbone_name="resnet18",
+        use_pretrained_backbone=True,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(
+            *args,
+            **kwargs,
+        )
 
-        self.num_classes = num_classes
-        self.d_model = d_model
-        self.n_tokens = n_tokens
-        self.n_layers = n_layers
-        self.n_heads = n_heads
-        self.n_queries = n_queries
+        self.backbone_name = backbone_name
+        self.use_pretrained_backbone = use_pretrained_backbone
 
-        descriptor_dim = 256
-        self.conv1x1 = nn.Conv1d(descriptor_dim, d_model, kernel_size=1, stride=1)
-
-        if encoding_type == "spatial":
-            self.pe_encoder = SpatialPosEncoding(d_model, ndim=kpt_spatial_dim)
+        self.backbone_weights = None
+        if backbone_name == "resnet50":
+            self.final_layer_name = "layer4"
+            self.final_feature_dim = 2048
+            self.backbone_cls = resnet50
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet50_Weights.DEFAULT
+        elif backbone_name == "resnet18":
+            self.final_feature_dim = 512
+            self.final_layer_name = "layer4"
+            self.backbone_cls = resnet18
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet18_Weights.DEFAULT
+        elif backbone_name == "resnet101":
+            self.final_feature_dim = 2048
+            self.final_layer_name = "layer4"
+            self.backbone_cls = resnet101
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet101_Weights.DEFAULT
         else:
-            self.pe_encoder = PosEncoding(d_model, max_len=1024)
+            raise ValueError(f"Unknown backbone {backbone_name}")
+        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
+        self.backbone.fc = nn.Identity()
 
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
+        self.conv1x1 = nn.Conv2d(self.final_feature_dim, self.d_model, kernel_size=1, stride=1)
+
+        self.backbone_feats = {}
+
+        def hook_resnet50_feats(model, inp, out):
+            self.backbone_feats["layer4"] = out
+
+        self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
+
+    def extract_tokens(self, x):
+        _ = self.backbone(x)
+        tokens = self.backbone_feats["layer4"]
+        tokens = self.conv1x1(tokens)
+        tokens = rearrange(tokens, "b c h w -> b c (h w)")
+        return tokens
+
+
+class KeypointDETR(DETRBase):
+
+    def __init__(
+        self,
+        *args,
+        kpt_extractor_name="superpoint",
+        kpt_spatial_dim=2,
+        descriptor_dim=256,
+        **kwargs,
+    ):
+        self.kpt_spatial_dim = kpt_spatial_dim
+        self.descriptor_dim = descriptor_dim
+
+        super().__init__(
+            *args,
+            **kwargs,
         )
 
-        self.t_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
-
-        self.queries = nn.Parameter(torch.rand((1, n_queries, d_model)), requires_grad=True)
-
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.0
-        )
-
-        self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
-
-        self.class_mlps = get_clones(nn.Linear(d_model, self.num_classes), n_layers)
-        self.bbox_mlps = get_clones(nn.Linear(d_model, 4), n_layers)
-        self.t_mlps = get_clones(MLP(d_model, 3, d_model, 2), n_layers)
-        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
-
-        # Add hooks to get intermediate outcomes
-        self.decoder_outs = {}
-        for i, layer in enumerate(self.t_decoder.layers):
-            name = f"layer_{i}"
-            layer.register_forward_hook(get_hook(self.decoder_outs, name))
+        self.conv1x1 = nn.Conv1d(descriptor_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
 
-    def forward(self, x, intrinsics=None, depth=None, mask=None):
+    def extract_tokens(self, x, intrinsics=None, depth=None, mask=None):
         if mask is not None:
             x = x * mask
         bs, c, h, w = x.shape
         if bs > 1:
             extracted_kpts = [self.extractor.extract(x[i : i + 1]) for i in range(bs)]
-            extracted_kpts = [{k: v[0] for k, v in kpts.items()} for kpts in extracted_kpts]
+            extracted_kpts = [{k: v[0][:1024] for k, v in kpts.items()} for kpts in extracted_kpts]
             # pad with zeros up to the max number of keypoints
             max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
             extracted_kpts = copy.deepcopy(extracted_kpts)
@@ -259,29 +264,15 @@ class KeypointDETR(nn.Module):
             kpt_pos = calibrate_2d_pts_batch(kpt_pos, K=intrinsics)
         tokens = descriptors
         tokens = self.conv1x1(tokens.transpose(-1, -2))
-        tokens = tokens.transpose(-1, -2)
 
-        pos_enc = self.pe_encoder(kpt_pos).to(tokens.device)
-        out_encoder = self.t_encoder(tokens + pos_enc)
+        return tokens
 
-        out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
-
-        outs = []
-        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
-            pred_logits = self.class_mlps[layer_idx](o)
-            pred_boxes = self.bbox_mlps[layer_idx](o)
-            pred_boxes = torch.sigmoid(pred_boxes)
-            pred_rot = self.rot_mlps[layer_idx](o)
-            pred_t = self.t_mlps[layer_idx](o)
-            outs.append({"pred_logits": pred_logits, "pred_boxes": pred_boxes, "rot": pred_rot, "t": pred_t})
-        last_out = outs.pop()
-        return {
-            "pred_logits": last_out["pred_logits"],
-            "pred_boxes": last_out["pred_boxes"],
-            "rot": last_out["rot"],
-            "t": last_out["t"],
-            "aux_outputs": outs,
-        }
+    def get_pos_encoder(self, encoding_type):
+        if encoding_type == "spatial":
+            pe_encoder = SpatialPosEncoding(self.d_model, ndim=self.kpt_spatial_dim)
+        else:
+            pe_encoder = super().get_pos_encoder(encoding_type)
+        return pe_encoder
 
 
 def get_clones(module, N):
