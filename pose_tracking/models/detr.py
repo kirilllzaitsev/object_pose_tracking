@@ -215,7 +215,7 @@ class DETR(DETRBase):
         tokens = self.backbone_feats["layer4"]
         tokens = self.conv1x1(tokens)
         tokens = rearrange(tokens, "b c h w -> b c (h w)")
-        return tokens
+        return {"tokens": tokens}
 
 
 class KeypointDETR(DETRBase):
@@ -241,6 +241,24 @@ class KeypointDETR(DETRBase):
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
 
+    def forward(self, x, *args, **kwargs):
+        extract_res = self.extract_tokens(x, *args, **kwargs)
+        tokens = extract_res["tokens"]
+
+        if self.encoding_type == "learned":
+            pos_enc = self.pe_encoder
+        elif self.encoding_type == "sin":
+            pos_enc = self.pe_encoder(tokens)
+        else:
+            pos_enc = self.pe_encoder(extract_res["kpts"])
+
+        out = self.forward_tokens(tokens, pos_enc)
+
+        for k in ["kpts", "descriptors"]:
+            out[k] = extract_res[k]
+
+        return out
+
     def extract_tokens(self, x, intrinsics=None, depth=None, mask=None):
         if mask is not None:
             x = x * mask
@@ -250,7 +268,7 @@ class KeypointDETR(DETRBase):
             extracted_kpts = [{k: v[0][:1024] for k, v in kpts.items()} for kpts in extracted_kpts]
             # pad with zeros up to the max number of keypoints
             max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
-            extracted_kpts = copy.deepcopy(extracted_kpts)
+            # extracted_kpts = copy.deepcopy(extracted_kpts)
             for kpts in extracted_kpts:
                 for k in kpts.keys():
                     pad_len = max_kpts - len(kpts[k])
@@ -264,23 +282,23 @@ class KeypointDETR(DETRBase):
             extracted_kpts = self.extractor.extract(x)
 
         descriptors = extracted_kpts["descriptors"]
-        kpt_pos = extracted_kpts["keypoints"]
+        kpts = extracted_kpts["keypoints"]
 
         # TODO: check kpt norm
-        kpt_pos = kpt_pos / torch.tensor([w, h], dtype=kpt_pos.dtype).to(kpt_pos.device)
+        kpts = kpts / torch.tensor([w, h], dtype=kpts.dtype).to(kpts.device)
 
         if depth is not None:
             assert intrinsics is not None
-            # get depth_1d by sampling depth map at kpt_pos as int (ignoring zero kpt pos)
+            # get depth_1d by sampling depth map at kpts as int (ignoring zero kpt pos)
             raise NotImplementedError("Need to implement depth sampling")
             # TODO: get mask of padded keypoints (can provide as input to the nn.transformer)
-            kpt_pos = backproj_2d_to_3d_batch(kpt_pos, depth=depth, K=intrinsics)
+            kpts = backproj_2d_to_3d_batch(kpts, depth=depth, K=intrinsics)
         elif intrinsics is not None:
-            kpt_pos = calibrate_2d_pts_batch(kpt_pos, K=intrinsics)
+            kpts = calibrate_2d_pts_batch(kpts, K=intrinsics)
         tokens = descriptors
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
-        return tokens
+        return {"tokens": tokens, "kpts": kpts, "descriptors": descriptors}
 
     def get_pos_encoder(self, encoding_type):
         if encoding_type == "spatial":

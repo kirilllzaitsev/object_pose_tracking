@@ -876,6 +876,10 @@ class TrainerDeformableDETR(Trainer):
                     vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
                 vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
                 vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
+                if self.model_name == "detr_kpt":
+                    vis_data["kpts"].append(extract_idxs(out["kpts"], vis_batch_idxs))
+                    vis_data["descriptors"].append(extract_idxs(out["descriptors"], vis_batch_idxs))
+
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
