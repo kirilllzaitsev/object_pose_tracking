@@ -800,7 +800,11 @@ class TrainerDeformableDETR(Trainer):
                     extra_kwargs["intrinsics"] = intrinsics
                 if self.kpt_spatial_dim > 2:
                     extra_kwargs["depth"] = depth
-                out = self.model(rgb, **extra_kwargs)
+                out = self.model(
+                    rgb,
+                    mask=mask,
+                    **extra_kwargs,
+                )
             else:
                 out = self.model(rgb)
 
