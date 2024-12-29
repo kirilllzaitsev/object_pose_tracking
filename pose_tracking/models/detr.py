@@ -77,7 +77,10 @@ class DETR(nn.Module):
 
         self.backbone.fc = nn.Identity()
 
-        self.pe_encoder = nn.Parameter(torch.rand((1, n_tokens, d_model)), requires_grad=True)
+        if encoding_type == "learned":
+            self.pe_encoder = nn.Parameter(torch.rand((1, n_tokens, d_model)), requires_grad=True)
+        else:
+            self.pe_encoder = PosEncoding(d_model, max_len=1024)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
@@ -123,7 +126,11 @@ class DETR(nn.Module):
         tokens = self.conv1x1(tokens)
         tokens = rearrange(tokens, "b c h w -> b c (h w)").transpose(-1, -2)
 
-        out_encoder = self.t_encoder(tokens + self.pe_encoder)
+        if self.encoding_type == "learned":
+            pos_enc = self.pe_encoder
+        else:
+            pos_enc = self.pe_encoder(tokens)
+        out_encoder = self.t_encoder(tokens + pos_enc)
 
         out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
 
