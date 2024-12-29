@@ -300,7 +300,6 @@ class KeypointDETR(DETRBase):
         descriptors = extracted_kpts["descriptors"]
         kpts = extracted_kpts["keypoints"]
 
-        # TODO: check kpt norm
         kpts = kpts / torch.tensor([w, h], dtype=kpts.dtype).to(kpts.device)
 
         if depth is not None:

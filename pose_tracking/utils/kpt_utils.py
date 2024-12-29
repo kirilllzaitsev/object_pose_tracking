@@ -225,3 +225,13 @@ def load_tracker(use_stream_tracker=True, use_online_tracker=True, use_v2=False,
             window_len=window_len,
         )
     return cotracker
+
+
+def get_kpt_within_mask_indicator(keypoints, binary_mask):
+    if not isinstance(keypoints, torch.Tensor):
+        keypoints = torch.tensor(keypoints)
+    keypoints = keypoints.long().to(binary_mask.device)
+    x, y = keypoints[..., 0], keypoints[..., 1]
+    # inside_bounds = (0 <= y) & (y < binary_mask.shape[0]) & (0 <= x) & (x < binary_mask.shape[1])
+    indicator = (binary_mask[..., y, x] == 1).long()
+    return indicator
