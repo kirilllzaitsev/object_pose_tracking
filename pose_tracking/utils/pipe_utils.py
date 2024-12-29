@@ -69,33 +69,31 @@ def get_model(args, num_classes=None):
             with_box_refine=detr_args.with_box_refine,
             two_stage=detr_args.two_stage,
         )
-    elif args.model_name == "detr_basic":
-        from pose_tracking.models.detr import DETR
-
-        model = DETR(
+    elif args.model_name in ["detr_basic", "detr_kpt"]:
+        kwargs = dict(
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
             n_tokens=args.mt_n_tokens,
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
-            backbone_name=args.encoder_name,
-            use_pretrained_backbone=args.encoder_img_weights is not None,
             encoding_type=args.mt_encoding_type,
         )
-    elif args.model_name == "detr_kpt":
-        from pose_tracking.models.detr import KeypointDETR
+        if args.model_name == "detr_basic":
+            from pose_tracking.models.detr import DETR
 
-        model = KeypointDETR(
-            num_classes=num_classes,
-            n_queries=args.mt_num_queries,
-            kpt_spatial_dim=args.mt_kpt_spatial_dim,
-            encoding_type=args.mt_encoding_type,
-            d_model=args.mt_d_model,
-            n_tokens=args.mt_n_tokens,
-            n_layers=args.mt_n_layers,
-            n_heads=args.mt_n_heads,
-        )
+            model = DETR(
+                backbone_name=args.encoder_name,
+                use_pretrained_backbone=args.encoder_img_weights is not None,
+                **kwargs,
+            )
+        elif args.model_name == "detr_kpt":
+            from pose_tracking.models.detr import KeypointDETR
+
+            model = KeypointDETR(
+                kpt_spatial_dim=args.mt_kpt_spatial_dim,
+                **kwargs,
+            )
     else:
         num_pts = 256
         priv_dim = num_pts * 3
@@ -146,7 +144,9 @@ def get_model(args, num_classes=None):
     return model
 
 
-def get_trainer(args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None):
+def get_trainer(
+    args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
+):
     from pose_tracking.trainer import Trainer, TrainerDeformableDETR, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)

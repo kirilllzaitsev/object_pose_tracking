@@ -280,6 +280,17 @@ def plot_kpts(img_PIL, points_2d, color="blue"):
     points_2d = cast_to_numpy(points_2d).astype(int)
     for point in points_2d:
         img = cv2.circle(img, tuple(point), 5, (255, 0, 0), -1)
+    # add text num kpts
+    img = cv2.putText(
+        img,
+        f"n_kpt: {len(points_2d)}",
+        (40, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
     return np.array(img)
 
 
