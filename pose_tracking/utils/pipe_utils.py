@@ -80,6 +80,8 @@ def get_model(args, num_classes=None):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
             backbone_name=args.encoder_name,
+            use_pretrained_backbone=args.encoder_img_weights is not None,
+            encoding_type=args.mt_encoding_type,
         )
     elif args.model_name == "detr_kpt":
         from pose_tracking.models.detr import KeypointDETR

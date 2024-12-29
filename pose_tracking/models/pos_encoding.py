@@ -25,6 +25,11 @@ class PosEncoding(nn.Module):
         B, L, D = x.size()
         return self.encoding[:L, :]
 
+    def to(self, *args, **kwargs):
+        self = super().to(*args, **kwargs)
+        self.encoding = self.encoding.to(*args, **kwargs)
+        return self
+
 
 class SpatialPosEncoding(nn.Module):
     def __init__(self, d_model, ndim=2, enc_type="mlp"):

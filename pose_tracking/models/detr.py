@@ -105,7 +105,7 @@ class DETR(nn.Module):
             n_layers,
         )
         self.t_mlps = get_clones(MLP(d_model, 3, d_model, 1), n_layers)
-        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 1), n_layers)
+        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}

@@ -175,7 +175,7 @@ def backproj_2d_to_3d(pts, depth, K):
 
 
 def calibrate_2d_pts_batch(pts, K):
-    return torch.stack([calibrate_2d_pts(p, K[i]) for i,p in enumerate(pts)]).to(pts.device)
+    return torch.stack([calibrate_2d_pts(p, K[i]) for i, p in enumerate(pts)]).to(pts.device)
 
 
 def calibrate_2d_pts(pts, K):

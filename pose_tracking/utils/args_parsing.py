@@ -99,7 +99,7 @@ def get_parser():
         "--opt_only",
         nargs="*",
         help="List of tasks to optimize",
-        choices=["rot", "trans", "labels", "boxes", "cardinality"],
+        choices=["rot", "t", "labels", "boxes"],
     )
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
