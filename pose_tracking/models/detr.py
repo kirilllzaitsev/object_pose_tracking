@@ -246,7 +246,10 @@ class KeypointDETR(DETRBase):
             **kwargs,
         )
 
-        self.conv1x1 = nn.Conv1d(descriptor_dim, self.d_model, kernel_size=1, stride=1)
+        self.token_dim = descriptor_dim
+        if use_mask_as_obj_indicator:
+            self.token_dim += 1
+        self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
@@ -308,7 +311,13 @@ class KeypointDETR(DETRBase):
             kpts = backproj_2d_to_3d_batch(kpts, depth=depth, K=intrinsics)
         elif intrinsics is not None:
             kpts = calibrate_2d_pts_batch(kpts, K=intrinsics)
-        tokens = descriptors
+
+        tokens = descriptors  # B x N x D
+
+        if self.use_mask_as_obj_indicator:
+            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask)
+            tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
+
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
         return {
