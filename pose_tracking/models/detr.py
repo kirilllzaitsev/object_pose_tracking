@@ -38,6 +38,8 @@ class DETR(nn.Module):
         head_hidden_dim=256,
         head_num_layers=3,
         backbone_name="resnet18",
+        use_pretrained_backbone=True,
+        encoding_type="learned",
     ):
         super().__init__()
 
@@ -47,22 +49,30 @@ class DETR(nn.Module):
         self.n_layers = n_layers
         self.n_heads = n_heads
         self.n_queries = n_queries
+        self.encoding_type = encoding_type
 
+        self.backbone_weights = None
         if backbone_name == "resnet50":
             self.final_layer_name = "layer4"
             self.final_feature_dim = 2048
             self.backbone_cls = resnet50
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet50_Weights.DEFAULT
         elif backbone_name == "resnet18":
             self.final_feature_dim = 512
             self.final_layer_name = "layer4"
             self.backbone_cls = resnet18
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet18_Weights.DEFAULT
         elif backbone_name == "resnet101":
             self.final_feature_dim = 2048
             self.final_layer_name = "layer4"
             self.backbone_cls = resnet101
+            if use_pretrained_backbone:
+                self.backbone_weights = torchvision.models.ResNet101_Weights.DEFAULT
         else:
             raise ValueError(f"Unknown backbone {backbone_name}")
-        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d)
+        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
         self.conv1x1 = nn.Conv2d(self.final_feature_dim, d_model, kernel_size=1, stride=1)
 
         self.backbone.fc = nn.Identity()
