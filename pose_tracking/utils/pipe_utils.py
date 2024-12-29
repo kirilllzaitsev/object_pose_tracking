@@ -78,6 +78,7 @@ def get_model(args, num_classes=None):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
             encoding_type=args.mt_encoding_type,
+            opt_only=args.opt_only
         )
         if args.model_name == "detr_basic":
             from pose_tracking.models.detr import DETR

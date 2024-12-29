@@ -39,6 +39,7 @@ class DETRBase(nn.Module):
         head_hidden_dim=256,
         head_num_layers=2,
         encoding_type="learned",
+        opt_only=[],
     ):
         super().__init__()
 
@@ -50,6 +51,8 @@ class DETRBase(nn.Module):
         self.n_queries = n_queries
         self.encoding_type = encoding_type
 
+        self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
+        self.use_t = not opt_only or (opt_only and "t" in opt_only)
         self.pe_encoder = self.get_pos_encoder(encoding_type)
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -74,8 +77,10 @@ class DETRBase(nn.Module):
             MLP(in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers),
             n_layers,
         )
-        self.t_mlps = get_clones(MLP(d_model, 3, d_model, 1), n_layers)
-        self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
+        if self.use_t:
+            self.t_mlps = get_clones(MLP(d_model, 3, d_model, 1), n_layers)
+        if self.use_rot:
+            self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
@@ -94,17 +99,21 @@ class DETRBase(nn.Module):
         return pe_encoder
 
     def forward(self, x, *args, **kwargs):
-        tokens = self.extract_tokens(x, *args, **kwargs)
-
-        return self.forward_tokens(tokens)
-
-    def forward_tokens(self, tokens):
-        tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
+        extract_res = self.extract_tokens(x, *args, **kwargs)
+        tokens = extract_res["tokens"]
 
         if self.encoding_type == "learned":
             pos_enc = self.pe_encoder
-        else:
+        elif self.encoding_type == "sin":
             pos_enc = self.pe_encoder(tokens)
+        else:
+            raise ValueError(f"Unknown encoding type {self.encoding_type}")
+
+        return self.forward_tokens(tokens, pos_enc)
+
+    def forward_tokens(self, tokens, pos_enc):
+        tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
+
         out_encoder = self.t_encoder(tokens + pos_enc)
 
         out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
@@ -114,24 +123,30 @@ class DETRBase(nn.Module):
             pred_logits = self.class_mlps[layer_idx](o)
             pred_boxes = self.bbox_mlps[layer_idx](o)
             pred_boxes = torch.sigmoid(pred_boxes)
-            pred_rot = self.rot_mlps[layer_idx](o)
-            pred_t = self.t_mlps[layer_idx](o)
-            outs.append(
-                {
-                    "pred_logits": pred_logits,
-                    "pred_boxes": pred_boxes,
-                    "rot": pred_rot,
-                    "t": pred_t,
-                }
-            )
+            out = {
+                "pred_logits": pred_logits,
+                "pred_boxes": pred_boxes,
+            }
+            if self.use_rot:
+                pred_rot = self.rot_mlps[layer_idx](o)
+                out["rot"] = pred_rot
+            if self.use_t:
+                pred_t = self.t_mlps[layer_idx](o)
+                out["t"] = pred_t
+
+            outs.append(out)
         last_out = outs.pop()
-        return {
+        res = {
             "pred_logits": last_out["pred_logits"],
             "pred_boxes": last_out["pred_boxes"],
-            "rot": last_out["rot"],
-            "t": last_out["t"],
             "aux_outputs": outs,
         }
+        if self.use_rot:
+            res["rot"] = last_out["rot"]
+        if self.use_t:
+            res["t"] = last_out["t"]
+
+        return res
 
     def extract_tokens(self, x, *args, **kwargs):
         raise NotImplementedError
