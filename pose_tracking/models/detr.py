@@ -115,12 +115,14 @@ class DETRBase(nn.Module):
 
         return self.forward_tokens(tokens, pos_enc)
 
-    def forward_tokens(self, tokens, pos_enc):
+    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
-        out_encoder = self.t_encoder(tokens + pos_enc)
+        out_encoder = self.t_encoder(tokens + pos_enc, src_key_padding_mask=memory_key_padding_mask)
 
-        out_decoder = self.t_decoder(self.queries.repeat(len(out_encoder), 1, 1), out_encoder)
+        out_decoder = self.t_decoder(
+            self.queries.repeat(len(out_encoder), 1, 1), out_encoder, memory_key_padding_mask=memory_key_padding_mask
+        )
 
         outs = []
         for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
@@ -252,6 +254,7 @@ class KeypointDETR(DETRBase):
     def forward(self, x, *args, **kwargs):
         extract_res = self.extract_tokens(x, *args, **kwargs)
         tokens = extract_res["tokens"]
+        memory_key_padding_mask = extract_res.get("memory_key_padding_mask")
 
         if self.encoding_type == "learned":
             pos_enc = self.pe_encoder
@@ -260,7 +263,7 @@ class KeypointDETR(DETRBase):
         else:
             pos_enc = self.pe_encoder(extract_res["kpts"])
 
-        out = self.forward_tokens(tokens, pos_enc)
+        out = self.forward_tokens(tokens, pos_enc, memory_key_padding_mask=memory_key_padding_mask)
 
         for k in ["kpts", "descriptors"]:
             out[k] = extract_res[k]
@@ -268,21 +271,23 @@ class KeypointDETR(DETRBase):
         return out
 
     def extract_tokens(self, x, intrinsics=None, depth=None, mask=None):
-        if mask is not None:
+        if self.use_mask_on_input:
             x = x * mask
         bs, c, h, w = x.shape
+        memory_key_padding_mask = None
         if bs > 1:
             extracted_kpts = [self.extractor.extract(x[i : i + 1]) for i in range(bs)]
-            extracted_kpts = [{k: v[0][:1024] for k, v in kpts.items()} for kpts in extracted_kpts]
+            extracted_kpts = [{k: v[0] for k, v in kpts.items()} for kpts in extracted_kpts]
             # pad with zeros up to the max number of keypoints
             max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
+            memory_key_padding_mask = torch.zeros(bs, max_kpts, dtype=torch.bool, device=x.device)
             # extracted_kpts = copy.deepcopy(extracted_kpts)
-            for kpts in extracted_kpts:
-                for k in kpts.keys():
+            for bidx, kpts in enumerate(extracted_kpts):
+                for k in ["keypoints", "descriptors"]:
                     pad_len = max_kpts - len(kpts[k])
                     if pad_len > 0:
-                        if k in ["keypoints", "descriptors"]:
-                            kpts[k] = F.pad(kpts[k], (0, 0, 0, pad_len), value=0)
+                        memory_key_padding_mask[bidx, -pad_len:] = True
+                        kpts[k] = F.pad(kpts[k], (0, 0, 0, pad_len), value=0)
             extracted_kpts = {
                 k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors"]
             }
@@ -306,7 +311,12 @@ class KeypointDETR(DETRBase):
         tokens = descriptors
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
-        return {"tokens": tokens, "kpts": kpts, "descriptors": descriptors}
+        return {
+            "tokens": tokens,
+            "kpts": kpts,
+            "descriptors": descriptors,
+            "memory_key_padding_mask": memory_key_padding_mask,
+        }
 
     def get_pos_encoder(self, encoding_type):
         if encoding_type == "spatial":
