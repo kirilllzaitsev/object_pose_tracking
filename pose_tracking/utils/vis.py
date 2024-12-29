@@ -162,14 +162,6 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def plot_bbox_2d(img, bbox, ax=None, format="xyxy", is_normalized=False, **kwargs):
-    img = vis_bbox_2d(img, bbox, format=format, is_normalized=is_normalized, **kwargs)
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    ax.imshow(img)
-    return ax
-
-
 def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
     img = adjust_img_for_plt(img)
     img = np.ascontiguousarray(adjust_img_for_plt(img))
@@ -275,17 +267,17 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def plot_kpts(img_PIL, points_2d, color="blue", img_rgb=False):
+def vis_kpts(img_PIL, points_2d, color="blue", img_rgb=False):
     img = adjust_img_for_plt(img_PIL)
     if img_rgb:
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     points_2d = cast_to_numpy(points_2d).astype(int)
     for point in points_2d:
-        img = cv2.circle(img, tuple(point), 5, (255, 0, 0), -1)
-    # add text num kpts
+        img = cv2.circle(img, tuple(point), 3, (255, 0, 0), -1)
+
     img = cv2.putText(
         img,
-        f"n_kpt: {len(points_2d)}",
+        f"{len(points_2d)} kpts",
         (40, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
         1,
@@ -450,12 +442,41 @@ def get_cmap(np_img):
     return tmp
 
 
-def plot_rgb(color, ax=None):
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    color = adjust_img_for_plt(color)
-    ax.imshow(color)
-    return ax
+def plot(fn, num_cols=1):
+
+    def inner(*args, ax=None, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots(1, num_cols, figsize=(10, 5))
+        res = fn(*args, **kwargs)
+        ax.imshow(res)
+        return ax
+
+    return inner
+
+
+@plot
+def plot_bbox_2d(img, bbox, format="xyxy", is_normalized=False, **kwargs):
+    return vis_bbox_2d(img, bbox, format=format, is_normalized=is_normalized, **kwargs)
+
+
+@plot
+def plot_kpts(img_PIL, points_2d, color="blue", img_rgb=False):
+    return vis_kpts(img_PIL, points_2d, color, img_rgb)
+
+
+@plot
+def plot_rgb(color):
+    return adjust_img_for_plt(color)
+
+
+@plot
+def plot_optical_flow(flow):
+    return vis_optical_flow(flow)
+
+
+@plot
+def plot_pose(color, pose, K, bbox=None, scale=0.05):
+    return vis_pose(color, pose, K, bbox=bbox, scale=scale)
 
 
 def plot_rgb_depth(color, depth, axs=None):
@@ -483,12 +504,6 @@ def vis_optical_flow(flow):
     hsv[..., 1] = 255  # Full saturation
     hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)  # Magnitude of flow
     rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-    return rgb
-
-
-def plot_optical_flow(flow):
-    rgb = vis_optical_flow(flow)
-    plt.imshow(rgb)
     return rgb
 
 
@@ -552,14 +567,6 @@ def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
         pose = convert_pose_quaternion_to_matrix(pose)
     K = sample["intrinsics"]
     return plot_pose(color, pose, K, bbox=bbox, ax=ax, scale=scale)
-
-
-def plot_pose(color, pose, K, bbox=None, ax=None, scale=0.05):
-    color_with_pose = vis_pose(color, pose, K, bbox=bbox, scale=scale)
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    ax.imshow(color_with_pose)
-    return ax
 
 
 def vis_pose(color, pose, K, bbox=None, scale=0.05):

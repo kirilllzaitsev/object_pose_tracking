@@ -14,7 +14,7 @@ from pose_tracking.utils.geom import (
     backproj_2d_to_3d_batch,
     calibrate_2d_pts_batch,
 )
-from pose_tracking.utils.kpt_utils import load_extractor
+from pose_tracking.utils.kpt_utils import get_kpt_within_mask_indicator, load_extractor
 from pose_tracking.utils.misc import print_cls
 from torchvision.models import resnet18, resnet50, resnet101
 
@@ -56,7 +56,11 @@ class DETRBase(nn.Module):
         self.pe_encoder = self.get_pos_encoder(encoding_type)
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, dropout=0.0
+            d_model=d_model,
+            nhead=n_heads,
+            dim_feedforward=4 * d_model,
+            dropout=0.0,
+            batch_first=True,
         )
 
         self.t_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
@@ -226,8 +230,12 @@ class KeypointDETR(DETRBase):
         kpt_extractor_name="superpoint",
         kpt_spatial_dim=2,
         descriptor_dim=256,
+        use_mask_on_input=False,
+        use_mask_as_obj_indicator=False,
         **kwargs,
     ):
+        self.use_mask_on_input = use_mask_on_input
+        self.use_mask_as_obj_indicator = use_mask_as_obj_indicator
         self.kpt_spatial_dim = kpt_spatial_dim
         self.descriptor_dim = descriptor_dim
 
