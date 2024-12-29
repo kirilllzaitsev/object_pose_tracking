@@ -117,9 +117,6 @@ class DETR(nn.Module):
 
         self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
 
-        for i in range(n_layers):
-            nn.init.constant_(self.bbox_mlps[i].layers[-1].bias, 0.5)
-
     def forward(self, x):
         _ = self.backbone(x)
         tokens = self.backbone_feats["layer4"]
