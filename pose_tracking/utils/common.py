@@ -51,6 +51,18 @@ def cast_to_numpy(x, dtype=None) -> np.ndarray:
     return arr
 
 
+def cast_to_torch(x, device=None):
+    if x is None:
+        return x
+    elif isinstance(x, list):
+        return [cast_to_torch(xx, device=device) for xx in x]
+    elif isinstance(x, dict):
+        return {k: cast_to_torch(v, device=device) for k, v in x.items()}
+    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)):
+        return torch.tensor(x, device=device)
+    return x.to(device)
+
+
 def detach_and_cpu(x):
     if isinstance(x, list):
         return [detach_and_cpu(xx) for xx in x]

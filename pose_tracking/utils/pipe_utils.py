@@ -276,6 +276,7 @@ def get_datasets(
     do_overfit=False,
     do_preload_ds=False,
     include_mask=False,
+    include_bbox_2d=False,
     do_convert_pose_to_quat=True,
 ):
 
@@ -283,7 +284,7 @@ def get_datasets(
     is_detr_model = "detr" in model_name
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
-    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model
+    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,

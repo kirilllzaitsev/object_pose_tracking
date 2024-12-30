@@ -19,6 +19,7 @@ from pose_tracking.utils.common import (
     adjust_depth_for_plt,
     adjust_img_for_plt,
     cast_to_numpy,
+    cast_to_torch,
 )
 from pose_tracking.utils.geom import to_homo, world_to_2d_pt_homo
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
@@ -164,38 +165,35 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
 
 def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
     img = adjust_img_for_plt(img)
-    img = np.ascontiguousarray(adjust_img_for_plt(img))
+    bbox = cast_to_numpy(bbox)
+    img = np.ascontiguousarray(img)
     if bbox.shape == (4, 2):
-        bbox_xy_bl = bbox[0]
-        bbox_xy_ur = bbox[2]
+        bbox_xy_ul = bbox[0]
+        bbox_xy_br = bbox[2]
     elif bbox.shape == (2, 2):
-        bbox_xy_bl = bbox[0]
-        bbox_xy_ur = bbox[1]
+        bbox_xy_ul = bbox[0]
+        bbox_xy_br = bbox[1]
     else:
-        bbox_xy_bl = bbox[:2]
-        bbox_xy_ur = bbox[2:]
+        bbox_xy_ul = bbox[:2]
+        bbox_xy_br = bbox[2:]
     if format == "cxcywh":
-        bbox_xyxy = box_cxcywh_to_xyxy(bbox)
+        bbox_xyxy = box_cxcywh_to_xyxy(cast_to_torch(bbox))
         bbox_xyxy = cast_to_numpy(bbox_xyxy)
-        bbox_xy_bl = bbox_xyxy[:2]
-        bbox_xy_ur = bbox_xyxy[2:]
+        bbox_xy_ul = bbox_xyxy[:2]
+        bbox_xy_br = bbox_xyxy[2:]
 
-        if is_normalized:
-            h, w = img.shape[:2]
-            bbox_xy_bl = bbox_xy_bl * np.array([w, h])
-            bbox_xy_ur = bbox_xy_ur * np.array([w, h])
-    bbox_xy_ur = cast_to_numpy(bbox_xy_ur)
-    bbox_xy_bl = cast_to_numpy(bbox_xy_bl)
-    print(f"{bbox_xy_bl=}")
-    print(f"{bbox_xy_ur=}")
+    if is_normalized:
+        h, w = img.shape[:2]
+        bbox_xy_ul = bbox_xy_ul * np.array([w, h])
+        bbox_xy_br = bbox_xy_br * np.array([w, h])
     img = cv2.rectangle(
         img,
-        tuple(bbox_xy_bl.astype(int)),
-        tuple(bbox_xy_ur.astype(int)),
+        tuple(bbox_xy_ul.astype(int)),
+        tuple(bbox_xy_br.astype(int)),
         color,
         width,
     )
-    for pt in [bbox_xy_bl, bbox_xy_ur]:
+    for pt in [bbox_xy_ul, bbox_xy_br]:
         img = cv2.circle(img, tuple(pt.astype(int)), 5, (0, 255, 0), -1)
     return img
 
@@ -372,7 +370,7 @@ def PIL_image_grid(imgs, rows, cols):
     return grid
 
 
-def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
+def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=True):
     """
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
@@ -380,6 +378,17 @@ def make_grid_image(imgs, nrow=5, padding=5, pad_value=255, dtype=np.uint8):
     imgs = torch.as_tensor(np.asarray(imgs))
     if imgs.shape[-1] == 3:
         imgs = imgs.permute(0, 3, 1, 2)
+    if nrow is None:
+        n = imgs.size(0)
+        for i in range(6, 1, -1):
+            if n % i == 0:
+                nrow = i
+                break
+        else:
+            nrow = 1
+    if not use_existing_fig:
+        plt.figure(figsize=(nrow * 5, (len(imgs) // nrow) * 5))
+        plt.axis("off")
     grid = torchvision.utils.make_grid(imgs, nrow=nrow, padding=padding, pad_value=pad_value)
     grid = grid.permute(1, 2, 0).contiguous().data.cpu().numpy().astype(dtype)
     return grid

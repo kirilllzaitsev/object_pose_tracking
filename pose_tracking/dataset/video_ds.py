@@ -25,7 +25,7 @@ class VideoDataset(Dataset):
         self,
         ds,
         seq_len=None,
-        seq_start=0,
+        seq_start=None,
         seq_step=1,
         num_samples=None,
         do_preload=False,
