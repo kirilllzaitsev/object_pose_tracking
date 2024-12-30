@@ -265,10 +265,11 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def vis_kpts(img_PIL, points_2d, color="blue", img_rgb=False):
+def vis_kpts(img_PIL, points_2d, color="blue", do_fix_img_color=False):
     img = adjust_img_for_plt(img_PIL)
-    if img_rgb:
+    if do_fix_img_color:
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     points_2d = cast_to_numpy(points_2d).astype(int)
     for point in points_2d:
         img = cv2.circle(img, tuple(point), 3, (255, 0, 0), -1)

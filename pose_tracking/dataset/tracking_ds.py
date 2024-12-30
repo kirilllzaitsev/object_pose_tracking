@@ -15,7 +15,7 @@ from pose_tracking.utils.geom import (
 )
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.misc import print_cls
-from pose_tracking.utils.segm_utils import infer_bounding_box, mask_erode
+from pose_tracking.utils.segm_utils import infer_bounding_box, mask_morph
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
 
@@ -101,7 +101,7 @@ class TrackingDataset(Dataset):
         if self.include_mask:
             mask = self.get_mask(i)
             if self.do_erode_mask:
-                mask = mask_erode(mask, kernel_size=11)
+                mask = mask_morph(mask, kernel_size=11)
             sample["mask"] = mask
 
         if self.include_depth:
