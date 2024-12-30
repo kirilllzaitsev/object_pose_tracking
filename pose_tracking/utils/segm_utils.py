@@ -59,11 +59,12 @@ def convert_mask_to_xyxy_box(mask, offset=20):
     return crop_bbox
 
 
-def mask_erode(prev_mask, kernel_size=11):
+def mask_morph(prev_mask, kernel_size=11, op_name="erode"):
     is_tensor = isinstance(prev_mask, torch.Tensor)
     device = prev_mask.device if is_tensor else None
     prev_mask = cast_to_numpy(prev_mask, dtype=np.uint8)
-    res = cv2.erode(prev_mask, np.ones((kernel_size, kernel_size), np.uint8), iterations=1)
+    op = cv2.erode if op_name == "erode" else cv2.dilate
+    res = op(prev_mask, np.ones((kernel_size, kernel_size), np.uint8), iterations=1)
     if is_tensor:
         res = torch.from_numpy(res).to(device)
     return res

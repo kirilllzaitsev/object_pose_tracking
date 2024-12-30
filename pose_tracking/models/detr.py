@@ -16,6 +16,7 @@ from pose_tracking.utils.geom import (
 )
 from pose_tracking.utils.kpt_utils import get_kpt_within_mask_indicator, load_extractor
 from pose_tracking.utils.misc import print_cls
+from pose_tracking.utils.segm_utils import mask_morph
 from torchvision.models import resnet18, resnet50, resnet101
 
 
@@ -275,6 +276,7 @@ class KeypointDETR(DETRBase):
 
     def extract_tokens(self, x, intrinsics=None, depth=None, mask=None):
         if self.use_mask_on_input:
+            mask = torch.stack([mask_morph(m, op_name="dilate") for m in mask]).unsqueeze(1)
             x = x * mask
         bs, c, h, w = x.shape
         memory_key_padding_mask = None
