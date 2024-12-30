@@ -1,0 +1,87 @@
+import torch
+from pose_tracking.models.matcher import box_cxcywh_to_xyxy
+from torchvision.ops.boxes import batched_nms
+
+
+def postprocess_detr_outputs(outputs, target_sizes):
+    """https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_detr.py
+    Args:
+        outputs: raw outputs of the model
+        target_sizes: tensor of dimension [batch_size x 2] containing the size of each images of the batch
+                      For evaluation, this must be the original image size (before any data augmentation)
+                      For visualization, this should be the image size after data augment, but before padding
+    """
+    out_logits, out_bbox = outputs["pred_logits"], outputs["pred_boxes"]
+
+    # assert len(out_logits) == len(target_sizes)
+    assert target_sizes.ndim == 1 or target_sizes.shape[1] == 2
+
+    prob = out_logits.sigmoid()
+    topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), out_logits.shape[-2], dim=1)
+    scores = topk_values
+    topk_boxes = topk_indexes // out_logits.shape[2]
+    labels = topk_indexes % out_logits.shape[2]
+    boxes = box_cxcywh_to_xyxy(out_bbox)
+    boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1, 1, 4))
+
+    # and from relative [0, 1] to absolute [0, height] coordinates
+    img_h, img_w = target_sizes.unbind(1)
+    scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+    boxes = boxes * scale_fct[:, None, :]
+
+    results = [{"scores": s, "labels": l, "boxes": b} for s, l, b in zip(scores, labels, boxes)]
+
+    return results
+
+
+def postprocess_detr_outputs_nms(outputs, target_sizes):
+    """https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_detr.py
+    Args:
+        outputs: raw outputs of the model
+        target_sizes: tensor of dimension [batch_size x 2] containing the size of each images of the batch
+                      For evaluation, this must be the original image size (before any data augmentation)
+                      For visualization, this should be the image size after data augment, but before padding
+    """
+    out_logits, out_bbox = outputs["pred_logits"], outputs["pred_boxes"]
+    bs, n_queries, n_cls = out_logits.shape
+
+    assert len(out_logits) == len(target_sizes)
+    assert target_sizes.shape[1] == 2
+
+    prob = out_logits.sigmoid()
+
+    all_scores = prob.view(bs, n_queries * n_cls).to(out_logits.device)
+    all_indexes = torch.arange(n_queries * n_cls)[None].repeat(bs, 1).to(out_logits.device)
+    all_boxes = all_indexes // out_logits.shape[2]
+    all_labels = all_indexes % out_logits.shape[2]
+
+    boxes = box_cxcywh_to_xyxy(out_bbox)
+    boxes = torch.gather(boxes, 1, all_boxes.unsqueeze(-1).repeat(1, 1, 4))
+
+    # and from relative [0, 1] to absolute [0, height] coordinates
+    img_h, img_w = target_sizes.unbind(1)
+    scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+    boxes = boxes * scale_fct[:, None, :]
+
+    results = []
+    for b in range(bs):
+        box = boxes[b]
+        score = all_scores[b]
+        lbls = all_labels[b]
+
+        if n_queries * n_cls > 10000:
+            pre_topk = score.topk(10000).indices
+            box = box[pre_topk]
+            score = score[pre_topk]
+            lbls = lbls[pre_topk]
+
+        keep_inds = batched_nms(box, score, lbls, 0.7)[:100]
+        results.append(
+            {
+                "scores": score[keep_inds],
+                "labels": lbls[keep_inds],
+                "boxes": box[keep_inds],
+            }
+        )
+
+    return results
