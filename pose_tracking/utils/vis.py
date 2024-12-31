@@ -165,7 +165,10 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
 
 def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
     img = adjust_img_for_plt(img)
-    bbox = cast_to_numpy(bbox)
+    bbox = cast_to_numpy(bbox).squeeze()
+
+    assert len(bbox.shape) == 1, f"{bbox.shape=}"
+
     img = np.ascontiguousarray(img)
     if bbox.shape == (4, 2):
         bbox_xy_ul = bbox[0]
@@ -173,14 +176,14 @@ def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normali
     elif bbox.shape == (2, 2):
         bbox_xy_ul = bbox[0]
         bbox_xy_br = bbox[1]
-    else:
-        bbox_xy_ul = bbox[:2]
-        bbox_xy_br = bbox[2:]
-    if format == "cxcywh":
+    elif format == "cxcywh":
         bbox_xyxy = box_cxcywh_to_xyxy(cast_to_torch(bbox))
         bbox_xyxy = cast_to_numpy(bbox_xyxy)
         bbox_xy_ul = bbox_xyxy[:2]
         bbox_xy_br = bbox_xyxy[2:]
+    else:
+        bbox_xy_ul = bbox[:2]
+        bbox_xy_br = bbox[2:]
 
     if is_normalized:
         h, w = img.shape[:2]
@@ -387,6 +390,7 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
                 break
         else:
             nrow = 1
+    nrow = min(len(imgs), max(nrow, 1))
     if not use_existing_fig:
         plt.figure(figsize=(nrow * 5, (len(imgs) // nrow) * 5))
         plt.axis("off")
@@ -395,7 +399,7 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
     return grid
 
 
-def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
+def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False):
     if "rgb" in seq:
         batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
         seq = batch_seq[batch_idx]
@@ -414,12 +418,16 @@ def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0):
         arr = []
         for i in range(take_n):
             img = seq[i][key]
+            dtype = np.uint8
             if key in ["depth"]:
                 grid_img = adjust_depth_for_plt(img[batch_idx])
                 dtype = np.float32
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(img[batch_idx][None])
-                dtype = np.uint8
+            elif "box" in key:
+                grid_img = vis_bbox_2d(
+                    seq[i]["rgb"][batch_idx], img[batch_idx], format=bbox_format, is_normalized=bbox_is_normalized
+                )
             elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
                 pose = img[batch_idx]
                 if pose.shape[-1] == 7:
