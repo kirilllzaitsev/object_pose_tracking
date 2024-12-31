@@ -3,6 +3,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from pose_tracking.dataset.transforms import mask_pixels
+from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 
 
@@ -148,5 +149,19 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
         news = []
         for sidx in range(len(batch["rgb"])):
             news.append({k: v[sidx][bidx] for k, v in batch.items() if len(v) > 0 if k in keys})
+        res.append(news)
+    return res
+
+
+def convert_batch_seq_to_seq_batch(batch, keys=None):
+    # from keyxbatchxseq_len to seq_lenxkeyxbatch
+    res = []
+    keys = keys or batch.keys()
+    for sidx in range(len(batch["rgb"][0])):
+        news = {}
+        for k, v in batch.items():
+            if k in keys:
+                news[k] = [v[bidx][sidx] for bidx in range(len(v))]
+                news[k] = cast_to_numpy(news[k])
         res.append(news)
     return res

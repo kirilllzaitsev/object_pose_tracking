@@ -185,5 +185,5 @@ class CustomSimDatasetIkea(CustomSimDataset):
             self.mesh_diameter = compute_pts_span(self.mesh_bbox)
 
     def augment_sample(self, sample, idx):
-        sample["class_id"] = self.metadata[self.obj_id].get("class_id", 0)
+        sample["class_id"] = [self.metadata[self.obj_id].get("class_id", 0)]
         return sample

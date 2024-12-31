@@ -37,7 +37,7 @@ def adjust_depth_for_plt(img):
 
 
 def cast_to_numpy(x, dtype=None) -> np.ndarray:
-    if x is None:
+    if x is None or isinstance(x, str):
         return x
     elif isinstance(x, list):
         return np.array([cast_to_numpy(xx) for xx in x])
@@ -51,11 +51,14 @@ def cast_to_numpy(x, dtype=None) -> np.ndarray:
     return arr
 
 
-def cast_to_torch(x, device=None):
-    if x is None:
+def cast_to_torch(x, device=None, include_top_list=False):
+    if x is None or isinstance(x, str):
         return x
     elif isinstance(x, list):
-        return [cast_to_torch(xx, device=device) for xx in x]
+        res = [cast_to_torch(xx, device=device) for xx in x]
+        if include_top_list:
+            return torch.stack(res)
+        return res
     elif isinstance(x, dict):
         return {k: cast_to_torch(v, device=device) for k, v in x.items()}
     elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)):
