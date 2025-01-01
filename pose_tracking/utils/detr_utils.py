@@ -19,6 +19,7 @@ def postprocess_detr_outputs(outputs, target_sizes):
     prob = out_logits.sigmoid()
     topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), out_logits.shape[-2], dim=1)
     scores = topk_values
+    scores_no_object = 1 - scores
     topk_boxes = topk_indexes // out_logits.shape[2]
     labels = topk_indexes % out_logits.shape[2]
     boxes = box_cxcywh_to_xyxy(out_bbox)
@@ -29,7 +30,10 @@ def postprocess_detr_outputs(outputs, target_sizes):
     scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
     boxes = boxes * scale_fct[:, None, :]
 
-    results = [{"scores": s, "labels": l, "boxes": b} for s, l, b in zip(scores, labels, boxes)]
+    results = [
+        {"scores": s, "labels": l, "boxes": b, "scores_no_object": sbg}
+        for s, l, b, sbg in zip(scores, labels, boxes, scores_no_object)
+    ]
 
     return results
 
