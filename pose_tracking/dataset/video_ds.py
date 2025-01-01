@@ -92,6 +92,99 @@ class VideoDataset(Dataset):
         return seq
 
 
+class VideoDatasetTracking(VideoDataset):
+    """Trackformer data adapter
+    """
+
+    def __getitem__(self, idx):
+        seq = []
+        timesteps = self.seq_len
+        seq_start = self.seq_start
+        seq_step = self.seq_step
+
+        if not seq_step:
+            seq_step = torch.randint(1, self.max_random_seq_step, (1,)).item()
+
+        if seq_start is None:
+            seq_start = torch.randint(
+                1,
+                max(1, len(self.ds) + 1 - timesteps * seq_step),
+                (1,),
+            ).item()
+        else:
+            seq_start = max(1, seq_start)
+
+        assert seq_step > 0, f"{seq_step=}"
+
+        for t in range(timesteps):
+            frame_idx = seq_start + t * seq_step
+            frame_idx_prev = frame_idx - seq_step
+            sample = self.ds[frame_idx]
+            sample_prev = self.ds[frame_idx_prev]
+            new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
+            new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
+            # rename rgb->image bbox_2d->boxes class_id->labels
+            new_sample["bbox_2d"] = sample["bbox_2d"]
+            new_sample["class_id"] = sample["class_id"]
+            new_sample["intrinsics"] = sample["intrinsics"]
+            new_sample["pose"] = sample["pose"]
+            new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
+
+            new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
+            new_sample["prev_bbox_2d"] = sample_prev["bbox_2d"]
+            new_sample["prev_class_id"] = sample_prev["class_id"]
+            new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
+            new_sample["prev_pose"] = sample_prev["pose"]
+            new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
+
+            new_sample["image"] = new_sample.pop("rgb")
+            new_sample["prev_image"] = new_sample.pop("prev_rgb")
+            new_sample["boxes"] = new_sample.pop("bbox_2d")
+            new_sample["labels"] = new_sample.pop("class_id")
+            new_sample["prev_boxes"] = new_sample.pop("prev_bbox_2d")
+            new_sample["prev_labels"] = new_sample.pop("prev_class_id")
+
+            for k in ["boxes", "prev_boxes"]:
+                new_sample[k] = new_sample[k].float()
+                new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
+
+            new_sample["image_id"] = torch.tensor([frame_idx])
+            new_sample["track_ids"] = torch.tensor(
+                [0]
+            )  # always 0 with one obj per video. should persist across frames in this video
+            new_sample["prev_image_id"] = torch.tensor([frame_idx_prev])
+            new_sample["prev_track_ids"] = torch.tensor([0])
+
+            # move prev_* into prev_target dict removing prev_ prefix
+            new_sample["prev_target"] = {
+                k.replace("prev_", ""): v
+                for k, v in new_sample.items()
+                if k.startswith("prev_") and k not in ["prev_image"]
+            }
+            for k in new_sample["prev_target"]:
+                new_sample.pop(f"prev_{k}")
+
+            new_sample["target"] = {
+                k: new_sample.pop(k)
+                for k in [
+                    "image_id",
+                    "track_ids",
+                    "boxes",
+                    "labels",
+                    "intrinsics",
+                    "pose",
+                    "size",
+                    "prev_image",
+                ]
+            }
+
+            new_sample["target"]["prev_target"] = new_sample.pop("prev_target")
+
+            sample = new_sample
+            seq.append(sample)
+        return seq
+
+
 class MultiVideoDataset(Dataset):
     """
     Takes in multiple datasets representing different videos and wraps them to return a seq from a random video.
