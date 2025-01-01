@@ -24,7 +24,11 @@ def _transfer_batch_to_device(batch: dict, device: DeviceType) -> dict:
             if is_tensor(v[0]):
                 batch[k] = [to(x, device) for x in v]
             elif isinstance(v[0], list):
-                batch[k] = [[to(x, device) if is_tensor(x) else x for x in y] for y in v]
+                batch[k] = [[_transfer_batch_to_device(x, device) for x in y] for y in v]
+            elif isinstance(v[0], dict):
+                batch[k] = [_transfer_batch_to_device(x, device) for x in v]
+        elif isinstance(v, dict):
+            batch[k] = _transfer_batch_to_device(v, device)
     return batch
 
 

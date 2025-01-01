@@ -54,7 +54,7 @@ def cast_to_numpy(x, dtype=None) -> np.ndarray:
 def cast_to_torch(x, device=None, include_top_list=False):
     if x is None or isinstance(x, str):
         return x
-    elif isinstance(x, list):
+    elif type(x) in [list, tuple]:
         res = [cast_to_torch(xx, device=device) for xx in x]
         if include_top_list:
             return torch.stack(res)
@@ -89,6 +89,8 @@ def extract_idxs(arr, idxs, do_extract_dict_contents=False):
     if arr is None:
         return None
     elif isinstance(arr, list):
+        if len(arr) == 0:
+            return []
         if do_extract_dict_contents and len(arr) > 0 and isinstance(arr[0], dict):
             return [extract_idxs(a, idxs, do_extract_dict_contents=do_extract_dict_contents) for a in arr]
         else:

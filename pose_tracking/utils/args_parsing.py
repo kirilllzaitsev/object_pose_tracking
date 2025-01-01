@@ -116,7 +116,7 @@ def get_parser():
         type=str,
         default="spatial",
         help="Encoding type for positional encoding",
-        choices=["spatial", "sin"],
+        choices=["spatial", "sin", "learned"],
     )
     poseformer_args.add_argument(
         "--mt_num_queries",
