@@ -12,7 +12,11 @@ from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetIkea,
 )
 from pose_tracking.dataset.transforms import get_transforms
-from pose_tracking.dataset.video_ds import MultiVideoDataset, VideoDataset
+from pose_tracking.dataset.video_ds import (
+    MultiVideoDataset,
+    VideoDataset,
+    VideoDatasetTracking,
+)
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
@@ -53,9 +57,10 @@ def get_model(args, num_classes=None):
         detr_args.num_queries = args.mt_num_queries
         detr_args.enc_layers = args.mt_n_layers
         detr_args.dec_layers = args.mt_n_layers
-        detr_args.dim_feedforward = args.hidden_dim
+        # detr_args.dim_feedforward = args.hidden_dim
         detr_args.hidden_dim = args.hidden_dim
         detr_args.nheads = args.mt_n_heads
+        args.detr_args = detr_args
         backbone = build_backbone(detr_args)
 
         transformer = build_deforamble_transformer(detr_args)
@@ -69,8 +74,15 @@ def get_model(args, num_classes=None):
             with_box_refine=detr_args.with_box_refine,
             two_stage=detr_args.two_stage,
         )
+    elif args.model_name == "trackformer":
+        from trackformer.models import build_model
+
+        detr_args = get_trackformer_args(args)
+        args.detr_args = detr_args
+        model, criterion, postprocessors = build_model(detr_args, num_classes=num_classes)
+
     elif args.model_name in ["detr_basic", "detr_kpt"]:
-        kwargs = dict(
+        detr_args = dict(
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -78,22 +90,24 @@ def get_model(args, num_classes=None):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
             encoding_type=args.mt_encoding_type,
-            opt_only=args.opt_only
+            opt_only=args.opt_only,
         )
+        args.detr_args = argparse.Namespace(**detr_args)
+
         if args.model_name == "detr_basic":
             from pose_tracking.models.detr import DETR
 
             model = DETR(
                 backbone_name=args.encoder_name,
                 use_pretrained_backbone=args.encoder_img_weights is not None,
-                **kwargs,
+                **detr_args,
             )
         elif args.model_name == "detr_kpt":
             from pose_tracking.models.detr import KeypointDETR
 
             model = KeypointDETR(
                 kpt_spatial_dim=args.mt_kpt_spatial_dim,
-                **kwargs,
+                **detr_args,
             )
     else:
         num_pts = 256
@@ -145,10 +159,52 @@ def get_model(args, num_classes=None):
     return model
 
 
+def get_trackformer_args(args):
+    tf_args = argparse.Namespace(
+        **yaml.load(
+            open(
+                f"{RELATED_DIR}/obj_det/trackformer/config.yaml",
+                "r",
+            ),
+            Loader=yaml.Loader,
+        )
+    )
+    tf_args.deformable = False
+    tf_args.deformable = True
+
+    tf_args.focal_loss = True
+
+    tf_args.multi_frame_attention = True
+    tf_args.multi_frame_encoding = True
+    tf_args.overflow_boxes = True
+    # tf_args.multi_frame_attention=False
+    tf_args.multi_frame_encoding = False
+    # tf_args.overflow_boxes=False
+
+    tf_args.lr = args.lr
+    tf_args.lr_backbone = tf_args.lr * 0.1
+    tf_args.lr_linear_proj_mult = tf_args.lr * 0.1
+    tf_args.lr_track = tf_args.lr
+    tf_args.with_box_refine = True
+    tf_args.with_box_refine = False
+    tf_args.num_queries = args.mt_num_queries
+    tf_args.enc_layers = args.mt_n_layers
+    tf_args.dec_layers = args.mt_n_layers
+    tf_args.dropout = args.dropout
+    tf_args.hidden_dim = 288
+
+    return tf_args
+
+
 def get_trainer(
     args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
-    from pose_tracking.trainer import Trainer, TrainerDeformableDETR, TrainerVideopose
+    from pose_tracking.trainer import (
+        Trainer,
+        TrainerDeformableDETR,
+        TrainerTrackformer,
+        TrainerVideopose,
+    )
 
     criterion_trans = get_t_loss(args.t_loss_name)
     criterion_rot = get_rot_loss(args.rot_loss_name)
@@ -161,21 +217,19 @@ def get_trainer(
         trainer_cls = TrainerPizza
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
+    elif "trackformer" in args.model_name:
+        trainer_cls = TrainerTrackformer
     else:
         trainer_cls = Trainer
 
-    if "detr" in args.model_name:
+    is_detr = "detr" in args.model_name or args.model_name == "trackformer"
+    if is_detr:
         assert num_classes is not None
         extra_kwargs = {
             "num_classes": num_classes,
+            "num_dec_layers": args.mt_n_layers,
+            "aux_loss": True,
         }
-        if "detr" in args.model_name:
-            extra_kwargs.update(
-                {
-                    "num_dec_layers": args.mt_n_layers,
-                    "aux_loss": True,
-                }
-            )
         if "detr_kpt" in args.model_name:
             extra_kwargs.update(
                 {
@@ -183,6 +237,8 @@ def get_trainer(
                     "do_calibrate_kpt": args.mt_do_calibrate_kpt,
                 }
             )
+        if "trackformer" in args.model_name:
+            extra_kwargs.update({"args": args})
     else:
         extra_kwargs = {}
 
@@ -281,7 +337,8 @@ def get_datasets(
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
-    is_detr_model = "detr" in model_name
+    is_tf_model = "trackformer" in model_name
+    is_detr_model = "detr" in model_name or is_tf_model
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
     include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
@@ -293,7 +350,7 @@ def get_datasets(
         start_frame_idx=0,
         do_convert_pose_to_quat=do_convert_pose_to_quat,
         mask_pixels_prob=mask_pixels_prob,
-        do_normalize_bbox=True if is_detr_model else False,
+        do_normalize_bbox=True if is_detr_model or is_tf_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",
         model_name="pizza" if is_pizza_model else model_name,
     )
@@ -316,6 +373,8 @@ def get_datasets(
 
     res = {}
 
+    video_ds_cls = VideoDatasetTracking if is_tf_model else VideoDataset
+
     train_ds_kwargs = copy.deepcopy(ds_kwargs)
     train_ds_kwargs["video_dir"] = ds_video_dir_train
     if "train" in ds_types:
@@ -329,6 +388,7 @@ def get_datasets(
             num_samples=num_samples,
             do_preload=do_preload_ds,
             transforms_rgb=transform_rgb,
+            video_ds_cls=video_ds_cls,
         )
         mesh_paths_orig_train = [d.ds.mesh_path_orig for d in train_dataset.video_datasets]
         res["train"] = train_dataset
@@ -347,6 +407,7 @@ def get_datasets(
                 num_samples=None,
                 do_preload=do_preload_ds,
                 transforms_rgb=None,
+                video_ds_cls=video_ds_cls,
             )
         else:
             assert ds_video_dir_val and ds_video_subdirs_val
@@ -363,6 +424,7 @@ def get_datasets(
                 num_samples=num_samples,
                 do_preload=True,
                 mesh_paths_to_take=mesh_paths_orig_train,
+                video_ds_cls=video_ds_cls,
             )
         res["val"] = val_dataset
 
@@ -380,6 +442,7 @@ def get_datasets(
             ds_kwargs=test_ds_kwargs,
             num_samples=num_samples,
             do_preload=True,
+            video_ds_cls=video_ds_cls,
         )
         res["test"] = test_dataset
 
@@ -397,6 +460,7 @@ def get_video_ds(
     do_preload=False,
     transforms_rgb=None,
     mesh_paths_to_take=None,
+    video_ds_cls=VideoDataset,
 ):
     video_datasets = []
     for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
@@ -405,7 +469,7 @@ def get_video_ds(
         if mesh_paths_to_take is not None:
             if ds.mesh_path_orig not in mesh_paths_to_take:
                 continue
-        video_ds = VideoDataset(
+        video_ds = video_ds_cls(
             ds=ds,
             seq_len=seq_len,
             seq_step=seq_step,
