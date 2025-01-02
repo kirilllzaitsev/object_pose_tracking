@@ -149,3 +149,12 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
 def split_arr(arr, num_chunks):
     k, m = divmod(len(arr), num_chunks)
     return [arr[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)] for i in range(num_chunks)]
+
+
+def match_module_by_name(n, name_keywords):
+    out = False
+    for b in name_keywords:
+        if b in n:
+            out = True
+            break
+    return out

@@ -168,7 +168,7 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None):
+def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None, label_place="top"):
     img = adjust_img_for_plt(img)
     bbox = cast_to_numpy(bbox).squeeze()
 
@@ -201,19 +201,21 @@ def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normali
         color,
         width,
     )
-    for pt in [bbox_xy_ul, bbox_xy_br]:
-        img = cv2.circle(img, tuple(pt.astype(int)), 5, (0, 255, 0), -1)
     if label is not None:
-        text = f"label: {label}"
+        text = f"{label}"
         if score is not None:
-            text += f", score: {score:.2f}"
+            text += f", {score:.2f}"
+        if label_place == "top":
+            label_xy = (int(bbox_xy_ul[0]), int(bbox_xy_ul[1]) - 10)
+        else:
+            label_xy = (int(bbox_xy_br[0]), int(bbox_xy_br[1]) + 10)
         img = cv2.putText(
             img,
             text,
-            (int(bbox_xy_ul[0]), int(bbox_xy_ul[1]) - 10),
+            label_xy,
             cv2.FONT_HERSHEY_SIMPLEX,
             0.75,
-            (0, 255, 0),
+            color,
             2,
             cv2.LINE_AA,
         )
