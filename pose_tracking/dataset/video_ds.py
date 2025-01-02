@@ -113,6 +113,7 @@ class VideoDatasetTracking(VideoDataset):
             ).item()
         else:
             seq_start = max(1, seq_start)
+            timesteps = min(timesteps, (len(self.ds) - seq_start) // seq_step)
 
         assert seq_step > 0, f"{seq_step=}"
 
@@ -127,15 +128,22 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["bbox_2d"] = sample["bbox_2d"]
             new_sample["class_id"] = sample["class_id"]
             new_sample["intrinsics"] = sample["intrinsics"]
-            new_sample["pose"] = sample["pose"]
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
+            pose = sample["pose"]
+            new_sample["pose"] = pose
+            new_sample["t"] = pose[..., :3]
+            new_sample["rot"] = pose[..., 3:]
 
             new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
             new_sample["prev_bbox_2d"] = sample_prev["bbox_2d"]
             new_sample["prev_class_id"] = sample_prev["class_id"]
             new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
-            new_sample["prev_pose"] = sample_prev["pose"]
             new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
+
+            prev_pose = sample_prev["pose"]
+            new_sample["prev_pose"] = prev_pose
+            new_sample["prev_t"] = prev_pose[..., :3]
+            new_sample["prev_rot"] = prev_pose[..., 3:]
 
             new_sample["image"] = new_sample.pop("rgb")
             new_sample["prev_image"] = new_sample.pop("prev_rgb")
@@ -144,7 +152,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_boxes"] = new_sample.pop("prev_bbox_2d")
             new_sample["prev_labels"] = new_sample.pop("prev_class_id")
 
-            for k in ["boxes", "prev_boxes"]:
+            for k in ["boxes", "prev_boxes", "rot", "t", "prev_rot", "prev_t"]:
                 new_sample[k] = new_sample[k].float()
                 new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
 
@@ -175,6 +183,8 @@ class VideoDatasetTracking(VideoDataset):
                     "pose",
                     "size",
                     "prev_image",
+                    "rot",
+                    "t",
                 ]
             }
 
