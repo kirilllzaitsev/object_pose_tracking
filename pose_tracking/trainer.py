@@ -1,5 +1,7 @@
 import functools
+import math
 import os
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -936,6 +938,298 @@ class TrainerDeformableDETR(Trainer):
         }
 
 
+class TrainerTrackformer(Trainer):
+
+    def __init__(
+        self,
+        *args_,
+        args,
+        num_classes,
+        aux_loss,
+        num_dec_layers,
+        focal_alpha=0.25,
+        kpt_spatial_dim=2,
+        opt_only=None,
+        do_calibrate_kpt=False,
+        **kwargs,
+    ):
+
+        from pose_tracking.utils.pipe_utils import get_trackformer_args
+        from trackformer.models import build_criterion
+        from trackformer.models.matcher import build_matcher
+
+        super().__init__(*args_, **kwargs)
+
+        self.do_calibrate_kpt = do_calibrate_kpt
+        self.tf_args = get_trackformer_args(args)
+
+        self.opt_only = opt_only
+        self.num_classes = num_classes
+        self.aux_loss = aux_loss
+        self.num_dec_layers = num_dec_layers
+        self.kpt_spatial_dim = kpt_spatial_dim
+        self.focal_alpha = focal_alpha
+
+        self.save_vis_paths = []
+        self.cost_class, self.cost_bbox, self.cost_giou = (2, 5, 2)
+        self.losses = [
+            "labels",
+            "boxes",
+            "rot",
+            "t",
+        ]
+        if opt_only is not None:
+            self.losses = [v for v in self.losses if v in opt_only]
+            if "labels" not in opt_only:
+                self.cost_class = 0
+            if "boxes" not in opt_only:
+                self.cost_bbox = 0
+                self.cost_giou = 0
+
+        self.matcher = build_matcher(self.tf_args)
+        self.losses += ["cardinality"]
+        self.criterion = build_criterion(
+            self.tf_args, num_classes=num_classes, matcher=self.matcher, device=args.device
+        )
+
+    def loader_forward(
+        self,
+        loader,
+        *,
+        optimizer=None,
+        save_preds=False,
+        preds_dir=None,
+        stage="train",
+    ):
+        if stage == "train":
+            self.train_epoch_count += 1
+        running_stats = defaultdict(float)
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+        seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
+
+        for seq_pack_idx, batched_seq in enumerate(seq_pbar):
+            seq_stats = self.batched_seq_forward(
+                batched_seq=batched_seq,
+                optimizer=optimizer,
+                save_preds=save_preds,
+                preds_dir=preds_dir,
+                stage=stage,
+                do_vis=do_vis,
+            )
+
+            for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
+                running_stats[k] += v
+                if self.do_log and self.do_log_every_seq:
+                    self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
+            self.seq_counts_per_stage[stage] += 1
+
+            if self.do_print_seq_stats:
+                seq_pbar.set_postfix({k: v / (seq_pack_idx + 1) for k, v in running_stats.items()})
+
+            do_vis = False  # only do vis for the first seq
+
+        for k, v in running_stats.items():
+            if self.use_ddp:
+                v = reduce_metric(v, world_size=self.world_size)
+            running_stats[k] = v / len(loader)
+
+        if self.do_log:
+            for k, v in running_stats.items():
+                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
+
+        return running_stats
+
+    def batched_seq_forward(
+        self,
+        batched_seq,
+        *,
+        optimizer=None,
+        save_preds=False,
+        preds_dir=None,
+        stage="train",
+        do_vis=False,
+    ):
+
+        is_train = optimizer is not None
+        do_opt_every_ts = is_train and self.use_optim_every_ts
+        do_opt_in_the_end = is_train and not self.use_optim_every_ts
+
+        seq_length = len(batched_seq)
+        batch_size = len(batched_seq[0]["image"])
+        if self.do_debug:
+            for batch_t in batched_seq:
+                for k, v in batch_t.items():
+                    if k not in ["image", "intrinsics", "mesh_bbox", "bbox_2d", "class_id"]:
+                        continue
+                    self.processed_data[k].append(v)
+        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+        pose_to_mat_converter_fn = (
+            convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
+        )
+
+        seq_stats = defaultdict(float)
+        seq_metrics = defaultdict(float)
+        ts_pbar = tqdm(
+            enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=seq_length == 1
+        )
+
+        if do_opt_in_the_end:
+            optimizer.zero_grad()
+            total_loss = 0
+
+        if do_vis:
+            vis_batch_idxs = list(range(min(batch_size, 8)))
+            vis_data = defaultdict(list)
+
+        pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
+        out_prev = None  # raw ouput of the model
+        pose_mat_prev_gt_abs = None
+        prev_latent = None
+        nan_count = 0
+
+        for t, batch_t in ts_pbar:
+            if do_opt_every_ts:
+                optimizer.zero_grad()
+            rgb = batch_t["image"]
+            mask = batch_t["mask"]
+            pose_gt_abs = torch.stack([x["pose"] for x in batch_t["target"]])
+            depth = batch_t["depth"]
+            pts = batch_t["mesh_pts"]
+            h, w = rgb.shape[-2:]
+            t_gt_abs = pose_gt_abs[:, :3]
+            rot_gt_abs = pose_gt_abs[:, 3:]
+
+            targets = batch_t["target"]
+            out, targets_res, *_ = self.model(rgb, targets)
+
+            # POSTPROCESS OUTPUTS
+
+            # LOSSES
+
+            loss_dict = self.criterion(out, targets_res)
+            weight_dict = self.criterion.weight_dict
+            loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+
+            # reduce losses over all GPUs for logging purposes
+            loss_dict_reduced = reduce_dict(loss_dict)
+            loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
+            loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
+            losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
+
+            # optim
+            if do_opt_every_ts:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                if self.do_debug or do_vis:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    if do_vis:
+                        vis_data["grad_norm"].append(grad_norm)
+                        vis_data["grad_norms"].append(grad_norms)
+                    if self.do_debug:
+                        self.processed_data["grad_norm"].append(grad_norm)
+                        self.processed_data["grad_norms"].append(grad_norms)
+
+                optimizer.step()
+            elif do_opt_in_the_end:
+                total_loss += loss
+
+            # METRICS
+
+            bbox_3d = batch_t["mesh_bbox"]
+            diameter = batch_t["mesh_diameter"]
+            m_batch = defaultdict(list)
+
+            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            for k, v in m_batch_avg.items():
+                seq_metrics[k] += v
+
+            # UPDATE VARS
+
+            # OTHER
+
+            loss_value = losses_reduced_scaled.item()
+            seq_stats["loss"] += loss_value
+            for k, v in {**loss_dict_reduced_scaled, **loss_dict_reduced_unscaled}.items():
+                seq_stats[k] += v
+            for k in ["class_error"]:
+                if k in loss_dict_reduced:
+                    seq_stats[k] += loss_dict_reduced[k]
+
+            if self.do_log and self.do_log_every_ts:
+                for k, v in m_batch_avg.items():
+                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+
+            if not math.isfinite(loss_value):
+                self.logger(f"Loss is {loss_value}, stopping training")
+                self.logger(loss_dict_reduced)
+                sys.exit(1)
+
+            self.ts_counts_per_stage[stage] += 1
+
+            if save_preds:
+                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                save_results(batch_t, pose_mat_pred_abs, preds_dir)
+
+            if do_vis:
+                # save inputs to the exp dir
+                vis_keys = ["image"]
+                for k in vis_keys:
+                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
+                vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
+                vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
+
+                # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
+                # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
+                # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
+
+            if self.do_debug:
+                # add everything to processed_data
+                # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
+                # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
+                # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
+                # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
+                self.processed_data["targets"].append(detach_and_cpu(targets))
+                # self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
+                # self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
+                self.processed_data["out"].append(detach_and_cpu(out))
+                # self.processed_data["pred_classes"].append(detach_and_cpu(out["pred_logits"].argmax(-1) + 1))
+                # self.processed_data["rot_pred"].append(rot_pred)
+                # self.processed_data["t_pred"].append(t_pred)
+
+        if do_opt_in_the_end:
+            total_loss /= seq_length
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            if self.do_debug or do_vis:
+                grad_norms, grad_norm = self.get_grad_info()
+                if do_vis:
+                    vis_data["grad_norm"].append(grad_norm)
+                    vis_data["grad_norms"].append(grad_norms)
+                if self.do_debug:
+                    self.processed_data["grad_norm"].append(grad_norm)
+                    self.processed_data["grad_norms"].append(grad_norms)
+            optimizer.step()
+
+        for stats in [seq_stats, seq_metrics]:
+            for k, v in stats.items():
+                stats[k] = v / seq_length
+
+        if nan_count > 0:
+            seq_metrics["nan_count"] = nan_count
+
+        if do_vis:
+            os.makedirs(self.vis_dir, exist_ok=True)
+            save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
+            torch.save(vis_data, save_vis_path)
+            self.save_vis_paths.append(save_vis_path)
+            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
+
+        return {
+            "losses": seq_stats,
+            "metrics": seq_metrics,
+        }
+
+
 class TrainerVideopose(Trainer):
 
     def __init__(self, *args, **kwargs):
@@ -1087,6 +1381,7 @@ class TrainerPizza(Trainer):
                                 batched_seq[k] = from_numpy(v).to(self.device)
                             else:
                                 batched_seq[k] = torch.tensor(v).to(self.device)
+            # batched_seq_forward
             batched_seq = transfer_batch_to_device(batched_seq, self.device)
             res = self.model(batched_seq["rgb"])
             rot = res["rot"]
@@ -1128,11 +1423,19 @@ class TrainerPizza(Trainer):
             loss_uv = MSELoss(delta_uv, gt_delta_uv) * (10**3)  # to mm
             loss = loss_z + loss_uv + R_metrics["geodesic_err"]
 
+            if not math.isfinite(loss):
+                self.logger(f"Loss is {loss}, stopping training")
+                self.logger(f"{loss_z=} {loss_uv=} {R_metrics=} {T_metrics=}")
+                sys.exit(1)
+
             if is_train:
                 optimizer.zero_grad()
                 loss.backward()
                 # Call step of optimizer to update model params
                 optimizer.step()
+                for name, param in self.model.named_parameters():
+                    if torch.isnan(param).any() or torch.isinf(param).any():
+                        print(name)
 
             losses = {
                 "loss": loss,
