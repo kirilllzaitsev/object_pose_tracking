@@ -183,7 +183,7 @@ def get_trackformer_args(args):
 
     tf_args.lr = args.lr
     tf_args.lr_backbone = tf_args.lr * 0.1
-    tf_args.lr_linear_proj_mult = tf_args.lr * 0.1
+    tf_args.lr_linear_proj_mult = tf_args.lr_linear_proj_mult
     tf_args.lr_track = tf_args.lr
     tf_args.with_box_refine = True
     tf_args.with_box_refine = False
@@ -192,6 +192,19 @@ def get_trackformer_args(args):
     tf_args.dec_layers = args.mt_n_layers
     tf_args.dropout = args.dropout
     tf_args.hidden_dim = 288
+
+    if tf_args.deformable:
+        tf_args.bbox_loss_coef = 5
+        tf_args.giou_loss_coef = 2
+        tf_args.ce_loss_coef = 2
+    else:
+        tf_args.bbox_loss_coef = 1
+        tf_args.giou_loss_coef = 1
+        tf_args.ce_loss_coef = 1
+        tf_args.rot_loss_coef = 1
+        tf_args.t_loss_coef = 1
+
+    tf_args.opt_only = args.opt_only
 
     return tf_args
 
