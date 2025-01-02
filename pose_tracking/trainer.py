@@ -1184,7 +1184,13 @@ class TrainerTrackformer(Trainer):
             m_batch = defaultdict(list)
 
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
+            out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
+            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes - 1))
+
             for k, v in m_batch_avg.items():
+                if "classes" in k:
+                    continue
                 seq_metrics[k] += v
 
             # UPDATE VARS
@@ -1193,7 +1199,9 @@ class TrainerTrackformer(Trainer):
 
             loss_value = losses_reduced_scaled.item()
             seq_stats["loss"] += loss_value
-            for k, v in {**loss_dict_reduced_scaled, **loss_dict_reduced_unscaled}.items():
+            for k, v in {**loss_dict_reduced_scaled}.items():
+                if "indices" in k:
+                    continue
                 seq_stats[k] += v
             for k in ["class_error"]:
                 if k in loss_dict_reduced:
