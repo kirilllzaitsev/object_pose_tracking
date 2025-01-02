@@ -163,7 +163,7 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False):
+def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None):
     img = adjust_img_for_plt(img)
     bbox = cast_to_numpy(bbox).squeeze()
 
@@ -198,6 +198,20 @@ def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normali
     )
     for pt in [bbox_xy_ul, bbox_xy_br]:
         img = cv2.circle(img, tuple(pt.astype(int)), 5, (0, 255, 0), -1)
+    if label is not None:
+        text = f"label: {label}"
+        if score is not None:
+            text += f", score: {score:.2f}"
+        img = cv2.putText(
+            img,
+            text,
+            (int(bbox_xy_ul[0]), int(bbox_xy_ul[1]) - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
     return img
 
 
