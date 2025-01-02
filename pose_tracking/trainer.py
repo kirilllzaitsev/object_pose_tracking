@@ -960,36 +960,78 @@ class TrainerTrackformer(Trainer):
 
         super().__init__(*args_, **kwargs)
 
+        self.use_pose = opt_only is None or ("rot" in opt_only and "t" in opt_only)
         self.do_calibrate_kpt = do_calibrate_kpt
         self.tf_args = get_trackformer_args(args)
+        self.args = args
 
         self.opt_only = opt_only
-        self.num_classes = num_classes
+        self.num_classes = num_classes  # includes bg
         self.aux_loss = aux_loss
         self.num_dec_layers = num_dec_layers
         self.kpt_spatial_dim = kpt_spatial_dim
         self.focal_alpha = focal_alpha
 
         self.save_vis_paths = []
-        self.cost_class, self.cost_bbox, self.cost_giou = (2, 5, 2)
-        self.losses = [
-            "labels",
-            "boxes",
-            "rot",
-            "t",
-        ]
-        if opt_only is not None:
-            self.losses = [v for v in self.losses if v in opt_only]
-            if "labels" not in opt_only:
-                self.cost_class = 0
-            if "boxes" not in opt_only:
-                self.cost_bbox = 0
-                self.cost_giou = 0
 
         self.matcher = build_matcher(self.tf_args)
-        self.losses += ["cardinality"]
         self.criterion = build_criterion(
             self.tf_args, num_classes=num_classes, matcher=self.matcher, device=args.device
+        )
+
+        if self.use_ddp:
+            model_without_ddp = self.model.module
+        else:
+            model_without_ddp = self.model
+
+        param_dicts = [
+            {
+                "params": [
+                    p
+                    for n, p in model_without_ddp.named_parameters()
+                    if not match_module_by_name(
+                        n,
+                        args.detr_args.lr_backbone_names
+                        + args.detr_args.lr_linear_proj_names
+                        + ["layers_track_attention"],
+                    )
+                    and p.requires_grad
+                ],
+                "lr": args.detr_args.lr,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in model_without_ddp.named_parameters()
+                    if match_module_by_name(n, args.detr_args.lr_backbone_names) and p.requires_grad
+                ],
+                "lr": args.detr_args.lr_backbone,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in model_without_ddp.named_parameters()
+                    if match_module_by_name(n, args.detr_args.lr_linear_proj_names) and p.requires_grad
+                ],
+                "lr": args.detr_args.lr * args.detr_args.lr_linear_proj_mult,
+            },
+        ]
+        if args.detr_args.track_attention:
+            param_dicts.append(
+                {
+                    "params": [
+                        p
+                        for n, p in model_without_ddp.named_parameters()
+                        if match_module_by_name(n, ["layers_track_attention"]) and p.requires_grad
+                    ],
+                    "lr": args.detr_args.lr_track,
+                }
+            )
+
+        self.optimizer = torch.optim.AdamW(
+            param_dicts,
+            lr=args.detr_args.lr,
+            weight_decay=args.weight_decay,
         )
 
     def loader_forward(
@@ -1006,6 +1048,8 @@ class TrainerTrackformer(Trainer):
         running_stats = defaultdict(float)
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
+        if stage == "train":
+            optimizer = self.optimizer
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
             seq_stats = self.batched_seq_forward(
