@@ -413,21 +413,26 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
     return grid
 
 
-def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False):
-    if "rgb" in seq:
+def plot_seq(
+    seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
+):
+    first_key = keys_to_plot[0]
+    if first_key in seq:
         batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
         seq = batch_seq[batch_idx]
         print(f"taking {batch_idx=} of {len(batch_seq)}")
+    img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
     print(f"{len(seq)=}")
     take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
     results = {}
     if any("pose" in key for key in keys_to_plot):
-        if "rgb" in keys_to_plot:
-            keys_to_plot = [key for key in keys_to_plot if key != "rgb"]
-    if len(seq[0]["rgb"].shape) == 4:
-        print(f"Taking {batch_idx} image from the batch of size {seq[0]['rgb'].shape[0]}")
+        if first_key in keys_to_plot:
+            keys_to_plot = [key for key in keys_to_plot if key != first_key]
+    if len(seq[0][img_key].shape) == 4:
+        print(f"Taking {batch_idx} image from the batch of size {seq[0][img_key].shape[0]}")
     else:
-        batch_idx = ...
+        batch_idx = slice(None)
+
     for key in keys_to_plot:
         arr = []
         for i in range(take_n):
@@ -439,15 +444,23 @@ def plot_seq(seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0, bbox_format="x
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(img[batch_idx][None])
             elif "box" in key:
+                label = None
+                for lkey in ["labels", "class_id"]:
+                    if lkey in seq[i].keys() and use_label:
+                        label = seq[i][lkey][batch_idx]
                 grid_img = vis_bbox_2d(
-                    seq[i]["rgb"][batch_idx], img[batch_idx], format=bbox_format, is_normalized=bbox_is_normalized
+                    seq[i][img_key][batch_idx],
+                    img[batch_idx],
+                    format=bbox_format,
+                    is_normalized=bbox_is_normalized,
+                    label=label,
                 )
             elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
                 pose = img[batch_idx]
                 if pose.shape[-1] == 7:
                     pose = convert_pose_quaternion_to_matrix(pose)
                 grid_img = draw_pose_on_img(
-                    seq[i]["rgb"][batch_idx],
+                    seq[i][img_key][batch_idx],
                     seq[i]["intrinsics"][batch_idx],
                     pose,
                     bbox=seq[i]["mesh_bbox"][batch_idx],
