@@ -8,11 +8,14 @@ import os
 
 import cv2
 import matplotlib
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pyrender
 import torch
 import torchvision
+from matplotlib import colors
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from PIL import Image, ImageDraw
 from pose_tracking.dataset.ds_common import convert_seq_batch_to_batch_seq
 from pose_tracking.utils.common import (
@@ -22,10 +25,12 @@ from pose_tracking.utils.common import (
     cast_to_torch,
 )
 from pose_tracking.utils.geom import to_homo, world_to_2d_pt_homo
+from pose_tracking.utils.kpt_utils import is_torch
 from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
 from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
+from torchvision.ops.boxes import clip_boxes_to_image
 from tqdm.auto import tqdm
 
 
@@ -669,3 +674,248 @@ def plot_bbox_2d_plt(bbox_2d, color="r"):
     plt.plot(bbox_2d[[1, 2], 0], bbox_2d[[1, 2], 1], color)
     plt.plot(bbox_2d[[2, 3], 0], bbox_2d[[2, 3], 1], color)
     plt.plot(bbox_2d[[3, 0], 0], bbox_2d[[3, 0], 1], color)
+
+
+def vis_res_tracking_text(rgb, result, target, tracking):
+
+    legends = []
+
+    num_track_queries = num_track_queries_with_id = 0
+    if tracking:
+        num_track_queries = len(target["track_query_boxes"])
+        num_track_queries_with_id = len(target["track_query_match_ids"])
+        track_ids = target["track_ids"][target["track_query_match_ids"]]
+
+    keep = result["scores"].cpu() > result["scores_no_object"].cpu()
+    # keep = torch.ones_like(result['scores'].cpu())
+
+    cmap = plt.cm.get_cmap("hsv", len(keep))
+
+    prop_i = 0
+    for box_id in range(len(keep)):
+        rect_color = "green"
+        offset = 0
+        text = f"{result['scores'][box_id]:0.2f}"
+
+        if tracking:
+            if target["track_queries_fal_pos_mask"][box_id]:
+                rect_color = "red"
+            elif target["track_queries_mask"][box_id]:
+                offset = 50
+                rect_color = "blue"
+                text = (
+                    f"- track_id {track_ids[prop_i]}\n"
+                    f"- cls_score {text}\n"
+                    f"- iou {result['track_queries_with_id_iou'][prop_i]:0.2f}"
+                )
+                prop_i += 1
+
+        if not keep[box_id]:
+            continue
+
+        legends.append(text)
+
+    legends = "\n".join(legends)
+
+    stats_text = ""
+
+    query_keep = keep
+    if tracking:
+        query_keep = keep[target["track_queries_mask"] == 0]
+
+    stats_text += f"object queries ({query_keep.sum()}/{len(target['boxes']) - num_track_queries_with_id})\n"
+
+    if num_track_queries:
+        track_queries_label = (
+            f"- track queries ({keep[target['track_queries_mask']].sum() - keep[target['track_queries_fal_pos_mask']].sum()}"
+            f"/{num_track_queries_with_id})"
+        )
+
+        stats_text += track_queries_label
+
+    if num_track_queries_with_id != num_track_queries:
+        track_queries_fal_pos_label = (
+            f"- false track queries ({keep[target['track_queries_fal_pos_mask']].sum()}"
+            f"/{num_track_queries - num_track_queries_with_id})"
+        )
+
+        stats_text += track_queries_fal_pos_label
+
+    tracks_prev_frame = []
+    for frame_prefix in ["prev", "prev_prev"]:
+        # if f'{frame_prefix}_image_id' not in target or f'{frame_prefix}_boxes' not in target:
+        if f"{frame_prefix}_target" not in target:
+            continue
+
+        frame_target = target[f"{frame_prefix}_target"]
+        cmap = plt.cm.get_cmap("hsv", len(frame_target["track_ids"]))
+
+        tracks_prev_frame_ = []
+        for j, track_id in enumerate(frame_target["track_ids"]):
+            tracks_prev_frame_.append(
+                {
+                    "boxes": frame_target["boxes"][j],
+                    "track_id": track_id,
+                }
+            )
+
+        tracks_prev_frame.append(tracks_prev_frame_)
+
+    # draw all data on respective imgs
+
+    figure, axarr = plt.subplots(len(rgb), figsize=(20, 20))
+    figure.tight_layout()
+
+    for idx, (ax, img) in enumerate(zip(axarr, rgb)):
+        ax.set_axis_off()
+        ax.imshow(adjust_img_for_plt(img))
+
+        # add legend
+        ax.text(0, 0, legends[idx], fontsize=10, bbox=dict(facecolor="white", alpha=0.5))
+
+    # add stats
+    axarr[0].text(0, 0, stats_text, fontsize=10, bbox=dict(facecolor="white", alpha=0.5))
+
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    plt.axis("off")
+
+    img = fig_to_numpy(figure).transpose(2, 0, 1)
+    plt.close()
+
+    return {"legends": legends, "stats_text": stats_text, "tracks_prev_frame": tracks_prev_frame, "img": img}
+
+
+def vis_res_tracking(rgb, result, target, tracking):
+    imgs = [adjust_img_for_plt(rgb)]
+    img_ids = [target["image_id"].item()]
+    for key in ["prev", "prev_prev"]:
+        if f"{key}_image" in target:
+            imgs.append(adjust_img_for_plt(target[f"{key}_image"]))
+            img_ids.append(target[f"{key}_target"][f"image_id"].item())
+
+    # img.shape=[3, H, W]
+    dpi = 96
+    figure, axarr = plt.subplots(len(imgs), figsize=(10, 10))
+    figure.tight_layout()
+    figure.set_dpi(dpi)
+    # figure.set_size_inches(imgs[0].shape[2] / dpi, imgs[0].shape[1] * len(imgs) / dpi)
+
+    if len(imgs) == 1:
+        axarr = [axarr]
+
+    for ax, img, img_id in zip(axarr, imgs, img_ids):
+        ax.set_axis_off()
+        ax.imshow(img)
+
+        ax.text(0, 0, f"IMG_ID={img_id}", fontsize=20, bbox=dict(facecolor="white", alpha=0.5))
+
+    num_track_queries = num_track_queries_with_id = 0
+    if tracking:
+        num_track_queries = len(target["track_query_boxes"])
+        num_track_queries_with_id = len(target["track_query_match_ids"])
+        track_ids = target["track_ids"][target["track_query_match_ids"]]
+
+    keep = result["scores"].cpu() > result["scores_no_object"].cpu()
+    # keep = torch.ones_like(result['scores'].cpu())
+
+    cmap = plt.cm.get_cmap("hsv", len(keep))
+
+    prop_i = 0
+    for box_id in range(len(keep)):
+        rect_color = "green"
+        offset = 0
+        text = f"{result['scores'][box_id]:0.2f}"
+
+        if tracking:
+            if target["track_queries_fal_pos_mask"][box_id]:
+                rect_color = "red"
+            elif target["track_queries_mask"][box_id]:
+                offset = 50
+                rect_color = "blue"
+                text = f"{track_ids[prop_i]}\n" f"{text}\n" f"{result['track_queries_with_id_iou'][prop_i]:0.2f}"
+                prop_i += 1
+
+        if not keep[box_id]:
+            continue
+
+        # x1, y1, x2, y2 = result['boxes'][box_id]
+        result_boxes = clip_boxes_to_image(result["boxes"], target["size"])
+        x1, y1, x2, y2 = result_boxes[box_id]
+
+        axarr[0].add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color=rect_color, linewidth=2))
+
+        axarr[0].text(x1, y1 + offset, text, fontsize=10, bbox=dict(facecolor="white", alpha=0.5))
+
+        if "masks" in result:
+            mask = result["masks"][box_id][0].numpy()
+            mask = np.ma.masked_where(mask == 0.0, mask)
+
+            axarr[0].imshow(mask, alpha=0.5, cmap=colors.ListedColormap([cmap(box_id)]))
+
+    query_keep = keep
+    if tracking:
+        query_keep = keep[target["track_queries_mask"] == 0]
+
+    legend_handles = [
+        mpatches.Patch(
+            color="green",
+            label=f"object queries ({query_keep.sum()}/{len(target['boxes']) - num_track_queries_with_id})\n- cls_score",
+        )
+    ]
+
+    if num_track_queries:
+        track_queries_label = (
+            f"track queries ({keep[target['track_queries_mask']].sum() - keep[target['track_queries_fal_pos_mask']].sum()}"
+            f"/{num_track_queries_with_id})\n- track_id\n- cls_score\n- iou"
+        )
+
+        legend_handles.append(mpatches.Patch(color="blue", label=track_queries_label))
+
+    if num_track_queries_with_id != num_track_queries:
+        track_queries_fal_pos_label = (
+            f"false track queries ({keep[target['track_queries_fal_pos_mask']].sum()}"
+            f"/{num_track_queries - num_track_queries_with_id})"
+        )
+
+        legend_handles.append(mpatches.Patch(color="red", label=track_queries_fal_pos_label))
+
+    axarr[0].legend(handles=legend_handles)
+
+    i = 1
+    for frame_prefix in ["prev", "prev_prev"]:
+        # if f'{frame_prefix}_image_id' not in target or f'{frame_prefix}_boxes' not in target:
+        if f"{frame_prefix}_target" not in target:
+            continue
+
+        frame_target = target[f"{frame_prefix}_target"]
+        cmap = plt.cm.get_cmap("hsv", len(frame_target["track_ids"]))
+
+        for j, track_id in enumerate(frame_target["track_ids"]):
+            x1, y1, x2, y2 = frame_target["boxes"][j]
+            axarr[i].text(x1, y1, f"track_id={track_id}", fontsize=10, bbox=dict(facecolor="white", alpha=0.5))
+            axarr[i].add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color="green", linewidth=2))
+
+            if "masks" in frame_target:
+                mask = frame_target["masks"][j].cpu().numpy()
+                mask = np.ma.masked_where(mask == 0.0, mask)
+
+                axarr[i].imshow(mask, alpha=0.5, cmap=colors.ListedColormap([cmap(j)]))
+        i += 1
+
+    plt.subplots_adjust(wspace=0.01, hspace=0.01)
+    plt.axis("off")
+
+    img = fig_to_numpy(figure).transpose(2, 0, 1)
+    plt.close()
+
+    return img
+
+
+def fig_to_numpy(fig):
+    w, h = fig.get_size_inches() * fig.dpi
+    w = int(w.item())
+    h = int(h.item())
+    canvas = FigureCanvas(fig)
+    canvas.draw()
+    numpy_image = np.frombuffer(canvas.tostring_rgb(), dtype="uint8").reshape(h, w, 3)
+    return np.copy(numpy_image)
