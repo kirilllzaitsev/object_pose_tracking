@@ -30,12 +30,41 @@ def postprocess_detr_outputs(outputs, target_sizes):
     scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
     boxes = boxes * scale_fct[:, None, :]
 
-    results = [
-        {"scores": s, "labels": l, "boxes": b, "scores_no_object": sbg}
-        for s, l, b, sbg in zip(scores, labels, boxes, scores_no_object)
-    ]
+    use_pose = "rot" in outputs and "t" in outputs
+    results = []
+    for idx in range(out_logits.shape[0]):
+        res = {
+            "scores": scores[idx],
+            "labels": labels[idx],
+            "boxes": boxes[idx],
+            "scores_no_object": scores_no_object[idx],
+        }
+        if use_pose:
+            res["rot"] = outputs["rot"][idx]
+            res["t"] = outputs["t"][idx]
+
+        results.append(res)
 
     return results
+
+
+def postprocess_bbox(bbox, hw=None, format="cxcywh", is_normalized=True):
+    if is_normalized:
+        assert hw is not None
+
+    res = bbox.clone()
+    if format == "cxcywh":
+        res = box_cxcywh_to_xyxy(res)
+    elif format == "xyxy":
+        pass
+    else:
+        raise ValueError(f"Unknown format {format}")
+
+    if is_normalized:
+        res[..., [0, 2]] *= hw[1]
+        res[..., [1, 3]] *= hw[0]
+
+    return res
 
 
 def postprocess_detr_outputs_nms(outputs, target_sizes):
