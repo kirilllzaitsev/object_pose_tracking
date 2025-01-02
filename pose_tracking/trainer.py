@@ -13,11 +13,12 @@ from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
-from pose_tracking.metrics import calc_metrics
+from pose_tracking.metrics import calc_metrics, eval_batch_det
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
+from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
@@ -26,7 +27,13 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
-from pose_tracking.utils.misc import print_cls, reduce_dict, reduce_metric, split_arr
+from pose_tracking.utils.misc import (
+    match_module_by_name,
+    print_cls,
+    reduce_dict,
+    reduce_metric,
+    split_arr,
+)
 from pose_tracking.utils.pose import (
     convert_pose_axis_angle_to_matrix,
     convert_pose_quaternion_to_matrix,
@@ -1183,6 +1190,38 @@ class TrainerTrackformer(Trainer):
             diameter = batch_t["mesh_diameter"]
             m_batch = defaultdict(list)
 
+            if self.use_pose:
+                indices = loss_dict["indices"]
+                idx = self.criterion._get_src_permutation_idx(indices)
+                target_rts = torch.cat(
+                    [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
+                )
+
+                pose_mat_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in target_rts])
+                t_pred = out["t"][idx]
+                rot_pred = out["rot"][idx]
+                pred_rts = torch.cat([t_pred, rot_pred], dim=1)
+                pose_mat_pred_abs = torch.stack(
+                    [pose_to_mat_converter_fn(rt) for rt in pred_rts]
+                )
+
+                for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
+                    m_sample = calc_metrics(
+                        pred_rt=pred_rt,
+                        gt_rt=gt_rt,
+                        pts=pts[sample_idx],
+                        class_name=None,
+                        use_miou=True,
+                        bbox_3d=bbox_3d[sample_idx],
+                        diameter=diameter[sample_idx],
+                        is_meters=True,
+                        log_fn=print if self.logger is None else self.logger.warning,
+                    )
+                    for k, v in m_sample.items():
+                        m_batch[k].append(v)
+                    if any(np.isnan(v) for v in m_sample.values()):
+                        nan_count += 1
+
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
@@ -1224,7 +1263,7 @@ class TrainerTrackformer(Trainer):
 
             if do_vis:
                 # save inputs to the exp dir
-                vis_keys = ["image"]
+                vis_keys = ["image", "mesh_bbox"]
                 for k in vis_keys:
                     vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
                 vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
