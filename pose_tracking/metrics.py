@@ -3,10 +3,14 @@ import copy
 import numpy as np
 import torch
 from pose_tracking.utils.common import cast_to_numpy
+from pose_tracking.utils.detr_utils import postprocess_bbox
 from pose_tracking.utils.geom import transform_pts, world_to_cam
 from pose_tracking.utils.trimesh_utils import get_posed_model_pts
 from scipy.spatial import cKDTree
 from sklearn import metrics
+from torchmetrics import Accuracy
+from torchmetrics.detection.iou import IntersectionOverUnion
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 
 def calc_metrics(
@@ -334,3 +338,33 @@ def accuracy(pred_logits, gt_labels, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
+
+def eval_batch_det(outs, targets, num_classes=None):
+    device = outs[0]["scores"].device
+    m_map = MeanAveragePrecision(extended_summary=False).to(device)
+    m_iou = IntersectionOverUnion().to(device)
+    use_acc = num_classes is not None
+    if use_acc:
+        m_acc = Accuracy(task="multiclass", num_classes=num_classes).to(device)
+    for idx in range(len(outs)):
+        res = outs[idx]
+        keep = res["scores"] > res["scores_no_object"]
+        pred = {k: v[keep] for k, v in res.items()}
+        target = copy.deepcopy(targets[idx])
+        target["boxes"] = postprocess_bbox(target["boxes"], hw=target["size"])
+        m_map.update([pred], [target])
+        m_iou.update([pred], [target])
+        if use_acc:
+            pred_labels = pred["labels"]
+            gt_labels = target["labels"]
+            if pred["labels"].numel() == 0:
+                pred_labels = torch.zeros_like(target["labels"]) - 1
+            elif pred["labels"].numel() > gt_labels.numel():
+                gt_labels = torch.cat([gt_labels, torch.zeros(pred_labels.numel() - gt_labels.numel()).long().to(device) - 1])
+            m_acc.update(pred_labels, gt_labels)
+    metrics = m_map.compute()
+    metrics.update(m_iou.compute())
+    if use_acc:
+        metrics.update({"acc": m_acc.compute()})
+    return metrics
