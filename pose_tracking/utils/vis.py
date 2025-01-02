@@ -440,43 +440,57 @@ def plot_seq(
     else:
         batch_idx = slice(None)
 
+    def fetcher_fn(k):
+        if not key_in_seq(k):
+            raise ValueError(f"{k} not found in the sequence")
+        if key_in_target(k):
+            return seq[0]["target"][batch_idx][k]
+        else:
+            return seq[0][k][batch_idx]
+
+    def key_in_seq(k):
+        return seq[0].get(k, []) != [] or key_in_target(k)
+
+    def key_in_target(k):
+        return ("target" in seq[0] and seq[0]["target"][batch_idx].get(k, []) != [])
+
     for key in keys_to_plot:
         arr = []
         for i in range(take_n):
-            img = seq[i][key]
+            img = fetcher_fn(key)
             dtype = np.uint8
             if key in ["depth"]:
-                grid_img = adjust_depth_for_plt(img[batch_idx])
+                grid_img = adjust_depth_for_plt(img)
                 dtype = np.float32
             elif key in ["mask"]:
-                grid_img = adjust_img_for_plt(img[batch_idx][None])
+                grid_img = adjust_img_for_plt(img[None])
             elif "box" in key:
                 label = None
                 for lkey in ["labels", "class_id"]:
-                    if lkey in seq[i].keys() and use_label:
-                        label = seq[i][lkey][batch_idx]
+                    if use_label and key_in_seq(lkey):
+                        label = fetcher_fn(lkey)
                 grid_img = vis_bbox_2d(
-                    seq[i][img_key][batch_idx],
-                    img[batch_idx],
+                    fetcher_fn(img_key),
+                    img,
                     format=bbox_format,
                     is_normalized=bbox_is_normalized,
                     label=label,
                 )
             elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
-                pose = img[batch_idx]
+                pose = img
                 if pose.shape[-1] == 7:
                     pose = convert_pose_quaternion_to_matrix(pose)
                 grid_img = draw_pose_on_img(
-                    seq[i][img_key][batch_idx],
-                    seq[i]["intrinsics"][batch_idx],
+                    fetcher_fn(img_key),
+                    fetcher_fn("intrinsics"),
                     pose,
-                    bbox=seq[i]["mesh_bbox"][batch_idx],
+                    bbox=fetcher_fn("mesh_bbox"),
                     bbox_color=(255, 255, 0),
                     scale=0.1,
                 )
                 dtype = np.uint8
             else:
-                grid_img = adjust_img_for_plt(img[batch_idx])
+                grid_img = adjust_img_for_plt(img)
                 dtype = np.uint8
             arr.append(grid_img)
         res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype)
@@ -621,9 +635,9 @@ def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
     return plot_pose(color, pose, K, bbox=bbox, ax=ax, scale=scale)
 
 
-def vis_pose(color, pose, K, bbox=None, scale=0.05):
+def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
     color = adjust_img_for_plt(color)
-    color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=(255, 255, 0), scale=scale)
+    color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=bbox_color, scale=scale)
     return color_with_pose
 
 
