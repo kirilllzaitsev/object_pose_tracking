@@ -415,7 +415,7 @@ def get_datasets(
                 ds_name=ds_name,
                 seq_len=None,
                 seq_step=1,
-                seq_start=seq_start,
+                seq_start=0,
                 ds_kwargs=train_ds_kwargs,
                 num_samples=None,
                 do_preload=do_preload_ds,
