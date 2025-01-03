@@ -72,7 +72,14 @@ def get_encoders(
         weights = torchvision.models.ResNet18_Weights.DEFAULT
         encoder_rgb = torchvision.models.resnet18(weights=weights if weights_rgb == "imagenet" else None)
         encoder_depth = torchvision.models.resnet18(weights=weights if weights_depth == "imagenet" else None)
-        encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        encoder_depth.conv1 = nn.Conv2d(
+            1,
+            64,
+            kernel_size=encoder_rgb.conv1.kernel_size,
+            stride=encoder_rgb.conv1.stride,
+            padding=encoder_rgb.conv1.padding,
+            bias=False,
+        )
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
                 nn.Linear(512, out_dim),
