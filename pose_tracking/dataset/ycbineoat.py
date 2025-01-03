@@ -1,9 +1,13 @@
 import os
+import re
 from pathlib import Path
 
 import cv2
 import numpy as np
-from pose_tracking.dataset.ds_meta import YCBINEOAT_VIDEONAME_TO_OBJ
+from pose_tracking.dataset.ds_meta import (
+    YCBINEOAT_VIDEONAME_TO_OBJ,
+    YCBV_OBJ_NAME_TO_ID,
+)
 from pose_tracking.dataset.tracking_ds import TrackingDataset
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import backproj_depth
@@ -33,8 +37,13 @@ class YCBineoatDataset(TrackingDataset):
         self.include_xyz_map = include_xyz_map
         self.include_occ_mask = include_occ_mask
 
+        self.obj_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
+        obj_name_no_pref = re.search("\d+_(.*)", self.obj_name)
+        if obj_name_no_pref is None:
+            raise ValueError(f"Could not extract object name from {self.obj_name}")
+        self.class_id = YCBV_OBJ_NAME_TO_ID[obj_name_no_pref.group(1)]
+
         if ycb_meshes_dir is not None:
-            self.obj_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
             mesh_path = f"{ycb_meshes_dir}/{self.obj_name}/textured_simple.obj"
             self.set_up_obj_mesh(mesh_path)
 
@@ -44,6 +53,8 @@ class YCBineoatDataset(TrackingDataset):
 
         if self.include_occ_mask:
             sample["occ_mask"] = self.get_occ_mask(idx)
+
+        sample["class_id"] = self.class_id
 
         return sample
 
