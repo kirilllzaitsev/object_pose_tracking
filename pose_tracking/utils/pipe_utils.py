@@ -169,17 +169,13 @@ def get_trackformer_args(args):
             Loader=yaml.Loader,
         )
     )
-    tf_args.deformable = False
-    tf_args.deformable = True
+    tf_args.deformable = args.tf_use_deformable
 
     tf_args.focal_loss = True
 
     tf_args.multi_frame_attention = True
-    tf_args.multi_frame_encoding = True
     tf_args.overflow_boxes = True
-    # tf_args.multi_frame_attention=False
-    tf_args.multi_frame_encoding = False
-    # tf_args.overflow_boxes=False
+    tf_args.multi_frame_encoding = args.tf_use_multi_frame_encoding
 
     tf_args.lr = args.lr
     tf_args.lr_backbone = tf_args.lr * 0.1
@@ -201,8 +197,8 @@ def get_trackformer_args(args):
         tf_args.bbox_loss_coef = 1
         tf_args.giou_loss_coef = 1
         tf_args.ce_loss_coef = 1
-        tf_args.rot_loss_coef = 1
-        tf_args.t_loss_coef = 1
+    tf_args.rot_loss_coef = 1
+    tf_args.t_loss_coef = 1
 
     tf_args.opt_only = args.opt_only
 
@@ -351,6 +347,7 @@ def get_datasets(
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
     is_tf_model = "trackformer" in model_name
+    is_cnnlstm_model = "cnnlstm" in model_name
     is_detr_model = "detr" in model_name or is_tf_model
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
@@ -366,6 +363,7 @@ def get_datasets(
         do_normalize_bbox=True if is_detr_model or is_tf_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",
         model_name="pizza" if is_pizza_model else model_name,
+        do_normalize_depth=True if is_cnnlstm_model else False,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

@@ -395,7 +395,7 @@ def PIL_image_grid(imgs, rows, cols):
     return grid
 
 
-def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=True):
+def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False):
     """
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
@@ -440,13 +440,13 @@ def plot_seq(
     else:
         batch_idx = slice(None)
 
-    def fetcher_fn(k):
+    def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):
             raise ValueError(f"{k} not found in the sequence")
         if key_in_target(k):
-            return seq[0]["target"][batch_idx][k]
+            return seq[sidx]["target"][batch_idx][k]
         else:
-            return seq[0][k][batch_idx]
+            return seq[sidx][k][batch_idx]
 
     def key_in_seq(k):
         return seq[0].get(k, []) != [] or key_in_target(k)
@@ -456,8 +456,8 @@ def plot_seq(
 
     for key in keys_to_plot:
         arr = []
-        for i in range(take_n):
-            img = fetcher_fn(key)
+        for sidx in range(take_n):
+            img = fetcher_fn(key, sidx)
             dtype = np.uint8
             if key in ["depth"]:
                 grid_img = adjust_depth_for_plt(img)
@@ -468,9 +468,9 @@ def plot_seq(
                 label = None
                 for lkey in ["labels", "class_id"]:
                     if use_label and key_in_seq(lkey):
-                        label = fetcher_fn(lkey)
+                        label = fetcher_fn(lkey, sidx)
                 grid_img = vis_bbox_2d(
-                    fetcher_fn(img_key),
+                    fetcher_fn(img_key, sidx),
                     img,
                     format=bbox_format,
                     is_normalized=bbox_is_normalized,
@@ -481,10 +481,10 @@ def plot_seq(
                 if pose.shape[-1] == 7:
                     pose = convert_pose_quaternion_to_matrix(pose)
                 grid_img = draw_pose_on_img(
-                    fetcher_fn(img_key),
-                    fetcher_fn("intrinsics"),
+                    fetcher_fn(img_key, sidx),
+                    fetcher_fn("intrinsics", sidx),
                     pose,
-                    bbox=fetcher_fn("mesh_bbox"),
+                    bbox=fetcher_fn("mesh_bbox", sidx),
                     bbox_color=(255, 255, 0),
                     scale=0.1,
                 )
@@ -493,7 +493,7 @@ def plot_seq(
                 grid_img = adjust_img_for_plt(img)
                 dtype = np.uint8
             arr.append(grid_img)
-        res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype)
+        res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype, use_existing_fig=True)
         plt.figure(figsize=(5 * take_n, 5 * take_n))
         plt.imshow(res)
         plt.axis("off")

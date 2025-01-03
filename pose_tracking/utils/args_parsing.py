@@ -116,7 +116,7 @@ def get_parser():
         type=str,
         default="spatial",
         help="Encoding type for positional encoding",
-        choices=["spatial", "sin", "learned"],
+        choices=["spatial", "sin", "learned", "none"],
     )
     poseformer_args.add_argument(
         "--mt_num_queries",
@@ -148,6 +148,10 @@ def get_parser():
         default=8,
         help="Number of transformer heads",
     )
+
+    tf_args = parser.add_argument_group("Trackformer arguments")
+    tf_args.add_argument("--tf_use_deformable", action="store_true", help="Use deformable detr")
+    tf_args.add_argument("--tf_use_multi_frame_encoding", action="store_true", help="Use multi_frame_encoding")
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
@@ -208,7 +212,7 @@ def get_parser():
         "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
     )
     model_args.add_argument(
-        "--encoder_out_dim", type=int, default=1024, help="Output dimension of the img/depth encoder"
+        "--encoder_out_dim", type=int, default=512, help="Output dimension of the img/depth encoder"
     )
     model_args.add_argument(
         "--priv_decoder_num_layers", type=int, default=2, help="Number of layers for privileged info decoder"

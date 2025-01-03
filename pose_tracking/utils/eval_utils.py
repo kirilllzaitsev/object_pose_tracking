@@ -1,6 +1,7 @@
 import copy
 from collections import defaultdict
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pose_tracking.config import WORKSPACE_DIR
@@ -119,3 +120,19 @@ def convert_exp_results_per_obj_to_per_exp(exp_results: dict, exp_names=None) ->
         for obj_name in exp_results.keys():
             exp_results_per_exp[exp_name][obj_name] = exp_results[obj_name][exp_name]
     return exp_results_per_exp
+
+
+def plot_pose_drift(r_errors, t_errors, axs=None):
+    if axs is None:
+        fig, axs = plt.subplots(1, 2, figsize=(20, 5))
+    num_ts = len(r_errors)
+    axs[0].set_title(f"Rotation drift over {num_ts} frames")
+    axs[0].plot(r_errors)
+    axs[0].set_ylabel("Rotation error, deg")
+    axs[1].set_title(f"Translation drift over {num_ts} frames")
+    axs[1].plot(t_errors)
+    axs[1].set_ylabel("Translation error, cm")
+    for ax in axs:
+        ax.set_xlabel("Timestep")
+    plt.tight_layout()
+    return axs
