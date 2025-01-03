@@ -232,6 +232,8 @@ def calc_n_deg_m_cm_errors(rt_error):
     t_dist_cm = t_dist_mm * 0.1
     res = {}
     for r_t, t_t in [
+        (15, 15),
+        (10, 10),
         (5, 5),
         (2, 2),
     ]:
@@ -361,10 +363,29 @@ def eval_batch_det(outs, targets, num_classes=None):
             if pred["labels"].numel() == 0:
                 pred_labels = torch.zeros_like(target["labels"]) - 1
             elif pred["labels"].numel() > gt_labels.numel():
-                gt_labels = torch.cat([gt_labels, torch.zeros(pred_labels.numel() - gt_labels.numel()).long().to(device) - 1])
+                gt_labels = torch.cat(
+                    [gt_labels, torch.zeros(pred_labels.numel() - gt_labels.numel()).long().to(device) - 1]
+                )
             m_acc.update(pred_labels, gt_labels)
     metrics = m_map.compute()
     metrics.update(m_iou.compute())
     if use_acc:
         metrics.update({"acc": m_acc.compute()})
     return metrics
+
+
+def get_rt_errors(pred_poses, gt_poses):
+    # returns deg and centimeters
+    r_errors = []
+    t_errors = []
+    for pred, gt in zip(pred_poses, gt_poses):
+
+        rot1 = gt[:3, :3]
+        rot2 = pred[:3, :3]
+        t1 = gt[:3, 3] * 1000
+        t2 = pred[:3, 3] * 1000
+        r_err = calc_r_error(rot2, rot1)
+        t_err = calc_t_error(t1, t2)
+        r_errors.append(r_err)
+        t_errors.append(t_err / 10)
+    return r_errors, t_errors
