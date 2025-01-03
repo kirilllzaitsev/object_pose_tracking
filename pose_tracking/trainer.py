@@ -126,6 +126,7 @@ class Trainer:
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
         self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement"]
+        self.save_vis_paths = []
 
         self.processed_data = defaultdict(list)
         self.seq_counts_per_stage = defaultdict(int)
@@ -152,7 +153,7 @@ class Trainer:
         if stage == "train":
             self.train_epoch_count += 1
         running_stats = defaultdict(float)
-        seq_pbar = tqdm(loader, desc="Seq", leave=False)
+        seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
@@ -280,7 +281,7 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
 
-                    # prev_latent = torch.cat([self.model.encoder_img(rgb), self.model.encoder_depth(depth)], dim=1)
+                    prev_latent = torch.cat([self.model.encoder_img(rgb), self.model.encoder_depth(depth)], dim=1)
 
                     continue
 
@@ -605,6 +606,7 @@ class Trainer:
                 f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}_step_{self.ts_counts_per_stage[stage]}.pt"
             )
             torch.save(vis_data, save_vis_path)
+            self.save_vis_paths.append(save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
         return {
@@ -614,7 +616,7 @@ class Trainer:
 
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
-        grad_norm = sum(grad_norms) / len(grad_norms)
+        grad_norm = sum(grad_norms) / max(1, len(grad_norms))
         return grad_norms, grad_norm
 
 
@@ -637,14 +639,12 @@ class TrainerDeformableDETR(Trainer):
 
         self.do_calibrate_kpt = do_calibrate_kpt
 
-        self.opt_only = opt_only
         self.num_classes = num_classes
         self.aux_loss = aux_loss
         self.num_dec_layers = num_dec_layers
         self.kpt_spatial_dim = kpt_spatial_dim
         self.focal_alpha = focal_alpha
 
-        self.save_vis_paths = []
         self.cost_class, self.cost_bbox, self.cost_giou = (2, 5, 2)
         self.losses = [
             "labels",
