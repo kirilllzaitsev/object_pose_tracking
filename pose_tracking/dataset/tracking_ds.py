@@ -41,6 +41,8 @@ class TrackingDataset(Dataset):
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
+        do_normalize_depth=False,
+        max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
         start_frame_idx=0,
@@ -56,6 +58,7 @@ class TrackingDataset(Dataset):
         self.do_erode_mask = do_erode_mask
         self.do_convert_depth_to_m = do_convert_depth_to_m
         self.do_normalize_bbox = do_normalize_bbox
+        self.do_normalize_depth = do_normalize_depth
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -68,6 +71,7 @@ class TrackingDataset(Dataset):
         self.start_frame_idx = start_frame_idx
         self.pose_dirname = pose_dirname
         self.bbox_format = bbox_format
+        self.max_depth = max_depth
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.png")
         self.end_frame_idx = end_frame_idx or len(self.color_files)
@@ -105,7 +109,11 @@ class TrackingDataset(Dataset):
             sample["mask"] = mask
 
         if self.include_depth:
-            sample["depth"] = self.get_depth(i)
+            depth = self.get_depth(i)
+            if self.do_normalize_depth:
+                depth /= self.max_depth
+                sample["max_depth"] = self.max_depth
+            sample["depth"] = depth
 
         if self.include_pose:
             sample["pose"] = self.get_pose(i)
