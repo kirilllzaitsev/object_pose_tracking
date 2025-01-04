@@ -1,4 +1,3 @@
-import copy
 import functools
 import json
 import os
@@ -18,15 +17,12 @@ from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     DATA_DIR,
     IS_CLUSTER,
-    IS_LOCAL,
     PROJ_DIR,
-    YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
     log_exception,
     prepare_logger,
 )
 from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
-from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.artifact_utils import (
@@ -42,7 +38,6 @@ from pose_tracking.utils.pipe_utils import (
     get_datasets,
     get_model,
     get_trainer,
-    get_video_ds,
 )
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -58,8 +53,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         assert any(x in os.environ for x in ["SLURM_PROCID", "RANK"])
         assert any(x in os.environ for x in ["SLURM_NTASKS", "WORLD_SIZE"])
 
-    world_size = int(os.environ.get("SLURM_NTASKS", os.environ.get("WORLD_SIZE", 1)))
-    rank = int(os.environ.get("SLURM_PROCID", os.environ.get("RANK", 0)))
+    world_size = int(os.environ.get("WORLD_SIZE", os.environ.get("SLURM_NTASKS", 1)))
+    rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     if args.is_ddp_interactive:
         rank = local_rank
