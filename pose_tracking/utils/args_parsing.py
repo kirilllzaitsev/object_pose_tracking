@@ -78,6 +78,7 @@ def get_parser():
     train_args.add_argument("--lrs_delta", type=float, default=0.0, help="Delta between scores for lr scheduler")
     train_args.add_argument("--lrs_threshold_mode", type=str, default="abs", help="Threshold mode for lr scheduler")
     train_args.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay")
+    train_args.add_argument("--max_clip_grad_norm", type=float, default=0.1, help="Max grad norm")
     train_args.add_argument(
         "--pose_loss_name", type=str, default="separate", help="Pose loss name", choices=["separate", "add"]
     )
