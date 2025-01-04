@@ -13,6 +13,7 @@ def get_encoders(
     norm_layer_type=None,
     out_dim=256,
     ignored_modalities="",
+    dropout=0.0,
 ):
     if norm_layer_type == "bn":
         print(f"WARN: {norm_layer_type=}")
@@ -21,6 +22,11 @@ def get_encoders(
         norm_layer = FrozenBatchNorm2d
     else:
         norm_layer = nn.Identity
+
+    if dropout > 0:
+        dropout_layer = nn.Dropout(dropout)
+    else:
+        dropout_layer = nn.Identity()
 
     assert model_name in [
         "regnet_y_800mf",
@@ -39,6 +45,7 @@ def get_encoders(
         encoder_depth.stem[0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
+                dropout_layer,
                 nn.Linear(784, out_dim),
             )
     elif model_name == "efficientnet_b0":
@@ -48,6 +55,7 @@ def get_encoders(
         encoder_depth.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
+                dropout_layer,
                 nn.Linear(1280, out_dim),
             )
     elif model_name == "efficientnet_b1":
@@ -57,6 +65,7 @@ def get_encoders(
         encoder_depth.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
+                dropout_layer,
                 nn.Linear(1280, out_dim),
             )
     elif model_name == "mobilenet_v3_small":
@@ -66,6 +75,7 @@ def get_encoders(
         encoder_depth.features[0][0] = nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
+                dropout_layer,
                 nn.Linear(576, out_dim),
             )
     elif model_name == "resnet18":
@@ -82,6 +92,7 @@ def get_encoders(
         )
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
+                dropout_layer,
                 nn.Linear(512, out_dim),
             )
     elif model_name == "resnet50":
@@ -95,6 +106,7 @@ def get_encoders(
         encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
+                dropout_layer,
                 nn.Linear(2048, out_dim),
             )
     else:
@@ -104,6 +116,7 @@ def get_encoders(
         encoder_depth.features[0][0] = nn.Conv2d(1, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
         for m in [encoder_rgb, encoder_depth]:
             m.classifier = nn.Sequential(
+                dropout_layer,
                 nn.Linear(1280, out_dim),
             )
     for m in [encoder_rgb, encoder_depth]:
