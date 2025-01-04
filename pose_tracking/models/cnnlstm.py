@@ -174,10 +174,13 @@ class BeliefDecoder(nn.Module):
 class MLP(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="leaky_relu", act_out=None, dropout=0.0):
         super().__init__()
+
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.dropout = dropout
+        self.num_layers = num_layers
+
         if num_layers > 1:
             self.layers = [nn.Linear(in_dim, hidden_dim)]
             if dropout > 0:
@@ -233,10 +236,10 @@ class RecurrentCNN(nn.Module):
         encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
-        encoder_name="regnet_y_800mf",
+        encoder_name="resnet18",
         encoder_img_weights="imagenet",
         encoder_depth_weights=None,
-        norm_layer_type="bn",
+        norm_layer_type="frozen_bn",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
@@ -350,8 +353,8 @@ class RecurrentCNN(nn.Module):
             self.t_mlp_in_dim += self.t_mlp_out_dim
             self.rot_mlp_in_dim += self.rot_mlp_out_dim
         if use_prev_latent:
-            self.t_mlp_in_dim += self.encoder_out_dim * 2
-            self.rot_mlp_in_dim += self.encoder_out_dim * 2
+            self.t_mlp_in_dim += depth_dim + rgb_dim
+            self.rot_mlp_in_dim += depth_dim + rgb_dim
 
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
@@ -455,7 +458,7 @@ class RecurrentCNN(nn.Module):
             rot_in = torch.cat([rot_in, prev_pose["rot"]], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
-                prev_latent = torch.zeros(latent_rgb.size(0), self.encoder_out_dim * 2, device=latent_rgb.device)
+                prev_latent = torch.zeros(latent_rgb.size(0), self.depth_dim + self.rgb_dim, device=latent_rgb.device)
             t_in = torch.cat([t_in, prev_latent], dim=1)
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
@@ -524,10 +527,10 @@ class RecurrentCNNSeparated(nn.Module):
         encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
-        encoder_name="regnet_y_800mf",
+        encoder_name="resnet18",
         encoder_img_weights="imagenet",
         encoder_depth_weights=None,
-        norm_layer_type="bn",
+        norm_layer_type="frozen_bn",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
@@ -622,6 +625,18 @@ class RecurrentCNNSeparated(nn.Module):
                 dropout=dropout,
             )
 
+        if encoder_name == "resnet50":
+            self.mid_feature_dim = 1024
+            self.mid_layer_name = "layer3"
+        elif encoder_name == "resnet18":
+            self.mid_feature_dim = 256
+            self.mid_layer_name = "layer3"
+        elif encoder_name == "regnet_y_800mf":
+            self.mid_feature_dim = 320
+            self.mid_layer_name = "trunk_output.block3"
+        else:
+            raise ValueError(f"Unknown encoder_name: {encoder_name}")
+
         if use_obs_belief:
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
@@ -663,7 +678,8 @@ class RecurrentCNNSeparated(nn.Module):
         else:
             self.t_mlp_out_dim = 3
 
-        self.t_mlp_in_dim = self.rot_mlp_in_dim = depth_dim + rgb_dim
+        self.t_mlp_in_dim = depth_dim + rgb_dim
+        self.rot_mlp_in_dim = self.mid_feature_dim * 2
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
@@ -702,17 +718,6 @@ class RecurrentCNNSeparated(nn.Module):
         self.cx = None
 
         self.intermediate_outputs = {}
-        if encoder_name == "resnet50":
-            self.mid_feature_dim = 1024
-            self.mid_layer_name = "layer3"
-        elif encoder_name == "resnet18":
-            self.mid_feature_dim = 256
-            self.mid_layer_name = "layer3"
-        elif encoder_name == "regnet_y_800mf":
-            self.mid_feature_dim = 320
-            self.mid_layer_name = "trunk_output.block3"
-        else:
-            raise ValueError(f"Unknown encoder_name: {encoder_name}")
 
         def hook_function(module, input, output):
             self.intermediate_outputs[self.mid_layer_name] = output
@@ -816,6 +821,9 @@ class RecurrentCNNSeparated(nn.Module):
                 "rot": rot,
             }
         )
+
+        if self.use_prev_latent:
+            res["prev_latent"] = extracted_obs
 
         if self.do_predict_2d_t:
             res["center_depth"] = t_net_out["center_depth"]
