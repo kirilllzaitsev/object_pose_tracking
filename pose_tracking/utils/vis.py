@@ -168,7 +168,9 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
     return final_frame
 
 
-def vis_bbox_2d(img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None, label_place="top"):
+def vis_bbox_2d(
+    img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None, label_place="top"
+):
     img = adjust_img_for_plt(img)
     bbox = cast_to_numpy(bbox).squeeze()
 
@@ -421,25 +423,8 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
 
 
 def plot_seq(
-    seq, keys_to_plot=["rgb"], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
+    seq, keys_to_plot=[], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
 ):
-    first_key = keys_to_plot[0]
-    if first_key in seq:
-        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
-        seq = batch_seq[batch_idx]
-        print(f"taking {batch_idx=} of {len(batch_seq)}")
-    img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
-    print(f"{len(seq)=}")
-    take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
-    results = {}
-    if any("pose" in key for key in keys_to_plot):
-        if first_key in keys_to_plot:
-            keys_to_plot = [key for key in keys_to_plot if key != first_key]
-    if len(seq[0][img_key].shape) == 4:
-        print(f"Taking {batch_idx} image from the batch of size {seq[0][img_key].shape[0]}")
-    else:
-        batch_idx = slice(None)
-
     def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):
             raise ValueError(f"{k} not found in the sequence")
@@ -452,7 +437,29 @@ def plot_seq(
         return seq[0].get(k, []) != [] or key_in_target(k)
 
     def key_in_target(k):
-        return ("target" in seq[0] and seq[0]["target"][batch_idx].get(k, []) != [])
+        return "target" in seq[0] and seq[0]["target"][batch_idx].get(k, []) != []
+
+    img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
+    first_key = img_key
+    if len(keys_to_plot) == 0:
+        keys_to_plot.append(img_key)
+    if first_key in seq:
+        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
+        seq = batch_seq[batch_idx]
+        print(f"taking {batch_idx=} of {len(batch_seq)}")
+    if len(seq) > 20:
+        print("Taking first 20 frames to plot")
+        seq = seq[:20]
+    print(f"{len(seq)=}")
+    take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
+    results = {}
+    if any("pose" in key for key in keys_to_plot):
+        if first_key in keys_to_plot:
+            keys_to_plot = [key for key in keys_to_plot if key != first_key]
+    if len(seq[0][img_key].shape) == 4:
+        print(f"Taking {batch_idx} image from the batch of size {seq[0][img_key].shape[0]}")
+    else:
+        batch_idx = slice(None)
 
     for key in keys_to_plot:
         arr = []
@@ -494,12 +501,10 @@ def plot_seq(
                 dtype = np.uint8
             arr.append(grid_img)
         res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype, use_existing_fig=True)
-        plt.figure(figsize=(5 * take_n, 5 * take_n))
+        plt.figure(figsize=(5 * 5, 5 * take_n))
         plt.imshow(res)
         plt.axis("off")
         results[key] = res
-
-    return results
 
 
 def get_cmap(np_img):

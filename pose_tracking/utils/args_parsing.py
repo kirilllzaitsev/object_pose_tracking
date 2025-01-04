@@ -99,6 +99,7 @@ def get_parser():
         "--opt_only",
         nargs="*",
         help="List of tasks to optimize",
+        default=["rot", "t", "labels", "boxes"],
         choices=["rot", "t", "labels", "boxes"],
     )
 
@@ -331,6 +332,8 @@ def fix_outdated_args(args):
 
     def noattr(x):
         return not hasattr(args, x)
+    def is_none(x):
+        return getattr(args, x) is None
 
     if noattr("obj_names"):
         args.obj_names = [args.obj_name]
@@ -343,7 +346,7 @@ def fix_outdated_args(args):
     for group in parser._action_groups:
         for action in group._group_actions:
             arg_name = action.dest
-            if noattr(arg_name):
+            if noattr(arg_name) or (arg_name == "opt_only" and is_none(arg_name)):
                 setattr(args, arg_name, action.default)
 
     return args
