@@ -82,6 +82,7 @@ class Trainer:
         exp_dir=None,
         model_name=None,
         opt_only=None,
+        max_clip_grad_norm=0.1,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -120,6 +121,7 @@ class Trainer:
         self.writer = writer
         self.seq_len = seq_len
         self.opt_only = opt_only
+        self.max_clip_grad_norm = max_clip_grad_norm
 
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
@@ -185,9 +187,8 @@ class Trainer:
             do_vis = False  # only do vis for the first seq
 
         for k, v in running_stats.items():
-            if self.use_ddp:
-                v = reduce_metric(v, world_size=self.world_size)
             running_stats[k] = v / len(loader)
+        running_stats = reduce_dict(running_stats, device=self.device)
 
         if self.do_log:
             for k, v in running_stats.items():
@@ -219,7 +220,13 @@ class Trainer:
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
-        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq))
+        ts_pbar = tqdm(
+            enumerate(batched_seq),
+            desc="Timestep",
+            leave=False,
+            total=len(batched_seq),
+            disable=seq_length == 1 or seq_length < 10,
+        )
 
         if do_opt_in_the_end:
             optimizer.zero_grad()
@@ -388,15 +395,7 @@ class Trainer:
                             rot_gt = rot_gt_abs
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
 
-                if self.opt_only is not None:
-                    if "rot" in self.opt_only:
-                        loss = loss_rot
-                    elif "trans" in self.opt_only:
-                        loss = loss_t
-                    else:
-                        raise ValueError(f"Invalid opt_only: {self.opt_only}")
-                else:
-                    loss = loss_rot + loss_t
+                loss = loss_rot + loss_t
 
             # depth loss
             if self.use_obs_belief:
@@ -423,7 +422,11 @@ class Trainer:
             # optim
             if do_opt_every_ts:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
+                if do_vis:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    vis_data["grad_norm"].append(grad_norm)
+                    vis_data["grad_norms"].append(grad_norms)
                 if self.do_debug:
                     grad_norms, grad_norm = self.get_grad_info()
                     self.processed_data["grad_norm"].append(grad_norm)
@@ -519,9 +522,6 @@ class Trainer:
                 vis_data["t_pred"].append(detach_and_cpu(t_pred[vis_batch_idxs]))
                 vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
-                grad_norms, grad_norm = self.get_grad_info()
-                vis_data["grad_norm"].append(grad_norm)
-                vis_data["grad_norms"].append(grad_norms)
 
             if self.do_debug:
                 # add everything to processed_data
@@ -566,11 +566,15 @@ class Trainer:
         if do_opt_in_the_end:
             total_loss /= seq_length
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if self.do_debug:
                 grad_norms, grad_norm = self.get_grad_info()
                 self.processed_data["grad_norm"].append(grad_norm)
                 self.processed_data["grad_norms"].append(grad_norms)
+            if do_vis:
+                grad_norms, grad_norm = self.get_grad_info()
+                vis_data["grad_norm"].append(grad_norm)
+                vis_data["grad_norms"].append(grad_norms)
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:
@@ -596,7 +600,7 @@ class Trainer:
 
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
-        grad_norm = sum(grad_norms) / max(1, len(grad_norms))
+        grad_norm = sum(grad_norms) / len(grad_norms)
         return grad_norms, grad_norm
 
 
@@ -814,7 +818,7 @@ class TrainerDeformableDETR(Trainer):
             # optim
             if do_opt_every_ts:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
                 if self.do_debug or do_vis:
                     grad_norms, grad_norm = self.get_grad_info()
                     if do_vis:
@@ -894,7 +898,7 @@ class TrainerDeformableDETR(Trainer):
         if do_opt_in_the_end:
             total_loss /= seq_length
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if self.do_debug or do_vis:
                 grad_norms, grad_norm = self.get_grad_info()
                 if do_vis:
@@ -1150,7 +1154,7 @@ class TrainerTrackformer(Trainer):
             # optim
             if do_opt_every_ts:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
                 if self.do_debug or do_vis:
                     grad_norms, grad_norm = self.get_grad_info()
                     if do_vis:
@@ -1181,9 +1185,7 @@ class TrainerTrackformer(Trainer):
                 t_pred = out["t"][idx]
                 rot_pred = out["rot"][idx]
                 pred_rts = torch.cat([t_pred, rot_pred], dim=1)
-                pose_mat_pred_abs = torch.stack(
-                    [pose_to_mat_converter_fn(rt) for rt in pred_rts]
-                )
+                pose_mat_pred_abs = torch.stack([pose_to_mat_converter_fn(rt) for rt in pred_rts])
 
                 for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
                     m_sample = calc_metrics(
@@ -1270,7 +1272,7 @@ class TrainerTrackformer(Trainer):
         if do_opt_in_the_end:
             total_loss /= seq_length
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if self.do_debug or do_vis:
                 grad_norms, grad_norm = self.get_grad_info()
                 if do_vis:
