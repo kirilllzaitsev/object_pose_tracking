@@ -60,12 +60,14 @@ def get_world_size():
 
 def reduce_metric(value, world_size):
     """Synchronize and average a metric across all processes."""
+    if world_size < 2:
+        return value
     tensor = torch.tensor(value, device="cuda")
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
     return tensor.item() / world_size
 
 
-def reduce_dict(input_dict, average=True):
+def reduce_dict(input_dict, average=True, device=None):
     """
     Args:
         input_dict (dict): all the values will be reduced
@@ -83,7 +85,10 @@ def reduce_dict(input_dict, average=True):
         # sort the keys so that they are consistent across processes
         for k in sorted(input_dict.keys()):
             names.append(k)
-            values.append(input_dict[k])
+            v = input_dict[k]
+            if not is_tensor(v):
+                v = torch.tensor(v, device=device)
+            values.append(v)
         values = torch.stack(values, dim=0)
         dist.all_reduce(values)
         if average:

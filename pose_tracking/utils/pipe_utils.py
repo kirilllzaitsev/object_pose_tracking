@@ -91,6 +91,7 @@ def get_model(args, num_classes=None):
             n_heads=args.mt_n_heads,
             encoding_type=args.mt_encoding_type,
             opt_only=args.opt_only,
+            dropout=args.dropout,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -283,6 +284,7 @@ def get_trainer(
         do_print_seq_stats=args.do_print_seq_stats,
         opt_only=args.opt_only,
         criterion_rot_name=args.rot_loss_name,
+        max_clip_grad_norm=args.max_clip_grad_norm,
         **extra_kwargs,
     )
 
@@ -343,6 +345,9 @@ def get_datasets(
     include_mask=False,
     include_bbox_2d=False,
     do_convert_pose_to_quat=True,
+    max_train_videos=None,
+    max_val_videos=None,
+    max_test_videos=None,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -400,6 +405,7 @@ def get_datasets(
             do_preload=do_preload_ds,
             transforms_rgb=transform_rgb,
             video_ds_cls=video_ds_cls,
+            max_videos=max_train_videos,
         )
         mesh_paths_orig_train = [d.ds.mesh_path_orig for d in train_dataset.video_datasets]
         res["train"] = train_dataset
@@ -419,6 +425,7 @@ def get_datasets(
                 do_preload=do_preload_ds,
                 transforms_rgb=None,
                 video_ds_cls=video_ds_cls,
+                max_videos=max_val_videos,
             )
         else:
             assert ds_video_dir_val and ds_video_subdirs_val
@@ -436,6 +443,7 @@ def get_datasets(
                 do_preload=True,
                 mesh_paths_to_take=mesh_paths_orig_train,
                 video_ds_cls=video_ds_cls,
+                max_videos=max_val_videos,
             )
         res["val"] = val_dataset
 
@@ -454,6 +462,7 @@ def get_datasets(
             num_samples=num_samples,
             do_preload=True,
             video_ds_cls=video_ds_cls,
+            max_videos=max_test_videos,
         )
         res["test"] = test_dataset
 
@@ -472,8 +481,10 @@ def get_video_ds(
     transforms_rgb=None,
     mesh_paths_to_take=None,
     video_ds_cls=VideoDataset,
+    max_videos=None,
 ):
     video_datasets = []
+    count = 0
     for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         seq_len = len(ds) if seq_len is None else seq_len
@@ -490,6 +501,9 @@ def get_video_ds(
             transforms_rgb=transforms_rgb,
         )
         video_datasets.append(video_ds)
+        count += 1
+        if max_videos is not None and count >= max_videos:
+            break
 
     full_ds = MultiVideoDataset(video_datasets)
     return full_ds

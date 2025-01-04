@@ -124,9 +124,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         ]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(DATA_DIR / args.ds_folder_name_val / "env_*")]
 
-    ds_video_subdirs_train = ds_video_subdirs_train[: args.max_train_videos]
-    ds_video_subdirs_val = ds_video_subdirs_val[: args.max_val_videos]
-
     if args.ds_name in ["ikea", "cube"]:
         ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
         ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
@@ -166,6 +163,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         do_overfit=args.do_overfit,
         do_preload_ds=args.do_preload_ds,
         model_name=args.model_name,
+        max_train_videos=args.max_train_videos,
+        max_val_videos=args.max_val_videos,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
@@ -213,6 +212,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     model = get_model(args, num_classes=num_classes).to(device)
 
     log_model_meta(model, exp=exp, logger=logger)
+    logger.info(model)
 
     if args.use_ddp:
         model = DDP(
@@ -264,7 +264,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     )
 
     logger.info(trainer)
-    logger.info(f"{logdir=} {os.path.basename(logdir)}")
+    if logdir is not None:
+        logger.info(f"{logdir=} {os.path.basename(logdir)}")
     if is_main_process and not args.exp_disabled:
         logger.info(f"# Experiment created at {exp._get_experiment_url()}")
         logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
@@ -344,7 +345,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
         printer.saved_artifacts(epoch)
 
-    logger.info(f"# {logdir=} {os.path.basename(logdir)}")
+    if logdir is not None:
+        logger.info(f"# {logdir=} {os.path.basename(logdir)}")
     logger.info(f"# {logpath=}")
 
     if is_main_process and not args.exp_disabled:
