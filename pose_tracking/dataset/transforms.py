@@ -12,7 +12,7 @@ def get_transforms(transform_names=None, transform_prob=0.75):
     if "iso" in transform_names:
         ts.append(A.ISONoise(p=0.25))
     if "brightness" in transform_names:
-        ts.append(A.RandomBrightnessContrast(p=0.75, brightness_limit=(-0.2, 0.2), contrast_limit=(-0.3, 0.3)))
+        ts.append(A.RandomBrightnessContrast(p=0.75, brightness_limit=(-0.1, 0.1), contrast_limit=(-0.2, 0.2)))
     if "blur" in transform_names:
         ts.append(A.Blur(p=0.1, blur_limit=(3, 5)))
     if "motion_blur" in transform_names:

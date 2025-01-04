@@ -98,7 +98,7 @@ class VideoDatasetTracking(VideoDataset):
 
     def __getitem__(self, idx):
         seq = []
-        timesteps = self.seq_len
+        timesteps = min(self.seq_len, len(self.ds) - 1)
         seq_start = self.seq_start
         seq_step = self.seq_step
 
