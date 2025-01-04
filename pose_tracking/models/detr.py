@@ -8,7 +8,7 @@ import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.encoders import FrozenBatchNorm2d
-from pose_tracking.models.pos_encoding import PosEncoding, SpatialPosEncoding
+from pose_tracking.models.pos_encoding import PosEncoding, PosEncodingCoord, SpatialPosEncoding
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     backproj_2d_to_3d_batch,
@@ -41,6 +41,7 @@ class DETRBase(nn.Module):
         head_num_layers=2,
         encoding_type="learned",
         opt_only=[],
+        dropout=0.0,
     ):
         super().__init__()
 
@@ -60,7 +61,7 @@ class DETRBase(nn.Module):
             d_model=d_model,
             nhead=n_heads,
             dim_feedforward=4 * d_model,
-            dropout=0.0,
+            dropout=dropout,
             batch_first=True,
         )
 
@@ -69,7 +70,7 @@ class DETRBase(nn.Module):
         self.queries = nn.Parameter(torch.rand((1, n_queries, d_model)), requires_grad=True)
 
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=0.0
+            d_model=d_model, nhead=n_heads, dim_feedforward=4 * d_model, batch_first=True, dropout=dropout
         )
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
@@ -99,6 +100,8 @@ class DETRBase(nn.Module):
         elif encoding_type == "sin":
             # tweak sin_max_len=1024 for img-based pe
             pe_encoder = PosEncoding(self.d_model, max_len=sin_max_len)
+        elif encoding_type == "none":
+            pe_encoder = None
         else:
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
@@ -163,7 +166,8 @@ class DETRBase(nn.Module):
 
     def to(self, *args, **kwargs):
         self = super().to(*args, **kwargs)
-        self.pe_encoder = self.pe_encoder.to(*args, **kwargs)
+        if self.pe_encoder is not None:
+            self.pe_encoder = self.pe_encoder.to(*args, **kwargs)
         return self
 
 
@@ -264,6 +268,8 @@ class KeypointDETR(DETRBase):
             pos_enc = self.pe_encoder
         elif self.encoding_type == "sin":
             pos_enc = self.pe_encoder(tokens)
+        elif self.encoding_type == "none":
+            pos_enc = torch.zeros_like(tokens)[:, 0].unsqueeze(-1)
         else:
             pos_enc = self.pe_encoder(extract_res["kpts"])
 
@@ -331,6 +337,8 @@ class KeypointDETR(DETRBase):
     def get_pos_encoder(self, encoding_type):
         if encoding_type == "spatial":
             pe_encoder = SpatialPosEncoding(self.d_model, ndim=self.kpt_spatial_dim)
+        elif encoding_type == "sin_coord":
+            pe_encoder = PosEncodingCoord(self.d_model)
         else:
             pe_encoder = super().get_pos_encoder(encoding_type)
         return pe_encoder
