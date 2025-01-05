@@ -333,7 +333,7 @@ class Trainer:
             t_pred_abs = pose_mat_pred_abs[:, :3, 3]
             rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
             if self.do_predict_rel_pose:
-                t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_gt_abs, pose_mat_prev_gt_abs)
+                t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_prev_gt_abs, pose_mat_gt_abs)
 
             # LOSSES
             # -- t_pred/rot_pred can be rel or abs
