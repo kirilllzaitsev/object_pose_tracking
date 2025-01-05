@@ -395,13 +395,11 @@ class Trainer:
                     loss = loss_rot + loss_t
                 else:
                     loss = 0
-                    assert any(x in self.opt_only for x in ["rot", "t"])
+                    assert any(x in self.opt_only for x in ["rot", "t"]), f"Invalid opt_only: {self.opt_only}"
                     if "rot" in self.opt_only:
                         loss += loss_rot
                     if "t" in self.opt_only:
                         loss += loss_t
-                    else:
-                        raise ValueError(f"Invalid opt_only: {self.opt_only}")
 
             # depth loss
             if self.use_obs_belief:
@@ -434,10 +432,6 @@ class Trainer:
                     grad_norms, grad_norm = self.get_grad_info()
                     vis_data["grad_norm"].append(grad_norm)
                     vis_data["grad_norms"].append(grad_norms)
-                if self.do_debug:
-                    grad_norms, grad_norm = self.get_grad_info()
-                    self.processed_data["grad_norm"].append(grad_norm)
-                    self.processed_data["grad_norms"].append(grad_norms)
                 optimizer.step()
             elif do_opt_in_the_end:
                 total_loss += loss
@@ -530,55 +524,33 @@ class Trainer:
                 vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
 
-            if self.do_debug:
-                # add everything to processed_data
-                self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
-                self.processed_data["rgb"].append(detach_and_cpu(rgb))
-                self.processed_data["mask"].append(detach_and_cpu(mask))
-                self.processed_data["pose_gt_abs"].append(detach_and_cpu(pose_gt_abs))
-                self.processed_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs))
-                self.processed_data["depth"].append(detach_and_cpu(depth))
-                self.processed_data["rot_pred"].append(detach_and_cpu(rot_pred))
-                self.processed_data["t_pred"].append(detach_and_cpu(t_pred))
                 if self.do_predict_2d_t:
-                    self.processed_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
-                    self.processed_data["depth_gt"].append(detach_and_cpu(depth_gt))
-                    self.processed_data["center_depth_pred"].append(detach_and_cpu(center_depth_pred))
-                    self.processed_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
-                    self.processed_data["t_pred_2d"].append(detach_and_cpu(t_pred_2d))
+                    vis_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
+                    vis_data["depth_gt"].append(detach_and_cpu(depth_gt))
+                    vis_data["center_depth_pred"].append(detach_and_cpu(center_depth_pred))
+                    vis_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
+                    vis_data["t_pred_2d"].append(detach_and_cpu(t_pred_2d))
                 if "priv_decoded" in out:
-                    self.processed_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
-                self.processed_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs))
-                self.processed_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
-                self.processed_data["pts"].append(detach_and_cpu(pts))
-                self.processed_data["bbox_3d"].append(detach_and_cpu(bbox_3d))
-                self.processed_data["diameter"].append(detach_and_cpu(diameter))
-                self.processed_data["loss"].append(detach_and_cpu(loss))
-                self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
-                self.processed_data["loss_depth"].append(detach_and_cpu(loss_depth))
-                self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
-                if self.use_pose_loss:
-                    self.processed_data["loss_pose"].append(detach_and_cpu(loss_pose))
-                else:
-                    self.processed_data["loss_rot"].append(detach_and_cpu(loss_rot))
-                    self.processed_data["loss_t"].append(detach_and_cpu(loss_t))
+                    vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
+                vis_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
+                vis_data["pts"].append(detach_and_cpu(pts))
+                vis_data["bbox_3d"].append(detach_and_cpu(bbox_3d))
+                vis_data["m_batch"].append(detach_and_cpu(m_batch))
+                vis_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
-                        self.processed_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred))
-                        self.processed_data["pose_mat_gt_rel"].append(detach_and_cpu(pose_mat_gt_rel))
+                        vis_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred))
+                        vis_data["pose_mat_gt_rel"].append(detach_and_cpu(pose_mat_gt_rel))
                     else:
-                        self.processed_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
-                        self.processed_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
+                        vis_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
+                        vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
+                        vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
 
         if do_opt_in_the_end:
             total_loss /= seq_length
             optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-            if self.do_debug:
-                grad_norms, grad_norm = self.get_grad_info()
-                self.processed_data["grad_norm"].append(grad_norm)
-                self.processed_data["grad_norms"].append(grad_norms)
             if do_vis:
                 grad_norms, grad_norm = self.get_grad_info()
                 vis_data["grad_norm"].append(grad_norm)
