@@ -128,7 +128,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
         num_classes = metadata["num_classes"] + 1
-        args.mt_num_queries = min(metadata["num_classes"], args.max_train_videos)
         logger.info(f"{num_classes=}")
     else:
         num_classes = None
