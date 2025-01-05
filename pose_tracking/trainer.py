@@ -228,9 +228,7 @@ class Trainer:
             disable=seq_length == 1 or seq_length < 10,
         )
 
-        if do_opt_in_the_end:
-            optimizer.zero_grad()
-            total_loss = 0
+        total_loss = 0
 
         if self.do_debug:
             self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
@@ -246,8 +244,6 @@ class Trainer:
         nan_count = 0
 
         for t, batch_t in ts_pbar:
-            if do_opt_every_ts:
-                optimizer.zero_grad()
             rgb = batch_t["rgb"]
             mask = batch_t["mask"]
             pose_gt_abs = batch_t["pose"]
@@ -395,7 +391,17 @@ class Trainer:
                             rot_gt = rot_gt_abs
                         loss_rot = self.criterion_rot(rot_pred, rot_gt)
 
-                loss = loss_rot + loss_t
+                if self.opt_only is None:
+                    loss = loss_rot + loss_t
+                else:
+                    loss = 0
+                    assert any(x in self.opt_only for x in ["rot", "t"])
+                    if "rot" in self.opt_only:
+                        loss += loss_rot
+                    if "t" in self.opt_only:
+                        loss += loss_t
+                    else:
+                        raise ValueError(f"Invalid opt_only: {self.opt_only}")
 
             # depth loss
             if self.use_obs_belief:
@@ -421,6 +427,7 @@ class Trainer:
 
             # optim
             if do_opt_every_ts:
+                optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
                 if do_vis:
@@ -565,6 +572,7 @@ class Trainer:
 
         if do_opt_in_the_end:
             total_loss /= seq_length
+            optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if self.do_debug:
