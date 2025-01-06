@@ -283,27 +283,26 @@ class RecurrentCNN(nn.Module):
 
         self.input_dim = depth_dim + rgb_dim
 
-        if use_rnn:
-            if rnn_type == "lstm":
-                self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
-            elif rnn_type == "lstm_custom":
-                self.state_cell = LSTMCell(self.input_dim, hidden_dim)
-            elif rnn_type == "gru":
-                self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
-            elif rnn_type == "gru_custom":
-                self.state_cell = GRUCell(self.input_dim, hidden_dim)
-            else:
-                raise ValueError("rnn_type must be 'lstm' or 'gru'")
-        else:
-            self.state_cell = MLP(
-                in_dim=self.input_dim,
-                out_dim=hidden_dim,
-                hidden_dim=hidden_dim,
-                num_layers=1,
-                dropout=dropout,
-            )
-
         if use_obs_belief:
+            if use_rnn:
+                if rnn_type == "lstm":
+                    self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
+                elif rnn_type == "lstm_custom":
+                    self.state_cell = LSTMCell(self.input_dim, hidden_dim)
+                elif rnn_type == "gru":
+                    self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
+                elif rnn_type == "gru_custom":
+                    self.state_cell = GRUCell(self.input_dim, hidden_dim)
+                else:
+                    raise ValueError("rnn_type must be 'lstm' or 'gru'")
+            else:
+                self.state_cell = MLP(
+                    in_dim=self.input_dim,
+                    out_dim=hidden_dim,
+                    hidden_dim=hidden_dim,
+                    num_layers=1,
+                    dropout=dropout,
+                )
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
                 state_cell_out_dim=hidden_dim,
@@ -395,6 +394,7 @@ class RecurrentCNN(nn.Module):
                 weights_depth=encoder_depth_weights,
                 norm_layer_type=norm_layer_type,
                 out_dim=encoder_out_dim,
+                # dropout=dropout,
             )
 
         self.hx = None
@@ -605,26 +605,6 @@ class RecurrentCNNSeparated(nn.Module):
             do_predict_rot=False,
         )
 
-        if use_rnn:
-            if rnn_type == "lstm":
-                self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
-            elif rnn_type == "lstm_custom":
-                self.state_cell = LSTMCell(self.input_dim, hidden_dim)
-            elif rnn_type == "gru":
-                self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
-            elif rnn_type == "gru_custom":
-                self.state_cell = GRUCell(self.input_dim, hidden_dim)
-            else:
-                raise ValueError("rnn_type must be 'lstm' or 'gru'")
-        else:
-            self.state_cell = MLP(
-                in_dim=self.input_dim,
-                out_dim=hidden_dim,
-                hidden_dim=hidden_dim,
-                num_layers=2,
-                dropout=dropout,
-            )
-
         if encoder_name == "resnet50":
             self.mid_feature_dim = 1024
             self.mid_layer_name = "layer3"
@@ -638,6 +618,25 @@ class RecurrentCNNSeparated(nn.Module):
             raise ValueError(f"Unknown encoder_name: {encoder_name}")
 
         if use_obs_belief:
+            if use_rnn:
+                if rnn_type == "lstm":
+                    self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
+                elif rnn_type == "lstm_custom":
+                    self.state_cell = LSTMCell(self.input_dim, hidden_dim)
+                elif rnn_type == "gru":
+                    self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
+                elif rnn_type == "gru_custom":
+                    self.state_cell = GRUCell(self.input_dim, hidden_dim)
+                else:
+                    raise ValueError("rnn_type must be 'lstm' or 'gru'")
+            else:
+                self.state_cell = MLP(
+                    in_dim=self.input_dim,
+                    out_dim=hidden_dim,
+                    hidden_dim=hidden_dim,
+                    num_layers=2,
+                    dropout=dropout,
+                )
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
                 state_cell_out_dim=hidden_dim,
@@ -713,6 +712,7 @@ class RecurrentCNNSeparated(nn.Module):
             weights_depth=encoder_depth_weights,
             norm_layer_type=norm_layer_type,
             out_dim=encoder_out_dim,
+            # dropout=dropout,
         )
         self.hx = None
         self.cx = None
@@ -783,12 +783,12 @@ class RecurrentCNNSeparated(nn.Module):
 
         res = {}
         if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb_roi, latent_depth_roi, self.hx, self.cx)
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, self.hx, self.cx)
             self.hx, self.cx = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(self.hx, latent_depth_roi)
+            decoder_out = self.belief_decoder(self.hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
-            extracted_obs = torch.cat([latent_rgb_roi, belief_state], dim=1)
+            extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
 
             res.update(
                 {
@@ -799,16 +799,18 @@ class RecurrentCNNSeparated(nn.Module):
             if self.use_priv_decoder:
                 res["priv_decoded"] = decoder_out["priv_decoded"]
         else:
-            extracted_obs = torch.cat([latent_rgb_roi, latent_depth_roi], dim=1)
+            extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
+
+        extracted_obs_rot = torch.cat([latent_rgb_roi, latent_depth_roi], dim=1)
 
         if self.use_prev_pose_condition:
             if prev_pose is None:
                 prev_pose = {
                     "rot": torch.zeros(latent_rgb_roi.size(0), self.rot_mlp_out_dim, device=latent_rgb_roi.device),
                 }
-            rot_in = torch.cat([extracted_obs, prev_pose["rot"]], dim=1)
+            rot_in = torch.cat([extracted_obs_rot, prev_pose["rot"]], dim=1)
         else:
-            rot_in = extracted_obs
+            rot_in = extracted_obs_rot
 
         rot = self.rot_mlp(rot_in.view(B, -1))
 
