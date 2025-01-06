@@ -164,17 +164,17 @@ def calc_auc(errs, max_val=0.1, step=0.001):
     }
 
 
-def calc_rt_errors(rt1, rt2, handle_visibility=False, class_name=""):
+def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
     """Calculate rotation and translation errors between two poses.
     Can handle symmetries in Linemod objects.
     """
-    rt1 = cast_to_numpy(rt1)
-    rt2 = cast_to_numpy(rt2)
+    pred_rt = cast_to_numpy(pred_rt)
+    gt_rt = cast_to_numpy(gt_rt)
 
-    T1 = rt1[:3, 3]
-    T2 = rt2[:3, 3]
-    rot_pred = rt2[:3, :3]
-    rot_gt = rt1[:3, :3]
+    T1 = pred_rt[:3, 3]
+    T2 = gt_rt[:3, 3]
+    rot_pred = pred_rt[:3, :3]
+    rot_gt = gt_rt[:3, :3]
 
     theta = calc_r_error(rot_pred, rot_gt, handle_visibility=handle_visibility, class_name=class_name)
     shift = calc_t_error(T1, T2)
@@ -191,8 +191,9 @@ def calc_t_error(T1, T2):
 
 
 def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
-    R2 = normalize_rotation_matrix(rot_pred)
-    R1 = normalize_rotation_matrix(rot_gt)
+    # TODO: normalize_rotation_matrix needed?
+    R2 = rot_pred
+    R1 = rot_gt
 
     if class_name in ["bottle", "can", "bowl"]:
         y = np.array([0, 1, 0])
@@ -214,7 +215,7 @@ def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
             np.arccos(np.clip((np.trace(R_rot) - 1) / 2, -1, 1)),
         )
     else:
-        R = np.dot(R1, R2.T)
+        R = np.dot(R2.T, R1)
         theta = np.arccos(np.clip((np.trace(R) - 1) / 2, -1, 1))
 
     theta *= 180 / np.pi
