@@ -10,6 +10,7 @@ from socket import gethostname
 
 import comet_ml
 import numpy as np
+from pose_tracking.dataset.ds_meta import YCBV_OBJ_NAME_TO_ID
 import torch
 import torch.distributed as dist
 import torch.optim as optim
@@ -129,6 +130,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
         num_classes = metadata["num_classes"] + 1
         logger.info(f"{num_classes=}")
+    elif args.ds_name == "ycbi":
+        num_classes = len(YCBV_OBJ_NAME_TO_ID)
     else:
         num_classes = None
 

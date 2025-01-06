@@ -94,7 +94,7 @@ def get_parser():
         type=str,
         default="mse",
         help="Rotation loss name",
-        choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement"],
+        choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement", "geodesic_mat"],
     )
     train_args.add_argument(
         "--opt_only",
@@ -313,7 +313,7 @@ def postprocess_args(args, use_if_provided=True):
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
     assert not (
-        args.do_predict_rel_pose and (args.do_predict_6d_rot or args.do_predict_2d_t)
+        args.do_predict_rel_pose and args.do_predict_2d_t
     ), "Relative pose prediction is not supported with 6d rot or 2d t"
 
     if args.ds_name not in ["ycbi", "cube"]:
@@ -333,6 +333,7 @@ def fix_outdated_args(args):
 
     def noattr(x):
         return not hasattr(args, x)
+
     def is_none(x):
         return getattr(args, x) is None
 
@@ -349,6 +350,8 @@ def fix_outdated_args(args):
             arg_name = action.dest
             if noattr(arg_name) or (arg_name == "opt_only" and is_none(arg_name)):
                 setattr(args, arg_name, action.default)
+            if arg_name == "opt_only" and getattr(args, arg_name) != action.default:
+                args.exp_tags += [f"opt_{'_'.join(args.opt_only)}"]
 
     return args
 

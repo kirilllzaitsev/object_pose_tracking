@@ -13,10 +13,10 @@ from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
 from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
-from pose_tracking.metrics import calc_metrics, eval_batch_det
+from pose_tracking.metrics import calc_metrics, calc_r_error, calc_t_error, eval_batch_det
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
-from pose_tracking.utils.artifact_utils import save_results
+from pose_tracking.utils.artifact_utils import save_results, save_results_v2
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
@@ -127,7 +127,7 @@ class Trainer:
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
-        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement"]
+        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement", "geodesic_mat"]
         self.save_vis_paths = []
 
         self.processed_data = defaultdict(list)
@@ -136,9 +136,9 @@ class Trainer:
         self.train_epoch_count = 0
 
         if do_predict_6d_rot:
-            assert criterion_rot_name in ["displacement"], criterion_rot_name
+            assert criterion_rot_name in ["displacement", "geodesic_mat"], criterion_rot_name
         if do_predict_3d_rot:
-            assert criterion_rot_name not in ["geodesic", "videopose"], criterion_rot_name
+            assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
 
     def __repr__(self):
         return print_cls(self, excluded_attrs=["processed_data", "model"])
@@ -1122,6 +1122,7 @@ class TrainerTrackformer(Trainer):
             # LOSSES
 
             loss_dict = self.criterion(out, targets_res)
+            indices = loss_dict.pop("indices")
             weight_dict = self.criterion.weight_dict
             loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
 
@@ -1155,7 +1156,6 @@ class TrainerTrackformer(Trainer):
             m_batch = defaultdict(list)
 
             if self.use_pose:
-                indices = loss_dict["indices"]
                 idx = self.criterion._get_src_permutation_idx(indices)
                 target_rts = torch.cat(
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0

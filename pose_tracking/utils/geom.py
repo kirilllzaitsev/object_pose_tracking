@@ -208,18 +208,18 @@ def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
 def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
     cur_pose_mat = (
-        torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)[None]
-        .expand(len(prev_pose_mat), -1, -1)
-        .contiguous()
+        torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)
     )
+    if prev_pose_mat.ndim == 3:
+        cur_pose_mat = cur_pose_mat[None].repeat(len(prev_pose_mat), 1, 1)
     if do_couple_rot_t:
         # both deltas are in the global frame
-        cur_pose_mat[:, :3, 3] = (
-            torch.bmm(rot_mat_delta, prev_pose_mat[:, :3, 3].unsqueeze(-1)).squeeze(-1) + trans_delta
+        cur_pose_mat[..., :3, 3] = (
+            torch.bmm(rot_mat_delta, prev_pose_mat[..., :3, 3].unsqueeze(-1)).squeeze(-1) + trans_delta
         )
     else:
-        cur_pose_mat[:, :3, 3] = prev_pose_mat[:, :3, 3] + trans_delta
-    cur_pose_mat[:, :3, :3] = rot_mat_delta @ prev_pose_mat[:, :3, :3]
+        cur_pose_mat[..., :3, 3] = prev_pose_mat[..., :3, 3] + trans_delta
+    cur_pose_mat[..., :3, :3] = rot_mat_delta @ prev_pose_mat[..., :3, :3]
     return cur_pose_mat
 
 
