@@ -188,7 +188,6 @@ YCBINEOAT_VIDEONAME_TO_OBJ = {
     "sugar_box1": "004_sugar_box",
     "sugar_box_yalehand0": "004_sugar_box",
     "tomato_soup_can_yalehand0": "005_tomato_soup_can",
-    "2022-11-18-15-10-24_milk": "milk_can",
 }
 YCBINEOAT_OBJ_TO_VIDEONAME = {
     "021_bleach_cleanser": "bleach0",

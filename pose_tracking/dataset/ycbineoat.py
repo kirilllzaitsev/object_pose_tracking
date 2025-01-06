@@ -32,6 +32,15 @@ class YCBineoatDataset(TrackingDataset):
         ycb_meshes_dir=None,
         **kwargs,
     ):
+        # TMP: the mask labels are especially bad for these videos, not usable for obj det
+        # because inferring bbox based on mask
+        if "bleach0" in str(kwargs["video_dir"]):
+            kwargs["end_frame_idx"] = -2
+        elif "cracker_box_yalehand0" in str(kwargs["video_dir"]):
+            kwargs["end_frame_idx"] = -80
+        elif "sugar_box1" in str(kwargs["video_dir"]):
+            kwargs["end_frame_idx"] = 840
+
         super().__init__(*args, pose_dirname="annotated_poses", **kwargs)
         self.ycb_meshes_dir = ycb_meshes_dir
         self.include_xyz_map = include_xyz_map
@@ -41,7 +50,7 @@ class YCBineoatDataset(TrackingDataset):
         obj_name_no_pref = re.search("\d+_(.*)", self.obj_name)
         if obj_name_no_pref is None:
             raise ValueError(f"Could not extract object name from {self.obj_name}")
-        self.class_id = YCBV_OBJ_NAME_TO_ID[obj_name_no_pref.group(1)]
+        self.class_id = YCBV_OBJ_NAME_TO_ID[obj_name_no_pref.group(1)] - 1
 
         if ycb_meshes_dir is not None:
             mesh_path = f"{ycb_meshes_dir}/{self.obj_name}/textured_simple.obj"
@@ -54,7 +63,7 @@ class YCBineoatDataset(TrackingDataset):
         if self.include_occ_mask:
             sample["occ_mask"] = self.get_occ_mask(idx)
 
-        sample["class_id"] = self.class_id
+        sample["class_id"] = [self.class_id]
 
         return sample
 
