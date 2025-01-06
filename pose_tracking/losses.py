@@ -28,6 +28,22 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
+def geodesic_mat_loss(m1, m2):
+    # matrices batch*3*3
+    # both matrix are orthogonal rotation matrices
+    # out theta between 0 to 180 degree batch
+    m = torch.bmm(m1, m2.transpose(1, 2))  # batch*3*3
+
+    cos = (m[:, 0, 0] + m[:, 1, 1] + m[:, 2, 2] - 1) / 2
+    cos = torch.clamp(cos, -1, 1)
+
+    theta = torch.acos(cos)
+
+    # theta = torch.min(theta, 2*np.pi - theta)
+
+    return torch.mean(theta)
+
+
 def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts, dist_loss="mse"):
     pred = rotate_pts_batch(pred_rot_mat, pts)
     true = rotate_pts_batch(true_rot_mat, pts)
@@ -203,6 +219,8 @@ def get_rot_loss(rot_loss_name):
         criterion_rot = functools.partial(rot_pts_displacement_loss, dist_loss="mse")
     elif rot_loss_name == "geodesic":
         criterion_rot = geodesic_loss
+    elif rot_loss_name == "geodesic_mat":
+        criterion_rot = geodesic_mat_loss
     elif rot_loss_name == "mse":
         criterion_rot = nn.MSELoss()
     elif rot_loss_name == "mae":
