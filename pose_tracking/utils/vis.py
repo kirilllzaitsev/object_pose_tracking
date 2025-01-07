@@ -448,7 +448,7 @@ def plot_seq(
         seq = batch_seq[batch_idx]
         print(f"taking {batch_idx=} of {len(batch_seq)}")
     if len(seq) > 20:
-        print("Taking first 20 frames to plot")
+        print(f"Taking first 20 frames of {len(seq)=}")
         seq = seq[:20]
     print(f"{len(seq)=}")
     take_n = min(take_n, len(seq)) if take_n is not None else len(seq)
@@ -493,7 +493,7 @@ def plot_seq(
                     pose,
                     bbox=fetcher_fn("mesh_bbox", sidx),
                     bbox_color=(255, 255, 0),
-                    scale=0.1,
+                    scale=0.15,
                 )
                 dtype = np.uint8
             else:

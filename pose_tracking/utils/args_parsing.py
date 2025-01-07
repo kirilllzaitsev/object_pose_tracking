@@ -250,6 +250,7 @@ def get_parser():
     data_args.add_argument(
         "--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"]
     )
+    data_args.add_argument("--ds_alias", type=str, help="Optional alias for ds")
     data_args.add_argument("--ds_folder_name_train", type=str, help="Name of the folder with the train dataset")
     data_args.add_argument("--ds_folder_name_val", type=str, help="Name of the folder with the val dataset")
     data_args.add_argument(
@@ -306,6 +307,7 @@ def postprocess_args(args, use_if_provided=True):
 
     if args.do_overfit:
         args.dropout = 0.0
+        args.weight_decay = 0.0
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"

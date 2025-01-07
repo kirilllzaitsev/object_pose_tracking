@@ -439,7 +439,7 @@ def get_datasets(
                 seq_step=seq_step if is_pizza_model else 1,
                 seq_start=0,
                 ds_kwargs=val_ds_kwargs,
-                num_samples=num_samples,
+                num_samples=None,
                 do_preload=True,
                 mesh_paths_to_take=mesh_paths_orig_train,
                 video_ds_cls=video_ds_cls,
