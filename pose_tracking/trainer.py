@@ -47,6 +47,27 @@ from pose_tracking.utils.rotation_conversions import (
 from tqdm.auto import tqdm
 
 
+def t_transform(T_src, T_delta, zoom_factor, num_classes):
+    """
+    :param T_src: (x1, y1, z1)
+    :param T_delta: (dx, dy, dz)
+    :return: T_tgt: (x2, y2, z2)
+    """
+
+    weight = 10.0
+    T_src = T_src.repeat(1, num_classes)
+    vz = torch.div(T_src[:, 2::3], torch.exp(T_delta[:, 2::3] / weight))
+    vx = torch.mul(vz, torch.addcdiv(T_delta[:, 0::3] / weight, 1.0, T_src[:, 0::3], T_src[:, 2::3]))
+    vy = torch.mul(vz, torch.addcdiv(T_delta[:, 1::3] / weight, 1.0, T_src[:, 1::3], T_src[:, 2::3]))
+
+    T_tgt = torch.zeros_like(T_src)
+    T_tgt[:, 0::3] = vx
+    T_tgt[:, 1::3] = vy
+    T_tgt[:, 2::3] = vz
+
+    return T_tgt
+
+
 class Trainer:
 
     def __init__(
@@ -284,21 +305,31 @@ class Trainer:
             # POSTPROCESS OUTPUTS
 
             rot_pred, t_pred = out["rot"], out["t"]
+            use_deepim_2d_t = False
+            use_deepim_2d_t = True
 
             if self.do_predict_2d_t:
-                t_pred_2d_denorm = t_pred.detach().clone()
-                t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
-                t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
-
                 center_depth_pred = out["center_depth"]
-                t_pred_2d_backproj = []
-                for sample_idx in range(batch_size):
-                    t_pred_2d_backproj.append(
-                        backproj_2d_to_3d(
-                            t_pred_2d_denorm[sample_idx][None], center_depth_pred[sample_idx], intrinsics[sample_idx]
-                        ).squeeze()
-                    )
-                t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
+                if self.do_predict_rel_pose:
+                    t_pred = torch.cat([t_pred, center_depth_pred], dim=1)
+                    if use_deepim_2d_t:
+                        t_pred = t_transform(pose_prev_pred_abs["t"], t_pred, 1, 1)
+                else:
+                    # abs 2d center to abs 3d
+                    t_pred_2d_denorm = t_pred.detach().clone()
+                    t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
+                    t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
+
+                    t_pred_2d_backproj = []
+                    for sample_idx in range(batch_size):
+                        t_pred_2d_backproj.append(
+                            backproj_2d_to_3d(
+                                t_pred_2d_denorm[sample_idx][None],
+                                center_depth_pred[sample_idx],
+                                intrinsics[sample_idx],
+                            ).squeeze()
+                        )
+                    t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
             pose_mat_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
@@ -349,17 +380,40 @@ class Trainer:
                 # t loss
 
                 if self.do_predict_2d_t:
-                    t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
-                    t_gt_2d_norm = t_gt_2d.clone()
-                    t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
-                    t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
-
                     t_pred_2d = out["t"]
-                    depth_gt = t_gt_abs[:, 2]
+                    if self.do_predict_rel_pose:
+                        if use_deepim_2d_t:
+                            fx = intrinsics[:, 0, 0]
+                            fy = intrinsics[:, 1, 1]
+                            xgt, ygt, zgt = t_gt_abs[:, 0], t_gt_abs[:, 1], t_gt_abs[:, 2]
+                            pred_vx = t_pred[:, 0]
+                            pred_vy = t_pred[:, 1]
+                            pred_vz = center_depth_pred
+                            prev_xgt, prev_ygt, prev_zgt = (
+                                pose_mat_prev_gt_abs[:, :3, 3][:, 0],
+                                pose_mat_prev_gt_abs[:, :3, 3][:, 1],
+                                pose_mat_prev_gt_abs[:, :3, 3][:, 2],
+                            )
+                            loss_x = self.criterion_trans(pred_vx, fx * (xgt / zgt - prev_xgt / prev_zgt))
+                            loss_y = self.criterion_trans(pred_vy, fy * (ygt / zgt - prev_ygt / prev_zgt))
+                            loss_z = self.criterion_trans(pred_vz, torch.log(zgt / prev_zgt))
+                            loss_t = loss_x + loss_y + loss_z
+                        else:
+                            loss_uv = self.criterion_trans(t_pred_2d[:, :2], t_gt_rel[:, :2])
+                            # trickier for depth
+                            loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2])
+                            loss_t = loss_uv + loss_z
+                    else:
+                        t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
+                        t_gt_2d_norm = t_gt_2d.clone()
+                        t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
+                        t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
 
-                    loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
-                    loss_center_depth = torch.abs(center_depth_pred - depth_gt).mean()
-                    loss_t = loss_t_2d + loss_center_depth
+                        depth_gt = t_gt_abs[:, 2]
+
+                        loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
+                        loss_center_depth = self.criterion_trans(center_depth_pred, depth_gt)
+                        loss_t = loss_t_2d + loss_center_depth
                 else:
                     if self.do_predict_rel_pose:
                         rel_t_scaler = 1
