@@ -579,10 +579,11 @@ class Trainer:
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
 
                 if self.do_predict_2d_t:
-                    vis_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
-                    vis_data["depth_gt"].append(detach_and_cpu(depth_gt))
+                    if not self.do_predict_rel_pose:
+                        vis_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
+                        vis_data["depth_gt"].append(detach_and_cpu(depth_gt))
+                        vis_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
                     vis_data["center_depth_pred"].append(detach_and_cpu(center_depth_pred))
-                    vis_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
                     vis_data["t_pred_2d"].append(detach_and_cpu(t_pred_2d))
                 if "priv_decoded" in out:
                     vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
@@ -599,6 +600,22 @@ class Trainer:
                         vis_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
                         vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
+
+                if torch.isnan(loss):
+                    if t > 0:
+                        self.logger.error(f"{batched_seq[t-1]=}")
+                    self.logger.error(f"{batched_seq[t]=}")
+                    self.logger.error(f"{loss_t=}")
+                    self.logger.error(f"{loss_rot=}")
+                    self.logger.error(f"rot_pred: {rot_pred}")
+                    self.logger.error(f"rot_mat_pred: {rot_mat_pred}")
+                    self.logger.error(f"rot_gt_abs: {rot_gt_abs}")
+                    self.logger.error(f"rot_mat_gt_abs: {rot_mat_gt_abs}")
+                    self.logger.error(f"seq_metrics: {seq_metrics}")
+                    self.logger.error(f"seq_stats: {seq_stats}")
+                    if self.do_predict_rel_pose:
+                        self.logger.error(f"rot_gt_rel: {rot_gt_rel_mat}")
+                    sys.exit(1)
 
         if do_opt_in_the_end:
             total_loss /= seq_length
