@@ -1216,11 +1216,11 @@ class TrainerTrackformer(Trainer):
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
                 )
 
-                pose_mat_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in target_rts])
+                pose_mat_gt_abs = torch.stack([convert_pose_vector_to_matrix(rt) for rt in target_rts])
                 t_pred = out["t"][idx]
                 rot_pred = out["rot"][idx]
                 pred_rts = torch.cat([t_pred, rot_pred], dim=1)
-                pose_mat_pred_abs = torch.stack([pose_to_mat_converter_fn(rt) for rt in pred_rts])
+                pose_mat_pred_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
 
                 for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
                     m_sample = calc_metrics(
@@ -1275,8 +1275,30 @@ class TrainerTrackformer(Trainer):
             self.ts_counts_per_stage[stage] += 1
 
             if save_preds:
+                assert self.use_pose
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, pose_mat_pred_abs, preds_dir)
+                bboxs = []
+                labels = []
+                for bidx, out_b in enumerate(out_formatted):
+                    keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
+                    # keep = torch.ones_like(res['scores']).bool()
+                    if sum(keep) == 0:
+                        print(f"{bidx=} failed")
+                        continue
+                    boxes_b = out_b["boxes"][keep]
+                    labels_b = out_b["labels"][keep]
+                    bboxs.append(boxes_b)
+                    labels.append(labels_b)
+                save_results_v2(
+                    rgb,
+                    intrinsics=[t["intrinsics"] for t in targets],
+                    pose_gt=pose_gt_abs,
+                    pose_pred=pose_mat_pred_abs,
+                    rgb_path=batch_t["rgb_path"],
+                    preds_dir=preds_dir,
+                    bboxs=bboxs,
+                    labels=labels,
+                )
 
             if do_vis:
                 # save inputs to the exp dir
