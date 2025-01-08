@@ -1,3 +1,4 @@
+import json
 import os
 from glob import glob
 from pathlib import Path
@@ -14,7 +15,7 @@ from pose_tracking.utils.common import print_args
 from pose_tracking.utils.eval_utils import get_preds_path_benchmark
 from pose_tracking.utils.io import load_color, load_pose
 from pose_tracking.utils.video_utils import save_video
-from pose_tracking.utils.vis import draw_poses_on_video
+from pose_tracking.utils.vis import draw_poses_on_video, vis_bbox_2d
 from tqdm import tqdm
 
 
@@ -58,10 +59,12 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
         save_video(images, save_path, frame_height, frame_width, fps, live_preview=False)
 
 
-def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=None, fps=10):
+def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=None, fps=10, include_det=False):
     poses_pred = []
     poses_gt = []
     rgbs = []
+    boxes = []
+    labels = []
 
     preds_dir = Path(preds_dir)
     if intrinsics is None:
@@ -75,6 +78,13 @@ def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=N
         rgbs.append(rgb)
         poses_pred.append(pred)
         poses_gt.append(gt)
+        if include_det:
+            det_path = preds_dir / "bbox" / f"{filename}.json"
+            if det_path.exists():
+                with open(det_path, "r") as f:
+                    det = json.load(f)
+                    boxes.append(det["bbox"])
+                    labels.append(det["labels"])
 
     rgb_bbox = draw_poses_on_video(
         rgbs,
@@ -85,12 +95,32 @@ def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=N
         bbox_color=(255, 255, 0),
         scale=0.05,
     )
-    images = rgb_bbox
-    frame_height, frame_width = images[0].shape[:2]
+    frame_height, frame_width = rgb_bbox[0].shape[:2]
 
     if video_save_path is None:
         video_save_path = preds_dir / "video.mp4"
-    save_video(images, video_save_path, frame_height, frame_width, fps)
+    save_video(rgb_bbox, video_save_path, frame_height, frame_width, fps)
+
+    if include_det:
+        if not det_path.exists():
+            logger.error(f"No detections found in {preds_dir}")
+        else:
+            imgs_det = []
+            for idx in range(len(boxes)):
+                img = rgbs[idx].copy()
+
+                boxes_t = boxes[idx]
+                for obj_idx in range(len(boxes_t)):
+                    box = boxes_t[obj_idx]
+                    img = vis_bbox_2d(
+                        img,
+                        box,
+                        is_normalized=False,
+                        label=labels[idx][obj_idx],
+                        color=(255, 255, 0),
+                    )
+                imgs_det.append(img)
+            save_video(imgs_det, preds_dir / "video_det.mp4", frame_height, frame_width, fps)
 
 
 if __name__ == "__main__":
