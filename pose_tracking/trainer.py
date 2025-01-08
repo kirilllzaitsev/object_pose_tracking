@@ -172,14 +172,34 @@ class Trainer:
             else:
                 self.model.reset_state(batch_size, device=self.device)
 
-            seq_stats = self.batched_seq_forward(
-                batched_seq=batched_seq,
-                optimizer=optimizer,
-                save_preds=save_preds,
-                preds_dir=preds_dir,
-                stage=stage,
-                do_vis=do_vis,
-            )
+            if not self.do_chunkify_val or stage == "train":
+                seq_stats = self.batched_seq_forward(
+                    batched_seq=batched_seq,
+                    optimizer=optimizer,
+                    save_preds=save_preds,
+                    preds_dir=preds_dir,
+                    stage=stage,
+                    do_vis=do_vis,
+                )
+            else:
+                batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
+                seq_stats = defaultdict(lambda: defaultdict(float))
+
+                for chunk in tqdm(batched_seq_chunks, desc="Subseq", leave=False):
+                    seq_stats_chunk = self.batched_seq_forward(
+                        batched_seq=chunk,
+                        optimizer=optimizer,
+                        save_preds=save_preds,
+                        preds_dir=preds_dir,
+                        stage=stage,
+                        do_vis=do_vis,
+                    )
+                    for k, v in seq_stats_chunk.items():
+                        for kk, vv in v.items():
+                            seq_stats[k][kk] += vv
+                for k, v in seq_stats.items():
+                    for kk, vv in v.items():
+                        seq_stats[k][kk] /= len(batched_seq_chunks)
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
