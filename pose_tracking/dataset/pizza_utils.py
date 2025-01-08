@@ -1,7 +1,7 @@
-from pose_tracking.utils.rotation_conversions import matrix_to_axis_angle
 import torch
 from pose_tracking.utils.geom import cam_to_2d
-from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
+from pose_tracking.utils.pose import convert_pose_vector_to_matrix
+from pose_tracking.utils.rotation_conversions import matrix_to_axis_angle
 
 
 def get_t_2d_and_depth_from_pose(w, h, pose_gt_abs, intrinsics, do_norm=True):
@@ -29,7 +29,7 @@ def extend_seq_with_pizza_args(seq):
     device = seq["rgb"].device
     seqlen = seq["rgb"].shape[1]
     for bidx in range(seq["rgb"].shape[0]):
-        rot_mats_b = convert_pose_quaternion_to_matrix(seq["pose"][bidx])[:, :3, :3]
+        rot_mats_b = convert_pose_vector_to_matrix(seq["pose"][bidx])[:, :3, :3]
         delta_uv_b = []
         delta_depth_b = []
         delta_rot_b = []
@@ -41,7 +41,7 @@ def extend_seq_with_pizza_args(seq):
             intrinsics = seq["intrinsics"][bidx, tidx]
             t_2d_cur, z_cur = get_t_2d_and_depth_from_pose(w, h, pose_gt_abs_cur, intrinsics)
             rot_mat_cur = rot_mats_b[tidx]
-            
+
             if tidx == 0:
                 continue
 

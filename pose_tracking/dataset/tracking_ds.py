@@ -7,6 +7,7 @@ import torch
 import trimesh
 from pose_tracking.config import logger
 from pose_tracking.dataset.ds_common import process_raw_sample
+from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import (
     convert_3d_bbox_to_2d,
@@ -117,6 +118,7 @@ class TrackingDataset(Dataset):
 
         if self.include_pose:
             sample["pose"] = self.get_pose(i)
+            # sample["pose"][:3, :3] = normalize_rotation_matrix(sample["pose"][:3, :3])
 
         sample["rgb_path"] = self.color_files[i]
         sample["intrinsics"] = self.K

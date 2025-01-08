@@ -90,11 +90,12 @@ def load_pose(path, num_trials=3):
     path = str(path)
     try:
         if path.endswith(".npy"):
-            return np.load(path)
+            pose = np.load(path)
         elif path.endswith(".txt"):
-            return np.loadtxt(path).reshape(4, 4)
+            pose = np.loadtxt(path).reshape(4, 4)
         else:
             raise ValueError(f"Unknown pose format: {path}")
+        return pose
     except SystemError:
         time.sleep(random.random())
         return load_pose(path, num_trials=num_trials - 1)

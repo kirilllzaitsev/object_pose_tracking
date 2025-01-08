@@ -58,6 +58,7 @@ def get_parser():
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
     train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
+    train_args.add_argument("--do_chunkify_val", action="store_true", help="Chunkify validation into train's seq_length")
     train_args.add_argument("--vis_epoch_freq", type=int, default=3, help="Visualize a random sequence every N epochs")
     train_args.add_argument("--num_epochs", type=int, default=100, help="Number of training epochs")
     train_args.add_argument("--val_epoch_freq", type=int, default=1, help="Validate every N epochs")
@@ -249,6 +250,9 @@ def get_parser():
     )
     data_args.add_argument(
         "--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"]
+    )
+    data_args.add_argument(
+        "--end_frame_idx", type=int, help="Optional index of the last frame of each tracking ds for train set"
     )
     data_args.add_argument("--ds_alias", type=str, help="Optional alias for ds")
     data_args.add_argument("--ds_folder_name_train", type=str, help="Name of the folder with the train dataset")

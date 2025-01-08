@@ -26,7 +26,7 @@ from pose_tracking.utils.common import (
 )
 from pose_tracking.utils.geom import to_homo, world_to_2d_pt_homo
 from pose_tracking.utils.kpt_utils import is_torch
-from pose_tracking.utils.pose import convert_pose_quaternion_to_matrix
+from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
@@ -486,7 +486,7 @@ def plot_seq(
             elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
                 pose = img
                 if pose.shape[-1] == 7:
-                    pose = convert_pose_quaternion_to_matrix(pose)
+                    pose = convert_pose_vector_to_matrix(pose)
                 grid_img = draw_pose_on_img(
                     fetcher_fn(img_key, sidx),
                     fetcher_fn("intrinsics", sidx),
@@ -635,7 +635,7 @@ def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
     color = sample["rgb"]
     pose = sample["pose"]
     if pose.shape[-1] == 7:
-        pose = convert_pose_quaternion_to_matrix(pose)
+        pose = convert_pose_vector_to_matrix(pose)
     K = sample["intrinsics"]
     return plot_pose(color, pose, K, bbox=bbox, ax=ax, scale=scale)
 

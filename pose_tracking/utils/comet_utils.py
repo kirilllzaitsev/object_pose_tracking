@@ -126,6 +126,7 @@ def load_artifacts_from_comet(
             project_name=PROJ_NAME,
             experiment=exp_name,
         )
+        print(f"loading artifacts for {exp_name=}")
         assert exp_api is not None, f"Experiment {exp_name} not found"
         if args_not_exist:
             try:

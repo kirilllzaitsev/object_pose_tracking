@@ -7,9 +7,16 @@ from pose_tracking.utils.common import adjust_img_for_plt, create_dir
 
 
 def save_video(
-    images, save_path="/tmp/video.mp4", frame_height=480, frame_width=640, fps=10, live_preview=False, live_preview_delay=1000
+    images,
+    save_path="/tmp/video.mp4",
+    frame_height=480,
+    frame_width=640,
+    fps=10,
+    live_preview=False,
+    live_preview_delay=1000,
 ):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    save_path = str(save_path)
     if not save_path.endswith(".mp4"):
         save_path += ".mp4"
     create_dir(save_path)

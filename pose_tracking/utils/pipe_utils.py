@@ -142,7 +142,7 @@ def get_model(args, num_classes=None):
             priv_decoder_num_layers=args.priv_decoder_num_layers,
             depth_decoder_num_layers=args.depth_decoder_num_layers,
             hidden_attn_num_layers=args.hidden_attn_num_layers,
-            rt_mlps_num_layers=args.rt_mlps_num_layers,
+            t_mlp_num_layers=args.t_mlp_num_layers,
             dropout=args.dropout,
             use_rnn=not args.no_rnn,
             use_obs_belief=not args.no_obs_belief,
@@ -285,6 +285,7 @@ def get_trainer(
         opt_only=args.opt_only,
         criterion_rot_name=args.rot_loss_name,
         max_clip_grad_norm=args.max_clip_grad_norm,
+        do_chunkify_val=args.do_chunkify_val,
         **extra_kwargs,
     )
 
@@ -326,6 +327,7 @@ def get_datasets(
     seq_len,
     seq_step,
     seq_start,
+    model_name,
     ds_video_dir_train=None,
     ds_video_dir_val=None,
     ds_video_dir_test=None,
@@ -337,7 +339,6 @@ def get_datasets(
     mask_pixels_prob=0.0,
     num_samples=None,
     ds_types=("train", "val"),
-    model_name="",
     do_predict_kpts=False,
     use_priv_decoder=False,
     do_overfit=False,
@@ -348,6 +349,7 @@ def get_datasets(
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
+    end_frame_idx=None,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -406,6 +408,7 @@ def get_datasets(
             transforms_rgb=transform_rgb,
             video_ds_cls=video_ds_cls,
             max_videos=max_train_videos,
+            end_frame_idx=end_frame_idx,
         )
         mesh_paths_orig_train = [d.ds.mesh_path_orig for d in train_dataset.video_datasets]
         res["train"] = train_dataset
@@ -482,10 +485,12 @@ def get_video_ds(
     mesh_paths_to_take=None,
     video_ds_cls=VideoDataset,
     max_videos=None,
+    end_frame_idx=None,
 ):
     video_datasets = []
     count = 0
     for ds_video_subdir in tqdm(ds_video_subdirs, leave=False, desc="Video datasets"):
+        ds_kwargs["end_frame_idx"] = end_frame_idx
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         seq_len = len(ds) if seq_len is None else seq_len
         if mesh_paths_to_take is not None:
