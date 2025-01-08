@@ -40,15 +40,14 @@ from pose_tracking.utils.misc import (
     reduce_metric,
     split_arr,
 )
-from pose_tracking.utils.pose import (
-    convert_pose_axis_angle_to_matrix,
-    convert_pose_quaternion_to_matrix,
-    convert_r_t_to_rt,
-)
+from pose_tracking.utils.pose import convert_pose_vector_to_matrix, convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
     matrix_to_axis_angle,
     matrix_to_quaternion,
+    matrix_to_rotation_6d,
     quaternion_to_axis_angle,
+    quaternion_to_matrix,
+    rotation_6d_to_matrix,
 )
 from tqdm.auto import tqdm
 
@@ -81,6 +80,7 @@ class Trainer:
         use_prev_pose_condition=False,
         do_predict_rel_pose=False,
         do_predict_kpts=False,
+        do_chunkify_val=False,
         use_prev_latent=False,
         logger=None,
         vis_epoch_freq=None,
@@ -110,6 +110,7 @@ class Trainer:
         self.do_predict_kpts = do_predict_kpts
         self.do_vis = do_vis
         self.do_print_seq_stats = do_print_seq_stats
+        self.do_chunkify_val = do_chunkify_val
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -141,8 +142,13 @@ class Trainer:
         self.ts_counts_per_stage = defaultdict(int)
         self.train_epoch_count = 0
 
-        if do_predict_6d_rot:
-            assert criterion_rot_name in ["displacement", "geodesic_mat"], criterion_rot_name
+        if self.do_predict_3d_rot:
+            self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="axis_angle")
+        elif self.do_predict_6d_rot:
+            self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="6d")
+        else:
+            self.pose_to_mat_converter_fn = convert_pose_vector_to_matrix
+
         if do_predict_3d_rot:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
 
@@ -240,9 +246,6 @@ class Trainer:
         seq_length = len(batched_seq)
         batch_size = len(batched_seq[0]["rgb"])
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
-        pose_to_mat_converter_fn = (
-            convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
-        )
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
@@ -288,7 +291,7 @@ class Trainer:
                         rot_prev_gt_abs = quaternion_to_axis_angle(rot_prev_gt_abs)
                     pose_prev_pred_abs = {"t": t_gt_abs, "rot": rot_prev_gt_abs}
 
-                    pose_mat_prev_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
+                    pose_mat_prev_gt_abs = torch.stack([convert_pose_vector_to_matrix(rt) for rt in pose_gt_abs])
 
                     prev_latent = torch.cat([self.model.encoder_img(rgb), self.model.encoder_depth(depth)], dim=1)
 
@@ -332,7 +335,7 @@ class Trainer:
                         )
                     t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
 
-            pose_mat_gt_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in pose_gt_abs])
+            pose_mat_gt_abs = torch.stack([convert_pose_vector_to_matrix(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
 
             if self.do_predict_6d_rot:
@@ -501,24 +504,6 @@ class Trainer:
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
 
-            # UPDATE VARS
-
-            if self.do_predict_rel_pose:
-                if self.do_predict_3d_rot:
-                    rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
-                else:
-                    rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
-                pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
-            else:
-                pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
-            if self.do_predict_2d_t:
-                pose_prev_pred_abs["center_depth"] = center_depth_pred
-            pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
-
-            pose_mat_prev_gt_abs = pose_mat_gt_abs
-            out_prev = {"t": out["t"], "rot": out["rot"]}
-            prev_latent = out["prev_latent"].detach() if self.use_prev_latent else None
-
             # OTHER
 
             seq_stats["loss"] += loss
@@ -582,6 +567,7 @@ class Trainer:
                         vis_data["pose_mat_gt_rel"].append(detach_and_cpu(pose_mat_gt_rel))
                     else:
                         vis_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
+                        vis_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
                         vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
 
@@ -600,6 +586,26 @@ class Trainer:
                     if self.do_predict_rel_pose:
                         self.logger.error(f"rot_gt_rel: {rot_gt_rel_mat}")
                     sys.exit(1)
+
+            # UPDATE VARS
+
+            if self.do_predict_rel_pose:
+                if self.do_predict_3d_rot:
+                    rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
+                elif self.do_predict_6d_rot:
+                    rot_prev_pred_abs = matrix_to_rotation_6d(rot_mat_pred_abs)
+                else:
+                    rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
+                pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
+            else:
+                pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
+            if self.do_predict_2d_t:
+                pose_prev_pred_abs["center_depth"] = center_depth_pred
+            pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
+
+            pose_mat_prev_gt_abs = pose_mat_gt_abs
+            out_prev = {"t": out["t"], "rot": out["rot"]}
+            prev_latent = out["prev_latent"].detach() if self.use_prev_latent else None
 
         if do_opt_in_the_end:
             total_loss /= seq_length
@@ -776,9 +782,6 @@ class TrainerDeformableDETR(Trainer):
                         continue
                     self.processed_data[k].append(v)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
-        pose_to_mat_converter_fn = (
-            convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
-        )
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
@@ -1133,9 +1136,6 @@ class TrainerTrackformer(Trainer):
                         continue
                     self.processed_data[k].append(v)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
-        pose_to_mat_converter_fn = (
-            convert_pose_axis_angle_to_matrix if self.do_predict_3d_rot else convert_pose_quaternion_to_matrix
-        )
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
