@@ -15,7 +15,7 @@ IS_LOCAL = not (IS_REMOTE or IS_CLUSTER)
 PROJ_DIR = Path(__file__).resolve().parents[1]
 WORKSPACE_DIR = PROJ_DIR if (IS_REMOTE or IS_CLUSTER) else PROJ_DIR.parent
 
-DATA_DIR = PROJ_DIR / "data"
+DATA_DIR = Path(os.environ['DATA_DIR']) if 'DATA_DIR' in os.environ else PROJ_DIR / "data"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
 
 ARTIFACTS_DIR = PROJ_DIR / "artifacts"
