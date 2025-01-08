@@ -1,96 +1,81 @@
 import os
 import pickle
-from glob import glob
 
 import cv2
 import numpy as np
-import torch
 from pose_tracking.config import HO3D_ROOT
-from pose_tracking.dataset.ds_common import get_ds_sample
-from pose_tracking.dataset.ds_meta import HO3D_VIDEONAME_TO_OBJ
-from pose_tracking.utils.io import load_color, load_depth, load_mask
-from pose_tracking.utils.trimesh_utils import load_mesh
+from pose_tracking.dataset.ds_meta import (
+    HO3D_VIDEONAME_TO_OBJ,
+    get_ycb_class_id_from_obj_name,
+)
+from pose_tracking.dataset.tracking_ds import TrackingDataset
+from pose_tracking.utils.io import load_depth, load_mask, resize_img
 
 
-class HO3DDataset(torch.utils.data.Dataset):
+class HO3DDataset(TrackingDataset):
 
     ds_name = "ho3d"
 
-    def __init__(self, video_dir, transforms=None, include_mask=True, include_occ_masks=False, do_load_mesh=True):
-        super().__init__()
-        self.video_dir = video_dir
-        self.transforms = transforms
-        self.include_mask = include_mask
-        self.include_occ_masks = include_occ_masks
-        self.color_files = sorted(glob(f"{self.video_dir}/rgb/*.jpg"))
-        meta_file = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
-        self.K = pickle.load(open(meta_file, "rb"))["camMat"]
+    def __init__(
+        self,
+        video_dir,
+        *args,
+        include_occ_mask=False,
+        do_load_mesh=True,
+        **kwargs,
+    ):
+        self.do_load_mesh = do_load_mesh
+        self.include_occ_mask = include_occ_mask
+        self.use_xmem_masks = os.path.exists(f"{video_dir}/masks_XMem")
 
-        self.id_strs = []
-        for i in range(len(self.color_files)):
-            id = os.path.basename(self.color_files[i]).split(".")[0]
-            self.id_strs.append(id)
+        super().__init__(*args, video_dir=video_dir, rgb_file_extension="jpg", **kwargs)
+
+        self.meta_file_path = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
+        self.meta_file = pickle.load(open(self.meta_file_path, "rb"))
+        self.K = self.meta_file["camMat"]
+        # self.obj_name = self.meta_file["objName"]
+
         self.glcam_in_cvcam = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        self.video_name = self.get_video_name()
+        self.obj_name = None
+        for k in HO3D_VIDEONAME_TO_OBJ:
+            if self.video_name.startswith(k):
+                self.obj_name = HO3D_VIDEONAME_TO_OBJ[k]
+                break
+        assert self.obj_name is not None, f"Could not find object name for video {self.video_name}"
+        self.class_id = get_ycb_class_id_from_obj_name(self.obj_name)
 
         if do_load_mesh:
-            load_res = self.get_gt_mesh()
-            self.mesh = load_res["mesh"]
-            self.mesh_bbox = load_res["bbox"]
-
-    def __len__(self):
-        return len(self.color_files)
-
-    def __getitem__(self, idx):
-        path = self.color_files[idx]
-        color = self.get_color(idx)
-        depth_raw = self.get_depth(idx)
-        pose = self.get_gt_pose(idx)
-
-        if self.include_mask:
-            bin_mask = self.get_mask(idx)
-        else:
-            bin_mask = None
-
-        sample = get_ds_sample(
-            color,
-            depth_m=depth_raw,
-            pose=pose,
-            rgb_path=path,
-            mask=bin_mask,
-            intrinsics=self.K,
-            transforms_rgb=self.transforms,
-        )
-        return sample
+            self.mesh_path = f"{HO3D_ROOT}/models/{self.obj_name}/textured_simple.obj"
+            self.set_up_obj_mesh(self.mesh_path)
 
     def get_video_name(self):
         return os.path.dirname(os.path.abspath(self.color_files[0])).split("/")[-2]
 
-    def get_color(self, i):
-        return load_color(self.color_files[i])
-
     def get_mask(self, i):
         video_name = self.get_video_name()
         index = int(os.path.basename(self.color_files[i]).split(".")[0])
-        path = f"{HO3D_ROOT}/masks_XMem/{video_name}/{index:05d}.png"
-        mask = load_mask(path)
+        if self.use_xmem_masks:
+            path = f"{HO3D_ROOT}/masks_XMem/{video_name}/{index:05d}.png"
+        else:
+            path = self.color_files[i].replace("rgb", "seg").replace(".jpg", ".png")
+        mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        obj_color = (0, 255, 0)
+        # hand_color = (255, 0, 0)
+        mask_obj = mask == obj_color
+        mask[~mask_obj] = 0
+        mask = resize_img(mask, wh=(self.w, self.h))
         return mask
 
     def get_occ_mask(self, i):
         video_name = self.get_video_name()
         index = int(os.path.basename(self.color_files[i]).split(".")[0])
-        path = f"{HO3D_ROOT}/masks_XMem/{video_name}_hand/{index:04d}.png"
+        if self.use_xmem_masks:
+            path = f"{HO3D_ROOT}/masks_XMem/{video_name}_hand/{index:04d}.png"
+        else:
+            path = self.color_files[i].replace("rgb", "masks_hand")
         mask = load_mask(path)
         return mask
-
-    def get_gt_mesh(self):
-        video_name = self.get_video_name()
-        ob_name = None
-        for k in HO3D_VIDEONAME_TO_OBJ:
-            if video_name.startswith(k):
-                ob_name = HO3D_VIDEONAME_TO_OBJ[k]
-                break
-        assert ob_name is not None, f"Could not find object name for video {video_name}"
-        return load_mesh(f"{HO3D_ROOT}/models/{ob_name}/textured_simple.obj")
 
     def get_depth(self, i):
         depth_scale = 0.00012498664727900177
@@ -98,8 +83,8 @@ class HO3DDataset(torch.utils.data.Dataset):
         depth = (depth[..., 2] + depth[..., 1] * 256) * depth_scale
         return depth
 
-    def get_gt_pose(self, i):
-        meta_file = self.color_files[i].replace(".jpg", ".pkl").replace("rgb", "meta")
+    def get_pose(self, idx):
+        meta_file = self.color_files[idx].replace(".jpg", ".pkl").replace("rgb", "meta")
         meta = pickle.load(open(meta_file, "rb"))
         ob_in_cam_gt = np.eye(4)
         if meta["objTrans"] is None:
@@ -109,3 +94,11 @@ class HO3DDataset(torch.utils.data.Dataset):
             ob_in_cam_gt[:3, :3] = cv2.Rodrigues(meta["objRot"].reshape(3))[0]
             ob_in_cam_gt = self.glcam_in_cvcam @ ob_in_cam_gt
         return ob_in_cam_gt
+
+    def augment_sample(self, sample, idx):
+        if self.include_occ_mask:
+            sample["occ_mask"] = self.get_occ_mask(idx)
+
+        sample["class_id"] = [self.class_id]
+
+        return sample
