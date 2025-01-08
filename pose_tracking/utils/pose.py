@@ -5,6 +5,7 @@ from bop_toolkit_lib.transform import euler_matrix
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
     quaternion_to_matrix,
+    rotation_6d_to_matrix,
 )
 
 
@@ -17,27 +18,27 @@ def convert_r_t_to_rt(r, t, scale_translation=1.0):
     return pose
 
 
-def convert_pose_quaternion_to_matrix(pose):
+def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
+    # assumes translation occupies the first 3 elements of the pose vector
     if pose.shape[-1] == 3:
         return pose
     t = pose[..., :3]
-    q = pose[..., 3:]
     pose_matrix = torch.eye(4, device=pose.device)
     if len(t.shape) == 2:
         pose_matrix = pose_matrix[None].repeat(t.shape[0], 1, 1)
-    pose_matrix[..., :3, :3] = quaternion_to_matrix(q)
     pose_matrix[..., :3, 3] = t
-    return pose_matrix
 
+    rot = pose[..., 3:]
+    if rot_repr == "quaternion":
+        rot_mat = quaternion_to_matrix(rot)
+    elif rot_repr == "axis_angle":
+        rot_mat = axis_angle_to_matrix(rot)
+    elif rot_repr == "6d":
+        rot_mat = rotation_6d_to_matrix(rot)
+    else:
+        raise ValueError(f"Unknown rotation representation: {rot_repr}")
 
-def convert_pose_axis_angle_to_matrix(pose):
-    t = pose[..., :3]
-    axis_angle = pose[..., 3:]
-    pose_matrix = torch.eye(4, device=pose.device)
-    if len(t.shape) == 2:
-        pose_matrix = pose_matrix[None].repeat(t.shape[0], 1, 1)
-    pose_matrix[..., :3, :3] = axis_angle_to_matrix(axis_angle)
-    pose_matrix[..., :3, 3] = t
+    pose_matrix[..., :3, :3] = rot_mat
     return pose_matrix
 
 
