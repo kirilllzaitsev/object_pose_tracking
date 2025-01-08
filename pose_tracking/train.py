@@ -162,6 +162,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         model_name=args.model_name,
         max_train_videos=args.max_train_videos,
         max_val_videos=args.max_val_videos,
+        end_frame_idx=args.end_frame_idx,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]

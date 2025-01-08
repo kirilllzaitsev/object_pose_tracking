@@ -232,7 +232,7 @@ class RecurrentCNN(nn.Module):
         priv_decoder_num_layers=1,
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
-        t_mlp_num_layers=1,
+        rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
@@ -268,7 +268,7 @@ class RecurrentCNN(nn.Module):
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
         self.dropout = dropout
-        self.t_mlp_num_layers = t_mlp_num_layers
+        self.rt_mlps_num_layers = rt_mlps_num_layers
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
@@ -339,7 +339,7 @@ class RecurrentCNN(nn.Module):
                 in_dim=self.depth_mlp_in_dim,
                 out_dim=self.depth_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=t_mlp_num_layers,
+                num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
         else:
@@ -359,7 +359,7 @@ class RecurrentCNN(nn.Module):
             in_dim=self.t_mlp_in_dim,
             out_dim=self.t_mlp_out_dim,
             hidden_dim=hidden_dim,
-            num_layers=t_mlp_num_layers,
+            num_layers=rt_mlps_num_layers,
             act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
             dropout=dropout,
         )
@@ -368,7 +368,7 @@ class RecurrentCNN(nn.Module):
                 in_dim=self.rot_mlp_in_dim,
                 out_dim=self.rot_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=t_mlp_num_layers + 1,
+                num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
 
@@ -379,7 +379,7 @@ class RecurrentCNN(nn.Module):
                 in_dim=self.kpts_mlp_in_dim,
                 out_dim=self.kpts_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=t_mlp_num_layers + 1,
+                num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
 
@@ -523,7 +523,7 @@ class RecurrentCNNSeparated(nn.Module):
         priv_decoder_num_layers=1,
         depth_decoder_num_layers=1,
         hidden_attn_num_layers=1,
-        t_mlp_num_layers=1,
+        rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
         rnn_type="gru",
@@ -589,7 +589,7 @@ class RecurrentCNNSeparated(nn.Module):
             priv_decoder_num_layers=priv_decoder_num_layers,
             depth_decoder_num_layers=depth_decoder_num_layers,
             hidden_attn_num_layers=hidden_attn_num_layers,
-            t_mlp_num_layers=t_mlp_num_layers,
+            rt_mlps_num_layers=rt_mlps_num_layers,
             dropout=dropout,
             rnn_type=rnn_type,
             encoder_name=None,
@@ -671,7 +671,7 @@ class RecurrentCNNSeparated(nn.Module):
                 in_dim=self.depth_mlp_in_dim,
                 out_dim=self.depth_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=t_mlp_num_layers,
+                num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
         else:
@@ -689,7 +689,7 @@ class RecurrentCNNSeparated(nn.Module):
             in_dim=self.rot_mlp_in_dim,
             out_dim=self.rot_mlp_out_dim,
             hidden_dim=hidden_dim,
-            num_layers=t_mlp_num_layers + 1,  # rot head should capture rot info
+            num_layers=rt_mlps_num_layers,  # rot head should capture rot info
             dropout=dropout,
         )
 
@@ -700,7 +700,7 @@ class RecurrentCNNSeparated(nn.Module):
                 in_dim=self.kpts_mlp_in_dim,
                 out_dim=self.kpts_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=t_mlp_num_layers,
+                num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
 
