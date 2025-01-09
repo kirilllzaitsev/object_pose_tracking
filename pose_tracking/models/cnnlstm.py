@@ -509,216 +509,76 @@ def reset_state_rnn(hidden_dim, batch_size, device, rnn_type):
     return hx, cx
 
 
-class RecurrentCNNSeparated(nn.Module):
+class RecurrentCNNSeparated(RecurrentCNN):
     """ """
 
     def __init__(
         self,
-        depth_dim,
-        rgb_dim,
-        hidden_dim,
-        benc_belief_enc_hidden_dim,
-        benc_belief_depth_enc_hidden_dim,
-        bdec_priv_decoder_out_dim,
-        bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_hidden_dim,
-        bdec_hidden_attn_hidden_dim,
-        benc_belief_enc_num_layers=2,
-        benc_belief_depth_enc_num_layers=2,
-        priv_decoder_num_layers=1,
-        depth_decoder_num_layers=1,
-        hidden_attn_num_layers=1,
-        rt_mlps_num_layers=1,
-        encoder_out_dim=256,
-        dropout=0.0,
-        rnn_type="gru",
-        encoder_name="resnet18",
-        encoder_img_weights="imagenet",
-        encoder_depth_weights=None,
-        norm_layer_type="frozen_bn",
-        do_predict_2d_t=False,
-        do_predict_6d_rot=False,
-        do_predict_3d_rot=False,
-        use_rnn=True,
-        use_obs_belief=False,
-        use_priv_decoder=False,
-        do_freeze_encoders=False,
-        use_prev_pose_condition=False,
-        use_prev_latent=False,
-        do_predict_kpts=False,
-        do_predict_rot=True,
+        *args,
+        **kwargs,
     ):
-        super().__init__()
-        self.depth_dim = depth_dim
-        self.rgb_dim = rgb_dim
-        self.hidden_dim = hidden_dim
-        self.benc_belief_enc_hidden_dim = benc_belief_enc_hidden_dim
-        self.benc_belief_depth_enc_hidden_dim = benc_belief_depth_enc_hidden_dim
-        self.bdec_priv_decoder_out_dim = bdec_priv_decoder_out_dim
-        self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
-        self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
-        self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
-        self.encoder_out_dim = encoder_out_dim
-        self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
-        self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
-        self.rnn_type = rnn_type
-        self.encoder_name = encoder_name
-        self.dropout = dropout
-        self.do_predict_2d_t = do_predict_2d_t
-        self.do_predict_6d_rot = do_predict_6d_rot
-        self.do_predict_3d_rot = do_predict_3d_rot
-        self.use_obs_belief = use_obs_belief
-        self.use_priv_decoder = use_priv_decoder
-        self.use_rnn = use_rnn
-        self.do_freeze_encoders = do_freeze_encoders
-        self.use_prev_pose_condition = use_prev_pose_condition
-        self.use_prev_latent = use_prev_latent
-        self.do_predict_kpts = do_predict_kpts
-        self.do_predict_rot = do_predict_rot
+        super().__init__(*args, **kwargs)
 
         self.roi_size = 7
-        self.input_dim = depth_dim + rgb_dim
 
+        self.t_rnn_rt_mlps_num_layers = 1
         self.t_rnn = RecurrentCNN(
-            depth_dim=depth_dim,
-            rgb_dim=rgb_dim,
-            hidden_dim=hidden_dim,
-            benc_belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
-            benc_belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
-            bdec_priv_decoder_out_dim=bdec_priv_decoder_out_dim,
-            bdec_priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-            bdec_depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-            bdec_hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
-            benc_belief_enc_num_layers=benc_belief_enc_num_layers,
-            benc_belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
-            priv_decoder_num_layers=priv_decoder_num_layers,
-            depth_decoder_num_layers=depth_decoder_num_layers,
-            hidden_attn_num_layers=hidden_attn_num_layers,
-            rt_mlps_num_layers=rt_mlps_num_layers,
-            dropout=dropout,
-            rnn_type=rnn_type,
+            depth_dim=self.depth_dim,
+            rgb_dim=self.rgb_dim,
+            hidden_dim=self.hidden_dim,
+            benc_belief_enc_hidden_dim=self.benc_belief_enc_hidden_dim,
+            benc_belief_depth_enc_hidden_dim=self.benc_belief_depth_enc_hidden_dim,
+            bdec_priv_decoder_out_dim=self.bdec_priv_decoder_out_dim,
+            bdec_priv_decoder_hidden_dim=self.bdec_priv_decoder_hidden_dim,
+            bdec_depth_decoder_hidden_dim=self.bdec_depth_decoder_hidden_dim,
+            bdec_hidden_attn_hidden_dim=self.bdec_hidden_attn_hidden_dim,
+            benc_belief_enc_num_layers=self.benc_belief_enc_num_layers,
+            benc_belief_depth_enc_num_layers=self.benc_belief_depth_enc_num_layers,
+            priv_decoder_num_layers=self.priv_decoder_num_layers,
+            depth_decoder_num_layers=self.depth_decoder_num_layers,
+            hidden_attn_num_layers=self.hidden_attn_num_layers,
+            rt_mlps_num_layers=self.t_rnn_rt_mlps_num_layers,
+            dropout=self.dropout,
+            rnn_type=self.rnn_type,
             encoder_name=None,
-            do_predict_2d_t=do_predict_2d_t,
-            do_predict_6d_rot=do_predict_6d_rot,
-            use_rnn=use_rnn,
-            use_obs_belief=use_obs_belief,
-            use_priv_decoder=use_priv_decoder,
-            use_prev_latent=use_prev_latent,
-            do_freeze_encoders=do_freeze_encoders,
-            use_prev_pose_condition=use_prev_pose_condition,
-            do_predict_kpts=do_predict_kpts,
+            do_predict_2d_t=self.do_predict_2d_t,
+            do_predict_6d_rot=self.do_predict_6d_rot,
+            use_rnn=self.use_rnn,
+            use_obs_belief=self.use_obs_belief,
+            use_priv_decoder=self.use_priv_decoder,
+            use_prev_latent=self.use_prev_latent,
+            do_freeze_encoders=self.do_freeze_encoders,
+            use_prev_pose_condition=self.use_prev_pose_condition,
+            do_predict_kpts=self.do_predict_kpts,
             do_predict_rot=False,
         )
 
-        if encoder_name == "resnet50":
+        if self.encoder_name == "resnet50":
             self.mid_feature_dim = 1024
             self.mid_layer_name = "layer3"
-        elif encoder_name == "resnet18":
+        elif self.encoder_name == "resnet18":
             self.mid_feature_dim = 256
             self.mid_layer_name = "layer3"
-        elif encoder_name == "regnet_y_800mf":
+        elif self.encoder_name == "regnet_y_800mf":
             self.mid_feature_dim = 320
             self.mid_layer_name = "trunk_output.block3"
         else:
-            raise ValueError(f"Unknown encoder_name: {encoder_name}")
+            raise ValueError(f"Unknown encoder_name: {self.encoder_name}")
 
-        if use_obs_belief:
-            if use_rnn:
-                if rnn_type == "lstm":
-                    self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
-                elif rnn_type == "lstm_custom":
-                    self.state_cell = LSTMCell(self.input_dim, hidden_dim)
-                elif rnn_type == "gru":
-                    self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
-                elif rnn_type == "gru_custom":
-                    self.state_cell = GRUCell(self.input_dim, hidden_dim)
-                else:
-                    raise ValueError("rnn_type must be 'lstm' or 'gru'")
-            else:
-                self.state_cell = MLP(
-                    in_dim=self.input_dim,
-                    out_dim=hidden_dim,
-                    hidden_dim=hidden_dim,
-                    num_layers=2,
-                    dropout=dropout,
-                )
-            self.belief_encoder = BeliefEncoder(
-                state_cell=self.state_cell,
-                state_cell_out_dim=hidden_dim,
-                depth_latent_dim=depth_dim,
-                belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
-                belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
-                belief_enc_num_layers=benc_belief_enc_num_layers,
-                belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
-                use_rnn=use_rnn,
-                dropout=dropout,
-            )
-            self.belief_decoder = BeliefDecoder(
-                state_dim=hidden_dim,
-                priv_decoder_out_dim=bdec_priv_decoder_out_dim,
-                priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-                depth_decoder_out_dim=depth_dim,
-                depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-                hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
-                priv_decoder_num_layers=priv_decoder_num_layers,
-                depth_decoder_num_layers=depth_decoder_num_layers,
-                hidden_attn_num_layers=hidden_attn_num_layers,
-                use_priv_decoder=use_priv_decoder,
-                dropout=dropout,
-            )
-        if do_predict_2d_t:
-            self.t_mlp_out_dim = 2
-            self.depth_mlp_in_dim = depth_dim + rgb_dim
-            self.depth_mlp_out_dim = 1
-            if use_prev_pose_condition:
-                self.depth_mlp_in_dim += self.depth_mlp_out_dim
-            self.depth_mlp = MLP(
-                in_dim=self.depth_mlp_in_dim,
-                out_dim=self.depth_mlp_out_dim,
-                hidden_dim=hidden_dim,
-                num_layers=rt_mlps_num_layers,
-                dropout=dropout,
-            )
-        else:
-            self.t_mlp_out_dim = 3
-
-        self.t_mlp_in_dim = depth_dim + rgb_dim
         self.rot_mlp_in_dim = self.mid_feature_dim * 2
-        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
+        self.rot_mlp_out_dim = 6 if self.do_predict_6d_rot else (3 if self.do_predict_3d_rot else 4)
 
-        if use_prev_pose_condition:
-            self.t_mlp_in_dim += self.t_mlp_out_dim
+        if self.use_prev_pose_condition:
             self.rot_mlp_in_dim += self.rot_mlp_out_dim
 
         self.rot_mlp = MLP(
             in_dim=self.rot_mlp_in_dim,
             out_dim=self.rot_mlp_out_dim,
-            hidden_dim=hidden_dim,
-            num_layers=rt_mlps_num_layers,  # rot head should capture rot info
-            dropout=dropout,
+            hidden_dim=self.hidden_dim,
+            num_layers=self.rt_mlps_num_layers,  # rot head should capture rot info
+            dropout=self.dropout,
         )
 
-        if self.do_predict_kpts:
-            self.kpts_mlp_in_dim = depth_dim + rgb_dim
-            self.kpts_mlp_out_dim = (8 + 24) * 2
-            self.kpts_mlp = MLP(
-                in_dim=self.kpts_mlp_in_dim,
-                out_dim=self.kpts_mlp_out_dim,
-                hidden_dim=hidden_dim,
-                num_layers=rt_mlps_num_layers,
-                dropout=dropout,
-            )
-
-        self.encoder_name = encoder_name
-        self.encoder_img, self.encoder_depth = get_encoders(
-            encoder_name,
-            do_freeze=do_freeze_encoders,
-            weights_rgb=encoder_img_weights,
-            weights_depth=encoder_depth_weights,
-            norm_layer_type=norm_layer_type,
-            out_dim=encoder_out_dim,
-            # dropout=dropout,
-        )
         self.hx = None
         self.cx = None
 
@@ -746,9 +606,6 @@ class RecurrentCNNSeparated(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
         )
 
-    def __repr__(self):
-        return print_cls(self, extra_str=super().__repr__())
-
     def reset_state(self, batch_size, device):
         # should be called at the beginning of each sequence
         self.t_rnn.reset_state(batch_size, device)
@@ -761,8 +618,9 @@ class RecurrentCNNSeparated(nn.Module):
                 self.cx = self.cx.detach()
             self.t_rnn.detach_state()
 
-    def forward(self, rgb, depth, bbox=None, prev_pose=None, prev_latent=None):
+    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
 
+        bbox = kwargs["bbox"]
         B, C, H, W = rgb.size()
 
         latent_rgb = self.encoder_img(rgb)
