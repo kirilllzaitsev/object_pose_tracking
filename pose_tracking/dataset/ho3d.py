@@ -1,5 +1,7 @@
 import os
 import pickle
+from glob import glob
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -28,21 +30,26 @@ class HO3DDataset(TrackingDataset):
         self.include_occ_mask = include_occ_mask
         self.use_xmem_masks = os.path.exists(f"{video_dir}/masks_XMem")
 
-        super().__init__(*args, video_dir=video_dir, rgb_file_extension="jpg", **kwargs)
+        meta_paths = glob(f"{video_dir}/meta/*.pkl")
+        color_file_id_strs = []
+        for meta_path in meta_paths:
+            # if file size less than 1 kb, discard
+            if os.path.getsize(meta_path) < 1e3:
+                continue
+            color_file_id_strs.append(Path(meta_path).stem)
+        # print(f"Taking {len(color_file_id_strs)}/{len(meta_paths)} frames from {Path(video_dir).name}")
+
+        super().__init__(
+            *args, video_dir=video_dir, rgb_file_extension="jpg", color_file_id_strs=color_file_id_strs, **kwargs
+        )
 
         self.meta_file_path = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
         self.meta_file = pickle.load(open(self.meta_file_path, "rb"))
         self.K = self.meta_file["camMat"]
-        # self.obj_name = self.meta_file["objName"]
+        self.obj_name = self.meta_file["objName"]
 
         self.glcam_in_cvcam = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
         self.video_name = self.get_video_name()
-        self.obj_name = None
-        for k in HO3D_VIDEONAME_TO_OBJ:
-            if self.video_name.startswith(k):
-                self.obj_name = HO3D_VIDEONAME_TO_OBJ[k]
-                break
-        assert self.obj_name is not None, f"Could not find object name for video {self.video_name}"
         self.class_id = get_ycb_class_id_from_obj_name(self.obj_name)
 
         if do_load_mesh:
@@ -53,18 +60,28 @@ class HO3DDataset(TrackingDataset):
         return os.path.dirname(os.path.abspath(self.color_files[0])).split("/")[-2]
 
     def get_mask(self, i):
-        video_name = self.get_video_name()
         index = int(os.path.basename(self.color_files[i]).split(".")[0])
         if self.use_xmem_masks:
+            video_name = self.get_video_name()
             path = f"{HO3D_ROOT}/masks_XMem/{video_name}/{index:05d}.png"
         else:
             path = self.color_files[i].replace("rgb", "seg").replace(".jpg", ".png")
         mask = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         obj_color = (0, 255, 0)
         # hand_color = (255, 0, 0)
+
         mask_obj = mask == obj_color
         mask[~mask_obj] = 0
+
+        green_color = (0, 255, 0)
+        white_color = (255, 255, 255)
+        is_green = np.all(mask == green_color, axis=-1)
+        mask[is_green] = white_color
+
         mask = resize_img(mask, wh=(self.w, self.h))
+
+        mask = mask[..., 0]
+
         return mask
 
     def get_occ_mask(self, i):
