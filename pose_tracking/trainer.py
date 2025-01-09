@@ -1596,7 +1596,7 @@ class TrainerPizza(Trainer):
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                pose_mat_pred_abs = torch.stack([convert_pose_quaternion_to_matrix(rt) for rt in res["pose"]])
+                pose_mat_pred_abs = torch.stack([convert_pose_vector_to_matrix(rt) for rt in res["pose"]])
                 save_results(batch, pose_mat_pred_abs, preds_dir)
 
         return running_stats

@@ -191,7 +191,6 @@ def calc_t_error(T1, T2):
 
 
 def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
-    # TODO: normalize_rotation_matrix needed?
     R2 = rot_pred
     R1 = rot_gt
 

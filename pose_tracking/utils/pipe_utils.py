@@ -5,13 +5,21 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from pose_tracking.dataset.ho3d import HO3DDataset
 import yaml
-from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, RELATED_DIR, YCB_MESHES_DIR
+from pose_tracking.config import (
+    ARTIFACTS_DIR,
+    DATA_DIR,
+    HO3D_ROOT,
+    PROJ_NAME,
+    RELATED_DIR,
+    YCB_MESHES_DIR,
+    YCBINEOAT_SCENE_DIR,
+)
 from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetCube,
     CustomSimDatasetIkea,
 )
+from pose_tracking.dataset.ho3d import HO3DDataset
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import (
     MultiVideoDataset,
@@ -23,6 +31,7 @@ from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
 from pose_tracking.trainer import TrainerPizza
 from pose_tracking.utils.comet_utils import create_tracking_exp
+from pose_tracking.utils.common import get_ordered_paths
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -156,6 +165,7 @@ def get_model(args, num_classes=None):
             encoder_img_weights=args.encoder_img_weights,
             norm_layer_type=args.norm_layer_type,
             encoder_out_dim=args.encoder_out_dim,
+            r_num_layers_inc=args.r_num_layers_inc,
         )
 
     return model
@@ -350,6 +360,7 @@ def get_datasets(
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
+    start_frame_idx=0,
     end_frame_idx=None,
 ):
 
@@ -365,7 +376,7 @@ def get_datasets(
         zfar=np.inf,
         include_mask=include_mask or include_bbox_2d,  # mask is needed for 2d bbox
         include_bbox_2d=include_bbox_2d,
-        start_frame_idx=0,
+        start_frame_idx=start_frame_idx,
         do_convert_pose_to_quat=do_convert_pose_to_quat,
         mask_pixels_prob=mask_pixels_prob,
         do_normalize_bbox=True if is_detr_model or is_tf_model else False,
@@ -433,7 +444,7 @@ def get_datasets(
                 max_videos=max_val_videos,
             )
         else:
-            assert ds_video_dir_val and ds_video_subdirs_val
+            assert ds_video_dir_val and ds_video_subdirs_val, print(f"{ds_video_dir_val=} {ds_video_subdirs_val}")
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
             val_ds_kwargs["video_dir"] = ds_video_dir_val
@@ -453,7 +464,7 @@ def get_datasets(
         res["val"] = val_dataset
 
     if "test" in ds_types:
-        assert ds_video_dir_test and ds_video_subdirs_test
+        assert ds_video_dir_test and ds_video_subdirs_test, print(f"{ds_video_dir_test=} {ds_video_subdirs_test}")
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = ds_video_dir_test
@@ -543,6 +554,34 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     else:
         raise NotImplementedError(f"Unknown dataset name {ds_name}")
     return ds
+
+
+def get_ds_dirs(args):
+    if args.ds_name in ["ikea", "cube"]:
+        ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
+        ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
+    elif args.ds_name in ["ho3d_v3"]:
+        ds_video_dir_train = HO3D_ROOT / args.ds_folder_name_train
+        ds_video_dir_val = HO3D_ROOT / args.ds_folder_name_val
+    else:
+        ds_video_dir_train = YCBINEOAT_SCENE_DIR
+        ds_video_dir_val = YCBINEOAT_SCENE_DIR
+
+    if args.ds_name in ["ycbi", "cube"]:
+        ds_video_subdirs_train = args.obj_names
+        ds_video_subdirs_val = args.obj_names_val
+    elif args.ds_name in ["ho3d_v3"]:
+        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
+    else:
+        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
+    return {
+        "ds_video_dir_train": ds_video_dir_train,
+        "ds_video_dir_val": ds_video_dir_val,
+        "ds_video_subdirs_train": ds_video_subdirs_train,
+        "ds_video_subdirs_val": ds_video_subdirs_val,
+    }
 
 
 class Printer:

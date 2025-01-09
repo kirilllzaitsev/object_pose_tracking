@@ -231,6 +231,9 @@ def get_parser():
     model_args.add_argument(
         "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"
     )
+    model_args.add_argument(
+        "--r_num_layers_inc", type=int, default=0, help="Number of layers to add to the rotation MLP"
+    )
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
 
     data_args = parser.add_argument_group("Data arguments")
@@ -348,6 +351,8 @@ def fix_outdated_args(args):
         args.args_path = None
     if noattr("do_predict_2d_t"):
         args.do_predict_2d_t = args.do_predict_2d
+    if hasattr(args, "t_mlp_num_layers"):
+        args.rt_mlps_num_layers = args.t_mlp_num_layers
 
     # for all args present in parser but not in args, set them to their default values
     for group in parser._action_groups:

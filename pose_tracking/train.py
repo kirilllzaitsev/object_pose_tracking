@@ -38,6 +38,7 @@ from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
     get_datasets,
+    get_ds_dirs,
     get_model,
     get_trainer,
 )
@@ -112,25 +113,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if "SLURM_JOB_ID" in os.environ:
         logger.info(f"SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
 
-    if args.ds_name in ["ikea", "cube"]:
-        ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
-        ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
-    elif args.ds_name in ["ho3d_v3"]:
-        ds_video_dir_train = HO3D_ROOT / "train"
-        ds_video_dir_val = HO3D_ROOT / "val"
-    else:
-        ds_video_dir_train = YCBINEOAT_SCENE_DIR
-        ds_video_dir_val = YCBINEOAT_SCENE_DIR
-
-    if args.ds_name in ["ycbi", "cube"]:
-        ds_video_subdirs_train = args.obj_names
-        ds_video_subdirs_val = args.obj_names_val
-    elif args.ds_name in ["ho3d_v3"]:
-        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
-        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
-    else:
-        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
-        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
+    ds_dirs = get_ds_dirs(args)
+    ds_video_dir_train = ds_dirs["ds_video_dir_train"]
+    ds_video_dir_val = ds_dirs["ds_video_dir_val"]
+    ds_video_subdirs_train = ds_dirs["ds_video_subdirs_train"]
+    ds_video_subdirs_val = ds_dirs["ds_video_subdirs_val"]
 
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
