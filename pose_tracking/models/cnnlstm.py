@@ -251,6 +251,7 @@ class RecurrentCNN(nn.Module):
         use_prev_latent=False,
         do_predict_kpts=False,
         do_predict_rot=True,
+        r_num_layers_inc=0,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -269,6 +270,10 @@ class RecurrentCNN(nn.Module):
         self.encoder_name = encoder_name
         self.dropout = dropout
         self.rt_mlps_num_layers = rt_mlps_num_layers
+        self.priv_decoder_num_layers = priv_decoder_num_layers
+        self.depth_decoder_num_layers = depth_decoder_num_layers
+        self.hidden_attn_num_layers = hidden_attn_num_layers
+
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
@@ -368,7 +373,7 @@ class RecurrentCNN(nn.Module):
                 in_dim=self.rot_mlp_in_dim,
                 out_dim=self.rot_mlp_out_dim,
                 hidden_dim=hidden_dim,
-                num_layers=rt_mlps_num_layers,
+                num_layers=rt_mlps_num_layers + r_num_layers_inc,
                 dropout=dropout,
             )
 
