@@ -7,6 +7,7 @@ import numpy as np
 from pose_tracking.dataset.ds_meta import (
     YCBINEOAT_VIDEONAME_TO_OBJ,
     YCBV_OBJ_NAME_TO_ID,
+    get_ycb_class_id_from_obj_name,
 )
 from pose_tracking.dataset.tracking_ds import TrackingDataset
 from pose_tracking.utils.common import get_ordered_paths
@@ -47,10 +48,7 @@ class YCBineoatDataset(TrackingDataset):
         self.include_occ_mask = include_occ_mask
 
         self.obj_name = YCBINEOAT_VIDEONAME_TO_OBJ[self.get_video_name()]
-        obj_name_no_pref = re.search("\d+_(.*)", self.obj_name)
-        if obj_name_no_pref is None:
-            raise ValueError(f"Could not extract object name from {self.obj_name}")
-        self.class_id = YCBV_OBJ_NAME_TO_ID[obj_name_no_pref.group(1)] - 1
+        self.class_id = get_ycb_class_id_from_obj_name(self.obj_name)
 
         if ycb_meshes_dir is not None:
             mesh_path = f"{ycb_meshes_dir}/{self.obj_name}/textured_simple.obj"

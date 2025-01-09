@@ -1,3 +1,5 @@
+import re
+
 LM_OBJ_NAME_TO_ID = {
     "ape": 1,
     "benchvise": 2,
@@ -246,6 +248,7 @@ HO3D_VIDEONAME_TO_OBJ = {
     "AP": "019_pitcher_base",
     "MPM": "010_potted_meat_can",
     "SB": "021_bleach_cleanser",
+    "ABF": "021_bleach_cleanser",
     "SM": "006_mustard_bottle",
 }
 
@@ -258,3 +261,12 @@ def get_obj_info(dataset_name):
         "obj_id_to_name": eval("{}_obj_id_to_name".format(dataset_name)),
         "symmetry_obj_names": eval("{}_symmetry_obj_names".format(dataset_name)),
     }
+
+
+def get_ycb_class_id_from_obj_name(obj_name):
+    # eg, from 021_bleach_cleanser
+    obj_name_no_pref = re.search("\d+_(.*)", str(obj_name))
+    if obj_name_no_pref is None:
+        raise ValueError(f"Could not extract object name from {obj_name}")
+    class_id = YCBV_OBJ_NAME_TO_ID[obj_name_no_pref.group(1)] - 1
+    return class_id
