@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from pose_tracking.dataset.ho3d import HO3DDataset
 import yaml
 from pose_tracking.config import ARTIFACTS_DIR, PROJ_NAME, RELATED_DIR, YCB_MESHES_DIR
 from pose_tracking.dataset.custom_sim_ds import (
@@ -378,8 +379,9 @@ def get_datasets(
         )
         ds_kwargs_custom = ycbi_kwargs
     elif ds_name == "ikea":
-        ikea_kwargs = dict()
-        ds_kwargs_custom = ikea_kwargs
+        ds_kwargs_custom = dict()
+    elif ds_name == "ho3d_v3":
+        ds_kwargs_custom = dict()
     else:
         cube_sim_kwargs = dict(
             mesh_path=f"{ds_video_dir_train}/mesh/cube.obj",
@@ -526,6 +528,11 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
         ds = ds_cls(video_dir=video_dir / ds_video_subdir, **ds_kwargs)
     elif ds_name == "cube_sim":
         ds = CustomSimDatasetCube(
+            **ds_kwargs,
+        )
+    elif ds_name == "ho3d_v3":
+        ds = HO3DDataset(
+            video_dir=video_dir / ds_video_subdir,
             **ds_kwargs,
         )
     elif ds_name == "ikea":

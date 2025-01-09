@@ -10,13 +10,13 @@ from socket import gethostname
 
 import comet_ml
 import numpy as np
-from pose_tracking.dataset.ds_meta import YCBV_OBJ_NAME_TO_ID
 import torch
 import torch.distributed as dist
 import torch.optim as optim
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     DATA_DIR,
+    HO3D_ROOT,
     IS_CLUSTER,
     PROJ_DIR,
     YCBINEOAT_SCENE_DIR,
@@ -24,6 +24,7 @@ from pose_tracking.config import (
     prepare_logger,
 )
 from pose_tracking.dataset.ds_common import batch_seq_collate_fn, seq_collate_fn
+from pose_tracking.dataset.ds_meta import YCBV_OBJ_NAME_TO_ID
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.utils.args_parsing import parse_args
 from pose_tracking.utils.artifact_utils import (
@@ -111,26 +112,31 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if "SLURM_JOB_ID" in os.environ:
         logger.info(f"SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
 
-    if args.ds_name in ["ycbi", "cube"]:
-        ds_video_subdirs_train = args.obj_names
-        ds_video_subdirs_val = args.obj_names_val
-    else:
-        ds_video_subdirs_train = [
-            Path(p).name for p in get_ordered_paths(DATA_DIR / args.ds_folder_name_train / "env_*")
-        ]
-        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(DATA_DIR / args.ds_folder_name_val / "env_*")]
-
     if args.ds_name in ["ikea", "cube"]:
         ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
         ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
+    elif args.ds_name in ["ho3d_v3"]:
+        ds_video_dir_train = HO3D_ROOT / "train"
+        ds_video_dir_val = HO3D_ROOT / "val"
     else:
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
+
+    if args.ds_name in ["ycbi", "cube"]:
+        ds_video_subdirs_train = args.obj_names
+        ds_video_subdirs_val = args.obj_names_val
+    elif args.ds_name in ["ho3d_v3"]:
+        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
+    else:
+        ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
+        ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
+
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
         num_classes = metadata["num_classes"] + 1
         logger.info(f"{num_classes=}")
-    elif args.ds_name == "ycbi":
+    elif args.ds_name in ["ycbi", "ho3d_v3"]:
         num_classes = len(YCBV_OBJ_NAME_TO_ID)
     else:
         num_classes = None

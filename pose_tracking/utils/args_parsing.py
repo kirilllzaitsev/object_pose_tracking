@@ -251,7 +251,7 @@ def get_parser():
         help="Object names to use in the validation dataset",
     )
     data_args.add_argument(
-        "--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea"]
+        "--ds_name", type=str, default="ycbi", help="Dataset name", choices=["ycbi", "cube_sim", "ikea", "ho3d_v3"]
     )
     data_args.add_argument(
         "--end_frame_idx", type=int, help="Optional index of the last frame of each tracking ds for train set"
