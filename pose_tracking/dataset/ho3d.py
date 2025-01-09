@@ -71,17 +71,17 @@ class HO3DDataset(TrackingDataset):
         obj_color = (0, 255, 0)
         # hand_color = (255, 0, 0)
 
-        mask_obj = mask == obj_color
-        mask[~mask_obj] = 0
+        if "evaluation/" not in path:
+            mask_obj = mask == obj_color
+            mask[~mask_obj] = 0
 
-        green_color = (0, 255, 0)
-        white_color = (255, 255, 255)
-        is_green = np.all(mask == green_color, axis=-1)
-        mask[is_green] = white_color
+            green_color = (0, 255, 0)
+            white_color = (255, 255, 255)
+            is_green = np.all(mask == green_color, axis=-1)
+            mask[is_green] = white_color
+            mask = mask[..., 0]
 
         mask = resize_img(mask, wh=(self.w, self.h))
-
-        mask = mask[..., 0]
 
         return mask
 
