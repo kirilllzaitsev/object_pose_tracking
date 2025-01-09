@@ -164,7 +164,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(val_dataset)=}")
 
     collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
-    val_batch_size = args.batch_size if len(val_dataset) > 20 else max(1, args.num_workers)
+    val_batch_size = min(max(1, args.num_workers), args.batch_size)
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
         train_loader = DataLoader(
