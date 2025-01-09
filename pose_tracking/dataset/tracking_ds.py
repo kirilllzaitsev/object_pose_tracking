@@ -1,4 +1,5 @@
 import copy
+import os
 from pathlib import Path
 
 import cv2
@@ -50,6 +51,8 @@ class TrackingDataset(Dataset):
         end_frame_idx=None,
         num_mesh_pts=2000,
         mask_pixels_prob=0.0,
+        rgb_file_extension="png",
+        color_file_id_strs=None
     ):
         self.include_rgb = include_rgb
         self.include_mask = include_mask
@@ -73,8 +76,11 @@ class TrackingDataset(Dataset):
         self.pose_dirname = pose_dirname
         self.bbox_format = bbox_format
         self.max_depth = max_depth
+        self.color_file_id_strs = color_file_id_strs
 
-        self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.png")
+        self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
+        if color_file_id_strs is not None:
+            self.color_files = [f for f in self.color_files if Path(f).stem in color_file_id_strs]
         self.end_frame_idx = end_frame_idx or len(self.color_files)
         self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
         self.num_frames = len(self.color_files)
@@ -85,14 +91,16 @@ class TrackingDataset(Dataset):
         self.mesh = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = self.get_mask(0)
-        self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
 
         if shorter_side is not None:
             self.downscale = shorter_side / min(self.h, self.w)
 
         self.h = int(self.h * self.downscale)
         self.w = int(self.w * self.downscale)
-        self.K[:2] *= self.downscale
+
+        if os.path.exists(f"{video_dir}/cam_K.txt"):
+            self.K = np.loadtxt(f"{video_dir}/cam_K.txt").reshape(3, 3)
+            self.K[:2] *= self.downscale
 
     def __len__(self):
         return self.num_frames

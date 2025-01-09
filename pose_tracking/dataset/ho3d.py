@@ -46,6 +46,7 @@ class HO3DDataset(TrackingDataset):
         self.meta_file_path = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
         self.meta_file = pickle.load(open(self.meta_file_path, "rb"))
         self.K = self.meta_file["camMat"]
+        self.K[:2] *= self.downscale
         self.obj_name = self.meta_file["objName"]
 
         self.glcam_in_cvcam = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
