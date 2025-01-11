@@ -3,7 +3,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from pose_tracking.dataset.transforms import mask_pixels
-from pose_tracking.utils.common import cast_to_numpy
+from pose_tracking.utils.common import cast_to_numpy, cast_to_torch
 from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 
 
@@ -20,6 +20,8 @@ def get_ds_sample(
     do_convert_pose_to_quat=False,
     mask_pixels_prob=0.0,
     pixels_masked_max_percent=0.1,
+    rot_repr="quaternion",
+    t_repr="3d",
 ):
     if transforms_rgb is not None:
         transformed = transforms_rgb(image=color)
@@ -43,11 +45,14 @@ def get_ds_sample(
         mask = adjust_mask_for_torch(mask)
         sample["mask"] = from_numpy(mask)
     if pose is not None:
-        if do_convert_pose_to_quat:
-            if pose.shape[-1] != 7:
-                rot = torch.from_numpy(pose[:3, :3])
-                quat = convert_rotation_representation(rot, rot_representation="quaternion")
-                pose = np.concatenate([pose[:3, 3], quat])
+        rot = pose[:3, :3]
+        t = pose[:3, 3]
+        if t_repr == "2d":
+            sample["depth"] = cast_to_torch(t[-1])
+        if do_convert_pose_to_quat and rot_repr != "None":
+            quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
+            pose = np.concatenate([t, quat])
+
         sample["pose"] = from_numpy(pose)
     if mask_visib is not None:
         sample["mask_visib"] = from_numpy(mask_visib)
