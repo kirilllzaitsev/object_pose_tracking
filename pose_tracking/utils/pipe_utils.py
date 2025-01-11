@@ -29,7 +29,6 @@ from pose_tracking.dataset.video_ds import (
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
-from pose_tracking.trainer import TrainerPizza
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
 from torch.utils.tensorboard import SummaryWriter
@@ -193,13 +192,14 @@ def get_trackformer_args(args):
     tf_args.lr_backbone = tf_args.lr * 0.1
     tf_args.lr_linear_proj_mult = tf_args.lr_linear_proj_mult
     tf_args.lr_track = tf_args.lr
-    tf_args.with_box_refine = True
-    tf_args.with_box_refine = False
+    tf_args.with_box_refine = args.tf_use_box_refine
     tf_args.num_queries = args.mt_num_queries
     tf_args.enc_layers = args.mt_n_layers
     tf_args.dec_layers = args.mt_n_layers
     tf_args.dropout = args.dropout
     tf_args.hidden_dim = 288
+    tf_args.rot_out_dim = args.rot_out_dim
+    tf_args.t_out_dim = args.t_out_dim
 
     if tf_args.deformable:
         tf_args.bbox_loss_coef = 5
@@ -211,6 +211,7 @@ def get_trackformer_args(args):
         tf_args.ce_loss_coef = 1
     tf_args.rot_loss_coef = 1
     tf_args.t_loss_coef = 1
+    tf_args.depth_loss_coef = 1
 
     tf_args.opt_only = args.opt_only
 
@@ -220,12 +221,9 @@ def get_trackformer_args(args):
 def get_trainer(
     args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
-    from pose_tracking.trainer import (
-        Trainer,
-        TrainerDeformableDETR,
-        TrainerTrackformer,
-        TrainerVideopose,
-    )
+    from pose_tracking.trainer import Trainer
+    from pose_tracking.trainer_detr import TrainerDeformableDETR, TrainerTrackformer
+    from pose_tracking.trainer_others import TrainerPizza, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
     criterion_rot = get_rot_loss(args.rot_loss_name)
@@ -362,6 +360,8 @@ def get_datasets(
     max_test_videos=None,
     start_frame_idx=0,
     end_frame_idx=None,
+    rot_repr="quaternion",
+    t_repr="3d",
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -383,6 +383,8 @@ def get_datasets(
         bbox_format="cxcywh" if is_detr_model else "xyxy",
         model_name="pizza" if is_pizza_model else model_name,
         do_normalize_depth=True if is_cnnlstm_model else False,
+        rot_repr=rot_repr,
+        t_repr=t_repr,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

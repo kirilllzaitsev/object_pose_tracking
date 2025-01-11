@@ -103,8 +103,8 @@ def get_parser():
         "--opt_only",
         nargs="*",
         help="List of tasks to optimize",
-        default=["rot", "t", "labels", "boxes"],
-        choices=["rot", "t", "labels", "boxes"],
+        default=["rot", "t", "labels", "boxes", "depth"],
+        choices=["rot", "t", "labels", "boxes", "depth"],
     )
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
@@ -157,6 +157,7 @@ def get_parser():
     tf_args = parser.add_argument_group("Trackformer arguments")
     tf_args.add_argument("--tf_use_deformable", action="store_true", help="Use deformable detr")
     tf_args.add_argument("--tf_use_multi_frame_encoding", action="store_true", help="Use multi_frame_encoding")
+    tf_args.add_argument("--tf_use_box_refine", action="store_true", help="Use box refinement")
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
@@ -332,6 +333,14 @@ def postprocess_args(args, use_if_provided=True):
 
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")
+
+    args.rot_out_dim = 6 if args.do_predict_6d_rot else (3 if args.do_predict_3d_rot else 4)
+    args.t_out_dim = 2 if args.do_predict_2d_t else 3
+    # from rotation_conversions.py
+    args.rot_repr = (
+        "rotation6d" if args.do_predict_6d_rot else ("axis_angle" if args.do_predict_3d_rot else "quaternion")
+    )
+    args.t_repr = "2d" if args.do_predict_2d_t else "3d"
 
     return args
 

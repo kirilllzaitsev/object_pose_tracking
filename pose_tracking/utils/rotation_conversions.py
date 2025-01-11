@@ -34,6 +34,8 @@ def convert_rotation_representation(rot, rot_representation):
         return matrix_to_euler_angles(rot, "XYZ")
     elif rot_representation == "quaternion":
         return matrix_to_quaternion(rot)
+    elif rot_representation == "axis_angle":
+        return matrix_to_axis_angle(rot)
     else:
         print("Not implemented!")
 

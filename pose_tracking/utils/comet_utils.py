@@ -29,7 +29,7 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         ):
             continue
         tag_prefix = get_tag_pref(k, args_to_group_map)
-        p = r"^(use_|do_)"
+        p = r"^(use_|do_)|.*(_use_|_do_)"
         if re.match(p, k) and v:
             extra_tags.append(f'{tag_prefix}{re.sub(p, "", k)}')
         p = r"^(disable_|no_)"
@@ -49,9 +49,6 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         # et=exp tags
         tag_prefix = "et_"
         tags_to_log += [f"{tag_prefix}{x}" for x in args.exp_tags]
-    if args.exp_name not in ["", "test"]:
-        # en=exp_name
-        tags_to_log.append(f"en_{args.exp_name}")
     exp.add_tags(tags_to_log)
 
 
