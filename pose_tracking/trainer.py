@@ -318,24 +318,10 @@ class Trainer:
 
             if self.do_predict_2d_t:
                 center_depth_pred = out["center_depth"]
-                if self.do_predict_rel_pose:
-                    t_pred = torch.cat([t_pred, center_depth_pred], dim=1)
-                else:
-                    # abs 2d center to abs 3d
-                    t_pred_2d_denorm = t_pred.detach().clone()
-                    t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
-                    t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
-
-                    t_pred_2d_backproj = []
-                    for sample_idx in range(batch_size):
-                        t_pred_2d_backproj.append(
-                            backproj_2d_to_3d(
-                                t_pred_2d_denorm[sample_idx][None],
-                                center_depth_pred[sample_idx],
-                                intrinsics[sample_idx],
-                            ).squeeze()
-                        )
-                    t_pred = torch.stack(t_pred_2d_backproj).to(rot_pred.device)
+                convert_2d_t_pred_to_3d_res = self.convert_2d_t_pred_to_3d(
+                    t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                )
+                t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
             pose_mat_gt_abs = torch.stack([convert_pose_vector_to_matrix(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
@@ -551,7 +537,9 @@ class Trainer:
                     if not self.do_predict_rel_pose:
                         vis_data["t_gt_2d_norm"].append(detach_and_cpu(t_gt_2d_norm))
                         vis_data["depth_gt"].append(detach_and_cpu(depth_gt))
-                        vis_data["t_pred_2d_denorm"].append(detach_and_cpu(t_pred_2d_denorm))
+                        vis_data["t_pred_2d_denorm"].append(
+                            detach_and_cpu(convert_2d_t_pred_to_3d_res["t_pred_2d_denorm"])
+                        )
                     vis_data["center_depth_pred"].append(detach_and_cpu(center_depth_pred))
                     vis_data["t_pred_2d"].append(detach_and_cpu(t_pred_2d))
                 if "priv_decoded" in out:
@@ -638,6 +626,31 @@ class Trainer:
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
+
+    def convert_2d_t_pred_to_3d(self, t_pred, center_depth_pred, intrinsics, hw=None):
+        res = {}
+        if self.do_predict_rel_pose:
+            t_pred = torch.cat([t_pred, center_depth_pred], dim=1)
+        else:
+            # abs 2d center to abs 3d
+            t_pred_2d_denorm = t_pred.detach().clone()
+            if hw is not None:
+                t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
+                t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
+
+            t_pred_2d_backproj = []
+            for sample_idx in range(len(t_pred)):
+                t_pred_2d_backproj.append(
+                    backproj_2d_to_3d(
+                        t_pred_2d_denorm[sample_idx][None],
+                        center_depth_pred[sample_idx],
+                        intrinsics[sample_idx],
+                    ).squeeze()
+                )
+            t_pred = torch.stack(t_pred_2d_backproj).to(center_depth_pred.device)
+            res["t_pred_2d_denorm"] = t_pred_2d_denorm
+        res["t_pred"] = t_pred
+        return res
 
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
