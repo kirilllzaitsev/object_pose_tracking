@@ -1,5 +1,6 @@
 import copy
 import os
+import sys
 from pathlib import Path
 
 import cv2
@@ -52,7 +53,9 @@ class TrackingDataset(Dataset):
         num_mesh_pts=2000,
         mask_pixels_prob=0.0,
         rgb_file_extension="png",
-        color_file_id_strs=None
+        color_file_id_strs=None,
+        rot_repr="quaternion",
+        t_repr="3d",
     ):
         self.include_rgb = include_rgb
         self.include_mask = include_mask
@@ -77,6 +80,8 @@ class TrackingDataset(Dataset):
         self.bbox_format = bbox_format
         self.max_depth = max_depth
         self.color_file_id_strs = color_file_id_strs
+        self.rot_repr = rot_repr
+        self.t_repr = t_repr
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
         if color_file_id_strs is not None:
@@ -139,6 +144,10 @@ class TrackingDataset(Dataset):
 
         if self.include_bbox_2d:
             bbox_2d = infer_bounding_box(sample["mask"])
+            if bbox_2d is None:
+                logger.error(self)
+                logger.error(f"Could not infer bbox for {self.color_files[i]}")
+                sys.exit(1)
             bbox_2d = bbox_2d.astype(np.float32)
             if self.do_normalize_bbox:
                 bbox_2d[:, 0] /= self.w
@@ -169,6 +178,8 @@ class TrackingDataset(Dataset):
             transforms_rgb=self.transforms_rgb,
             do_convert_pose_to_quat=self.do_convert_pose_to_quat,
             mask_pixels_prob=self.mask_pixels_prob,
+            rot_repr=self.rot_repr,
+            t_repr=self.t_repr,
         )
 
         return sample
