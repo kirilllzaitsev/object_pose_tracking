@@ -101,6 +101,8 @@ def get_model(args, num_classes=None):
             encoding_type=args.mt_encoding_type,
             opt_only=args.opt_only,
             dropout=args.dropout,
+            rot_out_dim=args.rot_out_dim,
+            t_out_dim=args.t_out_dim,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 

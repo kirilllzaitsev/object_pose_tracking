@@ -8,7 +8,11 @@ import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.encoders import FrozenBatchNorm2d
-from pose_tracking.models.pos_encoding import PosEncoding, PosEncodingCoord, SpatialPosEncoding
+from pose_tracking.models.pos_encoding import (
+    PosEncoding,
+    PosEncodingCoord,
+    SpatialPosEncoding,
+)
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     backproj_2d_to_3d_batch,
@@ -42,6 +46,8 @@ class DETRBase(nn.Module):
         encoding_type="learned",
         opt_only=[],
         dropout=0.0,
+        rot_out_dim=4,
+        t_out_dim=3,
     ):
         super().__init__()
 
@@ -52,6 +58,12 @@ class DETRBase(nn.Module):
         self.n_heads = n_heads
         self.n_queries = n_queries
         self.encoding_type = encoding_type
+        self.dropout = dropout
+        self.rot_out_dim = rot_out_dim
+        self.t_out_dim = t_out_dim
+        self.opt_only = opt_only
+        self.head_hidden_dim = head_hidden_dim
+        self.head_num_layers = head_num_layers
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
@@ -84,9 +96,9 @@ class DETRBase(nn.Module):
             n_layers,
         )
         if self.use_t:
-            self.t_mlps = get_clones(MLP(d_model, 3, d_model, 1), n_layers)
+            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, 1), n_layers)
         if self.use_rot:
-            self.rot_mlps = get_clones(MLP(d_model, 4, d_model, 2), n_layers)
+            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, 2), n_layers)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
