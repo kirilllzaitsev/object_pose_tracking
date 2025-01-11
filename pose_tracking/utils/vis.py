@@ -613,11 +613,24 @@ def plot_sample_dict(sample):
     rgb = sample["rgb"].squeeze()
     depth = sample["depth"].squeeze()
     mask = sample["mask"].squeeze()
-    return plot_sample(rgb, depth, mask)
+    pose = sample["pose"].squeeze()
+    if pose.shape[-1] == 7:
+        pose = convert_pose_vector_to_matrix(pose)
+    if "bbox_2d" in sample:
+        bbox_2d = sample["bbox_2d"].squeeze()
+    else:
+        bbox_2d = None
+    return plot_sample(
+        rgb, depth, mask, pose=pose, K=sample.get("intrinsics"), bbox=sample.get("mesh_bbox"), bbox_2d=bbox_2d
+    )
 
 
-def plot_sample(rgb, depth, mask):
-    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+def plot_sample(rgb, depth, mask, pose=None, K=None, bbox=None, bbox_2d=None, scale=0.05):
+    ncols = 2
+    use_pose = pose is not None
+    if use_pose:
+        ncols = 3
+    fig, axs = plt.subplots(2, ncols, figsize=(5 * ncols, 5 * ncols))
     color = adjust_img_for_plt(rgb)
     depth = adjust_depth_for_plt(depth)
     mask = adjust_img_for_plt(mask)
@@ -628,12 +641,20 @@ def plot_sample(rgb, depth, mask):
     color_masked = copy.deepcopy(color)
     color_masked[mask == 0] = 0
     axs[1, 1].imshow(color_masked)
+    if use_pose:
+        assert K is not None
+        img_pose = vis_pose(color, pose, K, bbox=bbox, scale=scale)
+        axs[0, 2].imshow(img_pose)
+    if bbox_2d is not None:
+        img_bbox_2d = vis_bbox_2d(color, bbox_2d)
+        axs[1, 2].imshow(img_bbox_2d)
     return fig, axs
 
 
 def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
     color = sample["rgb"]
     pose = sample["pose"]
+    bbox = sample.get("mesh_bbox") if bbox is None else bbox
     if pose.shape[-1] == 7:
         pose = convert_pose_vector_to_matrix(pose)
     K = sample["intrinsics"]
