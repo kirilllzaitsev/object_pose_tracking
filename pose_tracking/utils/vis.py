@@ -402,6 +402,8 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
     """
+    if len(imgs) == 0:
+        print("No images to plot")
     imgs = torch.as_tensor(np.asarray(imgs))
     if imgs.shape[-1] == 3:
         imgs = imgs.permute(0, 3, 1, 2)

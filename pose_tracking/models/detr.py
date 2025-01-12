@@ -87,8 +87,9 @@ class DETRBase(nn.Module):
 
         self.t_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
 
+        num_classes_bg = num_classes + 1
         self.class_mlps = get_clones(
-            MLP(in_dim=d_model, out_dim=num_classes, hidden_dim=head_hidden_dim, num_layers=1),
+            MLP(in_dim=d_model, out_dim=num_classes_bg, hidden_dim=head_hidden_dim, num_layers=1),
             n_layers,
         )
         self.bbox_mlps = get_clones(

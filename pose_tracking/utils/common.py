@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 
 import numpy as np
 import torch
@@ -105,6 +106,7 @@ def istensor(x):
 
 
 def get_ordered_paths(pattern, sort_fn=None):
+    sort_fn = sort_fn or (lambda x: int(re.search(r".*?(\d+)(?!.*\d)", x).group(1)))  # search for last numerical value
     pattern = str(pattern)
     if "*" not in pattern:
         assert os.path.isdir(pattern), f"Check {pattern=}"
