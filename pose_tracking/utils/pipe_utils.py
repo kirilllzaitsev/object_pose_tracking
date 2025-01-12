@@ -580,6 +580,13 @@ def get_ds_dirs(args):
     else:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
+
+    excluded_envs = json.load(open(PROJ_DIR / "excluded_envs.json", "r"))
+    if ds_video_dir_train.name in excluded_envs:
+        ds_video_subdirs_train = [d for d in ds_video_subdirs_train if d not in excluded_envs[ds_video_dir_train.name]]
+    if ds_video_dir_val.name in excluded_envs:
+        ds_video_subdirs_val = [d for d in ds_video_subdirs_val if d not in excluded_envs[ds_video_dir_val.name]]
+
     return {
         "ds_video_dir_train": ds_video_dir_train,
         "ds_video_dir_val": ds_video_dir_val,
