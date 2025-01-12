@@ -29,6 +29,7 @@ from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
+    convert_2d_t_to_3d,
     egocentric_delta_pose_to_pose,
     pose_to_egocentric_delta_pose,
     rot_mat_from_6d,
@@ -629,9 +630,9 @@ class TrainerTrackformer(Trainer):
                 t_pred = out["t"][idx]
 
                 if self.do_predict_2d_t:
-                    center_depth_pred = out["center_depth"]
-                    convert_2d_t_pred_to_3d_res = self.convert_2d_t_pred_to_3d(
-                        t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                    center_depth_pred = out["center_depth"][idx]
+                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                        t_pred, center_depth_pred, intrinsics, hw=(h, w), do_predict_rel_pose=self.do_predict_rel_pose
                     )
                     t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 

@@ -28,6 +28,8 @@ from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     cam_to_2d,
+    convert_2d_t_to_3d,
+    convert_3d_t_for_2d,
     egocentric_delta_pose_to_pose,
     pose_to_egocentric_delta_pose,
     rot_mat_from_6d,
@@ -281,6 +283,7 @@ class Trainer:
             intrinsics = batch_t["intrinsics"]
             bbox_2d = batch_t["bbox_2d"]
             h, w = rgb.shape[-2:]
+            hw = (h, w)
             t_gt_abs = pose_gt_abs[:, :3]
             rot_gt_abs = pose_gt_abs[:, 3:]
 
@@ -314,8 +317,8 @@ class Trainer:
 
             if self.do_predict_2d_t:
                 center_depth_pred = out["center_depth"]
-                convert_2d_t_pred_to_3d_res = self.convert_2d_t_pred_to_3d(
-                    t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                    t_pred, center_depth_pred, intrinsics, hw=hw, do_predict_rel_pose=self.do_predict_rel_pose
                 )
                 t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
@@ -369,12 +372,8 @@ class Trainer:
                         loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2])
                         loss_t = loss_uv + loss_z
                     else:
-                        t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
-                        t_gt_2d_norm = t_gt_2d.clone()
-                        t_gt_2d_norm[:, 0] = t_gt_2d_norm[:, 0] / w
-                        t_gt_2d_norm[:, 1] = t_gt_2d_norm[:, 1] / h
 
-                        depth_gt = t_gt_abs[:, 2]
+                        t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
 
                         loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
                         loss_center_depth = self.criterion_trans(center_depth_pred, depth_gt)
@@ -616,31 +615,6 @@ class Trainer:
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
-
-    def convert_2d_t_pred_to_3d(self, t_pred, center_depth_pred, intrinsics, hw=None):
-        res = {}
-        if self.do_predict_rel_pose:
-            t_pred = torch.cat([t_pred, center_depth_pred], dim=1)
-        else:
-            # abs 2d center to abs 3d
-            t_pred_2d_denorm = t_pred.detach().clone()
-            if hw is not None:
-                t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
-                t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
-
-            t_pred_2d_backproj = []
-            for sample_idx in range(len(t_pred)):
-                t_pred_2d_backproj.append(
-                    backproj_2d_to_3d(
-                        t_pred_2d_denorm[sample_idx][None],
-                        center_depth_pred[sample_idx],
-                        intrinsics[sample_idx],
-                    ).squeeze()
-                )
-            t_pred = torch.stack(t_pred_2d_backproj).to(center_depth_pred.device)
-            res["t_pred_2d_denorm"] = t_pred_2d_denorm
-        res["t_pred"] = t_pred
-        return res
 
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]

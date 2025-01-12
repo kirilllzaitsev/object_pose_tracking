@@ -156,6 +156,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         max_train_videos=args.max_train_videos,
         max_val_videos=args.max_val_videos,
         end_frame_idx=args.end_frame_idx,
+        rot_repr=args.rot_repr,
+        t_repr=args.t_repr,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
@@ -164,6 +166,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(val_dataset)=}")
 
     collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
+    # downscale this for trackformer?! its total seq length is orig seq length*2
     val_batch_size = min(max(1, args.num_workers), args.batch_size)
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
