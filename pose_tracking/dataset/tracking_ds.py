@@ -96,6 +96,7 @@ class TrackingDataset(Dataset):
         self.mesh = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = self.get_mask(0)
+        self.t_dim = 3 if t_repr == "3d" else 2
 
         if shorter_side is not None:
             self.downscale = shorter_side / min(self.h, self.w)
@@ -145,9 +146,8 @@ class TrackingDataset(Dataset):
         if self.include_bbox_2d:
             bbox_2d = infer_bounding_box(sample["mask"])
             if bbox_2d is None:
-                logger.error(self)
                 logger.error(f"Could not infer bbox for {self.color_files[i]}")
-                sys.exit(1)
+                return None
             bbox_2d = bbox_2d.astype(np.float32)
             if self.do_normalize_bbox:
                 bbox_2d[:, 0] /= self.w

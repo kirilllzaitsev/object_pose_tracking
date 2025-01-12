@@ -137,6 +137,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
             pose = sample["pose"]
             new_sample["pose"] = pose
+            # pose is always in (3d t, rot) format
             new_sample["t"] = pose[..., :3]
             new_sample["rot"] = pose[..., 3:]
 
@@ -158,7 +159,9 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_boxes"] = new_sample.pop("prev_bbox_2d")
             new_sample["prev_labels"] = new_sample.pop("prev_class_id")
 
-            for k in ["boxes", "prev_boxes", "rot", "t", "prev_rot", "prev_t"]:
+            for k in ["boxes", "prev_boxes", "rot", "t", "prev_rot", "prev_t", "xy", "center_depth"]:
+                if k not in new_sample:
+                    continue
                 new_sample[k] = new_sample[k].float()
                 new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
 
@@ -191,7 +194,9 @@ class VideoDatasetTracking(VideoDataset):
                     "prev_image",
                     "rot",
                     "t",
-                ]
+                    "xy",
+                    "center_depth",
+                ] if k in new_sample
             }
 
             new_sample["target"]["prev_target"] = new_sample.pop("prev_target")
