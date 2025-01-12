@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from pose_tracking.dataset.transforms import mask_pixels
 from pose_tracking.utils.common import cast_to_numpy, cast_to_torch
+from pose_tracking.utils.geom import convert_3d_t_for_2d
 from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 
 
@@ -48,7 +49,10 @@ def get_ds_sample(
         rot = pose[:3, :3]
         t = pose[:3, 3]
         if t_repr == "2d":
-            sample["depth"] = cast_to_torch(t[-1])
+            hw = rgb.shape[-2:]
+            t_2d_norm, center_depth = convert_3d_t_for_2d(cast_to_torch(t), cast_to_torch(intrinsics), hw)
+            sample["center_depth"] = center_depth[None]
+            sample["xy"] = t_2d_norm
         if do_convert_pose_to_quat and rot_repr != "None":
             quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
             pose = np.concatenate([t, quat])
