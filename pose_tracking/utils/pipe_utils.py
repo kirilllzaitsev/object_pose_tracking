@@ -460,7 +460,7 @@ def get_datasets(
                 seq_start=0,
                 ds_kwargs=val_ds_kwargs,
                 num_samples=None,
-                do_preload=True,
+                do_preload=do_preload_ds,
                 mesh_paths_to_take=mesh_paths_orig_train,
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
@@ -480,7 +480,7 @@ def get_datasets(
             seq_start=0,
             ds_kwargs=test_ds_kwargs,
             num_samples=num_samples,
-            do_preload=True,
+            do_preload=do_preload_ds,
             video_ds_cls=video_ds_cls,
             max_videos=max_test_videos,
         )
