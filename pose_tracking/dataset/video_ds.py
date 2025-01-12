@@ -80,6 +80,8 @@ class VideoDataset(Dataset):
                 sample = self.seq[frame_idx]
             else:
                 sample = self.ds[frame_idx]
+            if sample is None:
+                return None
             if self.transforms_rgb is not None:
                 if t == 0:
                     t_res = self.transforms_rgb(image=adjust_img_for_plt(sample["rgb"]))
@@ -121,7 +123,11 @@ class VideoDatasetTracking(VideoDataset):
             frame_idx = seq_start + t * seq_step
             frame_idx_prev = frame_idx - seq_step
             sample = self.ds[frame_idx]
+            if sample is None:
+                return None
             sample_prev = self.ds[frame_idx_prev]
+            if sample_prev is None:
+                return None
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
             new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
             # rename rgb->image bbox_2d->boxes class_id->labels

@@ -135,6 +135,7 @@ def dict_collate_fn(batch):
 def seq_collate_fn(batch):
     # result is a list of size seq_len with dicts having values of size batch_size x ...
     new_b = []
+    batch = [d for d in batch if d is not None]
     seq_lens = [len(d) for d in batch]
     for i in range(min(seq_lens)):
         new_b.append(dict_collate_fn([d[i] for d in batch]))
@@ -145,6 +146,8 @@ def batch_seq_collate_fn(batch):
     # result is a tensor of size batch_size with dicts having values of size seq_len x ...
     new_b = []
     for i in range(len(batch)):
+        if batch[i] is None:
+            continue
         new_b.append(dict_collate_fn(batch[i]))
     new_b = dict_collate_fn(new_b)
     return new_b
