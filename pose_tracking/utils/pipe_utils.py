@@ -1,5 +1,6 @@
 import argparse
 import copy
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from pose_tracking.config import (
     ARTIFACTS_DIR,
     DATA_DIR,
     HO3D_ROOT,
+    PROJ_DIR,
     PROJ_NAME,
     RELATED_DIR,
     YCB_MESHES_DIR,
@@ -36,6 +38,7 @@ from tqdm import tqdm
 
 
 def get_model(args, num_classes=None):
+    # num_classes excluding bg
     if args.model_name == "videopose":
         from videopose.arguments import parse_args
         from videopose.models.model import VideoPose
@@ -76,19 +79,21 @@ def get_model(args, num_classes=None):
         model = DeformableDETR(
             backbone,
             transformer,
-            num_classes=num_classes,
+            num_classes=num_classes + 1,
             num_queries=args.mt_num_queries,
             num_feature_levels=detr_args.num_feature_levels,
             aux_loss=detr_args.aux_loss,
             with_box_refine=detr_args.with_box_refine,
             two_stage=detr_args.two_stage,
+            rot_out_dim=args.rot_out_dim,
+            t_out_dim=args.t_out_dim,
         )
     elif args.model_name == "trackformer":
         from trackformer.models import build_model
 
         detr_args = get_trackformer_args(args)
         args.detr_args = detr_args
-        model, criterion, postprocessors = build_model(detr_args, num_classes=num_classes)
+        model, criterion, postprocessors = build_model(detr_args, num_classes=num_classes + 1)
 
     elif args.model_name in ["detr_basic", "detr_kpt"]:
         detr_args = dict(
@@ -258,8 +263,7 @@ def get_trainer(
                     "do_calibrate_kpt": args.mt_do_calibrate_kpt,
                 }
             )
-        if "trackformer" in args.model_name:
-            extra_kwargs.update({"args": args})
+        extra_kwargs.update({"args": args})
     else:
         extra_kwargs = {}
 
@@ -408,7 +412,7 @@ def get_datasets(
 
     res = {}
 
-    video_ds_cls = VideoDatasetTracking if is_tf_model else VideoDataset
+    video_ds_cls = VideoDatasetTracking if is_tf_model or is_detr_model else VideoDataset
 
     train_ds_kwargs = copy.deepcopy(ds_kwargs)
     train_ds_kwargs["video_dir"] = ds_video_dir_train

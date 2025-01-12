@@ -121,7 +121,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
-        num_classes = metadata["num_classes"] + 1
+        num_classes = metadata["num_classes"]
         logger.info(f"{num_classes=}")
     elif args.ds_name in ["ycbi", "ho3d_v3"]:
         num_classes = len(YCBV_OBJ_NAME_TO_ID)
