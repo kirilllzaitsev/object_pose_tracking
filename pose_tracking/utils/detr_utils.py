@@ -42,6 +42,8 @@ def postprocess_detr_outputs(outputs, target_sizes):
         if use_pose:
             res["rot"] = outputs["rot"][idx]
             res["t"] = outputs["t"][idx]
+            if "center_depth" in outputs:
+                res["center_depth"] = outputs["center_depth"][idx]
 
         results.append(res)
 

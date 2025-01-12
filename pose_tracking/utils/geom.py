@@ -207,9 +207,7 @@ def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
 
 def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
-    cur_pose_mat = (
-        torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)
-    )
+    cur_pose_mat = torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)
     if prev_pose_mat.ndim == 3:
         cur_pose_mat = cur_pose_mat[None].repeat(len(prev_pose_mat), 1, 1)
     if do_couple_rot_t:
@@ -610,3 +608,39 @@ def bbox_to_8_point_centered(min_coords=None, max_coords=None, center=None, bbox
     ]
 
     return np.array(points)
+
+
+def convert_3d_t_for_2d(t_gt_abs, intrinsics, hw):
+    t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
+    t_gt_2d_norm = t_gt_2d.clone()
+    t_gt_2d_norm[..., 0] = t_gt_2d_norm[..., 0] / hw[1]
+    t_gt_2d_norm[..., 1] = t_gt_2d_norm[..., 1] / hw[0]
+
+    depth_gt = t_gt_abs[..., 2]
+    return t_gt_2d_norm, depth_gt
+
+
+def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None, do_predict_rel_pose=False):
+    res = {}
+    if do_predict_rel_pose:
+        t_pred = torch.cat([t_pred, depth_pred], dim=1)
+    else:
+        # abs 2d center to abs 3d
+        t_pred_2d_denorm = t_pred.detach().clone()
+        if hw is not None:
+            t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
+            t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
+
+        t_pred_2d_backproj = []
+        for sample_idx in range(len(t_pred)):
+            t_pred_2d_backproj.append(
+                backproj_2d_to_3d(
+                    t_pred_2d_denorm[sample_idx][None],
+                    depth_pred[sample_idx],
+                    intrinsics[sample_idx],
+                ).squeeze()
+            )
+        t_pred = torch.stack(t_pred_2d_backproj).to(depth_pred.device)
+        res["t_pred_2d_denorm"] = t_pred_2d_denorm
+    res["t_pred"] = t_pred
+    return res
