@@ -62,6 +62,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if args.is_ddp_interactive:
         rank = local_rank
     if args.use_ddp:
+        print(f"host: {gethostname()}, {world_size=}, {rank=}, {local_rank=}")
+    if args.use_ddp:
         if "MASTER_ADDR" not in os.environ:
             os.environ["MASTER_ADDR"] = "localhost"
         if "MASTER_PORT" not in os.environ:
@@ -82,13 +84,14 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         device = torch.device(args.device)
         is_main_process = True
 
-    if args.use_ddp:
-        print(f"host: {gethostname()}, {world_size=}, {rank=}, {local_rank=}")
-        if is_main_process:
-            print(f"Group initialized? {dist.is_initialized()}", flush=True)
+    if args.use_ddp and is_main_process:
+        print(f"Group initialized? {dist.is_initialized()}", flush=True)
     if "SLURM_GPUS_ON_NODE" in os.environ:
         gpus_per_node = int(os.environ["SLURM_GPUS_ON_NODE"])
         assert gpus_per_node == torch.cuda.device_count()
+
+    args.lr_encoders = args.lr_encoders * np.sqrt(world_size)
+    args.lr = args.lr * np.sqrt(world_size)
 
     external_tools = True
     if exp_tools is None:
@@ -166,8 +169,14 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(val_dataset)=}")
 
     collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
-    # downscale this for trackformer?! its total seq length is orig seq length*2
+
     val_batch_size = min(max(1, args.num_workers), args.batch_size)
+    if "four_large" in str(ds_video_dir_train):
+        val_batch_size = max(1, val_batch_size // 4)
+
+    logger.info(f"{args.batch_size=}")
+    logger.info(f"{val_batch_size=}")
+
     if args.use_ddp:
         train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
         train_loader = DataLoader(
@@ -213,15 +222,16 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             device_ids=[local_rank] if args.use_cuda else None,
             broadcast_buffers=False,  # how does this affect training on diff subsets
         )
+
     optimizer = optim.AdamW(
         [
             {
                 "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
-                "lr": args.lr_encoders * np.sqrt(world_size),
+                "lr": args.lr_encoders,
             },
             {
                 "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
-                "lr": args.lr * np.sqrt(world_size),
+                "lr": args.lr,
             },
         ],
         weight_decay=args.weight_decay,
