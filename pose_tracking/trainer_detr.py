@@ -90,20 +90,22 @@ class TrainerDeformableDETR(Trainer):
 
         self.matcher = build_matcher(self.tf_args)
         self.criterion = build_criterion(
-            self.tf_args, num_classes=self.num_classes + 1, matcher=self.matcher, device=self.args.device
+            self.tf_args, num_classes=self.num_classes, matcher=self.matcher, device=self.args.device
         )
-
-        if "detr_kpt" in args.model_name:
-            self.encoder_module_prefix = "extractor"
-        elif "detr" in args.model_name:
-            self.encoder_module_prefix = "backbone"
-        else:
-            self.encoder_module_prefix = ""
 
         if self.use_ddp:
             self.model_without_ddp = self.model.module
         else:
             self.model_without_ddp = self.model
+
+        if "detr_kpt" in args.model_name:
+            self.encoder_module_prefix = "extractor"
+            for p in self.model_without_ddp.extractor.parameters():
+                p.requires_grad = False
+        elif "detr" in args.model_name:
+            self.encoder_module_prefix = "backbone"
+        else:
+            self.encoder_module_prefix = ""
 
         param_dicts = [
             {
@@ -330,7 +332,7 @@ class TrainerDeformableDETR(Trainer):
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
-            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes - 1))
+            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
 
             for k, v in m_batch_avg.items():
                 if "classes" in k:
@@ -650,7 +652,7 @@ class TrainerTrackformer(TrainerDeformableDETR):
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
-            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes - 1))
+            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
 
             for k, v in m_batch_avg.items():
                 if "classes" in k:
@@ -700,7 +702,7 @@ class TrainerTrackformer(TrainerDeformableDETR):
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
-                    pose_gt=pose_gt_abs,
+                    pose_gt=pose_mat_gt_abs,
                     pose_pred=pose_mat_pred_abs,
                     rgb_path=batch_t["rgb_path"],
                     preds_dir=preds_dir,
