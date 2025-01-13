@@ -242,6 +242,54 @@ class DETR(DETRBase):
         return {"tokens": tokens}
 
 
+class DETRPretrained(nn.Module):
+
+    def __init__(
+        self,
+        *args,
+        backbone_name="resnet18",
+        use_pretrained_backbone=True,
+        rot_out_dim=4,
+        t_out_dim=3,
+        opt_only=[],
+        d_model=256,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.backbone_name = backbone_name
+        self.use_pretrained_backbone = use_pretrained_backbone
+        self.rot_out_dim = rot_out_dim
+        self.t_out_dim = t_out_dim
+        self.opt_only = opt_only
+
+        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=True)
+
+        self.backbone = self.model.backbone[0].body
+
+        self.conv1x1 = nn.Conv2d(2048, 256, kernel_size=1, stride=1)
+
+        if self.use_t:
+            self.t_mlps = MLP(d_model, t_out_dim, d_model, 1)
+        if self.use_rot:
+            self.rot_mlps = MLP(d_model, t_out_dim, d_model, 1)
+
+        self.backbone_feats = {}
+
+        def hook_resnet50_feats(model, inp, out):
+            self.backbone_feats["layer4"] = out
+
+        self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
+
+    def forward(self, x):
+        main_out = self.model(x)
+        tokens = self.backbone_feats["layer4"]
+        tokens = self.conv1x1(tokens)
+        tokens = rearrange(tokens, "b c h w -> b c (h w)")
+        
+        return {"tokens": tokens}
+
+
 class KeypointDETR(DETRBase):
 
     def __init__(
