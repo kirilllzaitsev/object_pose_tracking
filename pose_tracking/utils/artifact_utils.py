@@ -20,7 +20,7 @@ from pose_tracking.utils.misc import DeviceType
 from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 
 
-def save_results(batch_t, pose_pred, preds_dir):
+def save_results(batch_t, pose_pred, preds_dir, gt_pose):
     # batch_t contains data for the t-th timestep in N sequences
     bsize = len(batch_t["rgb"])
     for bidx in range(bsize):
@@ -30,10 +30,7 @@ def save_results(batch_t, pose_pred, preds_dir):
         pose = torch.eye(4)
         pose = pose_pred[bidx]
         pose = cast_to_numpy(pose)
-        gt_pose = batch_t["pose"][bidx]
-        gt_pose_formatted = convert_pose_vector_to_matrix(gt_pose)
-        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze()
-        gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
+        gt_pose_formatted = cast_to_numpy(gt_pose[bidx])
         seq_dir = preds_dir if bsize == 1 else preds_dir / f"seq_{bidx}"
         pose_path = seq_dir / "poses" / f"{name}.txt"
         gt_path = seq_dir / "poses_gt" / f"{name}.txt"
@@ -65,9 +62,7 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         pose = torch.eye(4)
         pose = pose_pred[bidx]
         pose = cast_to_numpy(pose)
-        gt_pose = pose_gt[bidx]
-        gt_pose_formatted = convert_pose_vector_to_matrix(gt_pose)
-        gt_pose_formatted[:3, 3] = gt_pose[:3].squeeze()
+        gt_pose_formatted = pose_gt[bidx]
         gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
         seq_dir = preds_dir if bsize == 1 else preds_dir / f"seq_{bidx}"
         pose_path = seq_dir / "poses" / f"{name}.txt"

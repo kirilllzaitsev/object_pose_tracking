@@ -125,7 +125,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     if args.ds_name == "ikea":
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
-        num_classes = metadata["num_classes"]
+        if args.ds_alias == "cube_large":
+            num_classes = 1
+        else:
+            num_classes = metadata["num_classes"]
         logger.info(f"{num_classes=}")
     elif args.ds_name in ["ycbi", "ho3d_v3"]:
         num_classes = len(YCBV_OBJ_NAME_TO_ID)
@@ -325,7 +328,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                 if args.use_es_val:
                     early_stopping(loss=cur_val_loss)
 
-                if epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
+                if args.do_save_artifacts and epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
                     log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
                     printer.saved_artifacts(epoch)
 
@@ -345,7 +348,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         shutil.rmtree(logdir)
         return
 
-    if is_main_process and not args.do_overfit:
+    if is_main_process and args.do_save_artifacts:
         log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
         printer.saved_artifacts(epoch)
 
