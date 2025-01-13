@@ -1,7 +1,9 @@
 import argparse
+import base64
 import re
 import sys
 
+import numpy as np
 import yaml
 
 
@@ -26,6 +28,7 @@ def get_parser():
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
     pipe_args.add_argument("--do_profile", action="store_true", help="Profile the code")
+    pipe_args.add_argument("--do_save_artifacts", action="store_true", help="Save artifacts")
     pipe_args.add_argument("--do_print_seq_stats", action="store_true", help="Print sequence-level stats")
     pipe_args.add_argument(
         "--do_ignore_file_args_with_provided", action="store_true", help="Ignore file args if provided via CLI"
@@ -158,6 +161,13 @@ def get_parser():
     tf_args.add_argument("--tf_use_deformable", action="store_true", help="Use deformable detr")
     tf_args.add_argument("--tf_use_multi_frame_encoding", action="store_true", help="Use multi_frame_encoding")
     tf_args.add_argument("--tf_use_box_refine", action="store_true", help="Use box refinement")
+    tf_args.add_argument("--tf_use_focal_loss", action="store_true", help="Use focal_loss")
+    tf_args.add_argument("--tf_bbox_loss_coef", type=float, default=5)
+    tf_args.add_argument("--tf_giou_loss_coef", type=float, default=2)
+    tf_args.add_argument("--tf_ce_loss_coef", type=float, default=2)
+    tf_args.add_argument("--tf_rot_loss_coef", type=float, default=1)
+    tf_args.add_argument("--tf_t_loss_coef", type=float, default=1)
+    tf_args.add_argument("--tf_depth_loss_coef", type=float, default=1)
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
@@ -180,7 +190,17 @@ def get_parser():
         type=str,
         default="cnnlstm",
         help="Model name",
-        choices=["cnnlstm", "cnnlstm_sep", "videopose", "detr", "detr_basic", "detr_kpt", "pizza", "trackformer"],
+        choices=[
+            "cnnlstm",
+            "cnnlstm_sep",
+            "videopose",
+            "detr",
+            "detr_basic",
+            "detr_kpt",
+            "pizza",
+            "detr_pretrained",
+            "trackformer",
+        ],
     )
     model_args.add_argument(
         "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
@@ -239,6 +259,15 @@ def get_parser():
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
+    data_args.add_argument(
+        "--do_split_train_for_val", action="store_true", help="Obtain train/val by splitting the train set"
+    )
+    data_args.add_argument(
+        "--val_split_share",
+        type=float,
+        default=0.1,
+        help="Share of the train set to use for validation. Applies only if do_split_train_for_val is set",
+    )
     data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
     data_args.add_argument("--seq_len_test", type=int, default=600, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
@@ -398,5 +427,5 @@ def map_args_to_groups(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 def load_args_from_file(path):
     with open(path, "r") as f:
-        args = argparse.Namespace(**yaml.load(f, Loader=yaml.FullLoader))
+        args = argparse.Namespace(**yaml.load(f, Loader=yaml.UnsafeLoader))
     return args
