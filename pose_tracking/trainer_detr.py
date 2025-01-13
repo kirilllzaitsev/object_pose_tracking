@@ -382,7 +382,7 @@ class TrainerDeformableDETR(Trainer):
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
-                    pose_gt=pose_gt_abs,
+                    pose_gt=pose_mat_gt_abs,
                     pose_pred=pose_mat_pred_abs,
                     rgb_path=batch_t["rgb_path"],
                     preds_dir=preds_dir,

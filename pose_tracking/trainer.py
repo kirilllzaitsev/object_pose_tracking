@@ -155,7 +155,7 @@ class Trainer:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
 
     def __repr__(self):
-        return print_cls(self, excluded_attrs=["processed_data", "model"])
+        return print_cls(self, excluded_attrs=["processed_data", "model", "args", "model_without_ddp"])
 
     def loader_forward(
         self,
@@ -502,7 +502,7 @@ class Trainer:
 
             if save_preds:
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, pose_mat_pred_abs, preds_dir)
+                save_results(batch_t, pose_mat_pred_abs, preds_dir, gt_pose=pose_mat_gt_abs)
 
             if do_vis:
                 # save inputs to the exp dir
