@@ -246,48 +246,65 @@ class DETRPretrained(nn.Module):
 
     def __init__(
         self,
-        *args,
-        backbone_name="resnet18",
+        num_classes,
         use_pretrained_backbone=True,
         rot_out_dim=4,
         t_out_dim=3,
         opt_only=[],
         d_model=256,
-        **kwargs,
+        n_layers=6,
     ):
         super().__init__()
 
-        self.backbone_name = backbone_name
         self.use_pretrained_backbone = use_pretrained_backbone
         self.rot_out_dim = rot_out_dim
         self.t_out_dim = t_out_dim
         self.opt_only = opt_only
+        self.d_model = d_model
+        self.n_layers = n_layers
 
-        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=True)
+        self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
+        self.use_t = not opt_only or (opt_only and "t" in opt_only)
 
-        self.backbone = self.model.backbone[0].body
+        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
 
-        self.conv1x1 = nn.Conv2d(2048, 256, kernel_size=1, stride=1)
+        self.model.class_embed = nn.Linear(self.model.class_embed.in_features, num_classes + 1)
 
         if self.use_t:
-            self.t_mlps = MLP(d_model, t_out_dim, d_model, 1)
+            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, 2), n_layers)
         if self.use_rot:
-            self.rot_mlps = MLP(d_model, t_out_dim, d_model, 1)
+            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, 2), n_layers)
 
-        self.backbone_feats = {}
-
-        def hook_resnet50_feats(model, inp, out):
-            self.backbone_feats["layer4"] = out
-
-        self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
+        self.decoder_outs = {}
+        for i, layer in enumerate(self.model.transformer.decoder.layers):
+            name = f"layer_{i}"
+            layer.register_forward_hook(get_hook(self.decoder_outs, name))
 
     def forward(self, x):
         main_out = self.model(x)
-        tokens = self.backbone_feats["layer4"]
-        tokens = self.conv1x1(tokens)
-        tokens = rearrange(tokens, "b c h w -> b c (h w)")
-        
-        return {"tokens": tokens}
+        outs = []
+        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
+            out = {}
+            if self.use_rot:
+                pred_rot = self.rot_mlps[layer_idx](o)
+                out["rot"] = pred_rot.transpose(0, 1)
+            if self.use_t:
+                pred_t = self.t_mlps[layer_idx](o)
+                out["t"] = pred_t.transpose(0, 1)
+
+            outs.append(out)
+        last_out = outs.pop()
+        res = {
+            "pred_logits": main_out["pred_logits"],
+            "pred_boxes": main_out["pred_boxes"],
+            # "aux_outputs": outs,
+        }
+        if self.use_rot:
+            res["rot"] = last_out["rot"]
+        if self.use_t:
+            res["t"] = last_out["t"]
+
+        return res
 
 
 class KeypointDETR(DETRBase):
