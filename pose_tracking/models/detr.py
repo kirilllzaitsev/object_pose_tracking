@@ -271,9 +271,9 @@ class DETRPretrained(nn.Module):
         self.model.class_embed = nn.Linear(self.model.class_embed.in_features, num_classes + 1)
 
         if self.use_t:
-            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, 2), n_layers)
+            self.t_mlps = MLP(d_model, t_out_dim, d_model, 2)
         if self.use_rot:
-            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, 2), n_layers)
+            self.rot_mlps = MLP(d_model, rot_out_dim, d_model, 2)
 
         self.decoder_outs = {}
         for i, layer in enumerate(self.model.transformer.decoder.layers):
@@ -284,12 +284,14 @@ class DETRPretrained(nn.Module):
         main_out = self.model(x)
         outs = []
         for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
+            if layer_idx != self.n_layers - 1:
+                continue
             out = {}
             if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](o)
+                pred_rot = self.rot_mlps(o)
                 out["rot"] = pred_rot.transpose(0, 1)
             if self.use_t:
-                pred_t = self.t_mlps[layer_idx](o)
+                pred_t = self.t_mlps(o)
                 out["t"] = pred_t.transpose(0, 1)
 
             outs.append(out)
