@@ -592,6 +592,14 @@ def get_ds_dirs(args):
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
 
+    if args.do_split_train_for_val:
+        assert args.val_split_share > 0
+        val_num_subdirs = int(len(ds_video_subdirs_train) * args.val_split_share)
+        val_random_idxs = np.random.choice(len(ds_video_subdirs_train), val_num_subdirs, replace=False)
+        ds_video_subdirs_val = [ds_video_subdirs_train[i] for i in val_random_idxs]
+        ds_video_subdirs_train = [d for d in ds_video_subdirs_train if d not in ds_video_subdirs_val]
+        ds_video_dir_val = ds_video_dir_train
+
     excluded_envs = json.load(open(PROJ_DIR / "excluded_envs.json", "r"))
     if ds_video_dir_train.name in excluded_envs:
         ds_video_subdirs_train = [d for d in ds_video_subdirs_train if d not in excluded_envs[ds_video_dir_train.name]]
