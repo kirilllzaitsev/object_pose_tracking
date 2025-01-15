@@ -33,6 +33,7 @@ from pose_tracking.utils.artifact_utils import (
     log_exp_meta,
     log_model_meta,
 )
+from pose_tracking.utils.comet_utils import log_params_to_exp
 from pose_tracking.utils.common import get_ordered_paths, print_args
 from pose_tracking.utils.misc import set_seed
 from pose_tracking.utils.pipe_utils import (
@@ -169,8 +170,19 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
 
+    logger.info(f"{ds_video_dir_train=}")
+    logger.info(f"{ds_video_dir_val=}")
+    logger.info(f"{len(ds_video_subdirs_train)=}")
+    logger.info(f"{len(ds_video_subdirs_val)=}")
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
+
+    if is_main_process:
+        log_params_to_exp(
+            exp,
+            {"len_train_videos": len(train_dataset.video_datasets), "len_val_videos": len(val_dataset.video_datasets)},
+            "d",
+        )
 
     collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
 
@@ -364,6 +376,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     if args.use_ddp:
         dist.destroy_process_group()
+
+    return history
 
 
 if __name__ == "__main__":

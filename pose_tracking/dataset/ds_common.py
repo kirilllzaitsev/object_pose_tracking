@@ -159,9 +159,10 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
     # from keyxseq_lenxbatch to batchxseq_lenxkey
     res = []
     keys = keys or batch.keys()
-    for bidx in range(len(batch["rgb"][0])):
+    img_key = "rgb" if "rgb" in batch and len(batch['rgb']) else "image"
+    for bidx in range(len(batch[img_key][0])):
         news = []
-        for sidx in range(len(batch["rgb"])):
+        for sidx in range(len(batch[img_key])):
             news.append({k: v[sidx][bidx] for k, v in batch.items() if len(v) > 0 if k in keys})
         res.append(news)
     return res
@@ -170,8 +171,9 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
 def convert_batch_seq_to_seq_batch(batch, keys=None):
     # from keyxbatchxseq_len to seq_lenxkeyxbatch
     res = []
+    img_key = "rgb" if "rgb" in batch else "image"
     keys = keys or batch.keys()
-    for sidx in range(len(batch["rgb"][0])):
+    for sidx in range(len(batch[img_key][0])):
         news = {}
         for k, v in batch.items():
             if k in keys:

@@ -1,3 +1,4 @@
+import gc
 import random
 import typing as t
 
@@ -163,3 +164,8 @@ def match_module_by_name(n, name_keywords):
             out = True
             break
     return out
+
+
+def free_cuda_mem():
+    gc.collect()
+    torch.cuda.empty_cache()
