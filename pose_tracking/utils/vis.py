@@ -427,11 +427,16 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
 def plot_seq(
     seq, keys_to_plot=[], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
 ):
+    target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
     def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):
             raise ValueError(f"{k} not found in the sequence")
         if key_in_target(k):
-            return seq[sidx]["target"][batch_idx][k]
+            val = seq[sidx][target_key]
+            if isinstance(val, dict):
+                return val[k][batch_idx]
+            else:
+                return val[batch_idx][k]
         else:
             return seq[sidx][k][batch_idx]
 
@@ -439,14 +444,20 @@ def plot_seq(
         return seq[0].get(k, []) != [] or key_in_target(k)
 
     def key_in_target(k):
-        return "target" in seq[0] and seq[0]["target"][batch_idx].get(k, []) != []
+        if target_key in seq[0]:
+            val = seq[0][target_key]
+            if isinstance(val, dict):
+                return len(val.get(k, [])) > 0
+            else:
+                return val[batch_idx].get(k, []) != []
+        return False
 
     img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
     first_key = img_key
     if len(keys_to_plot) == 0:
         keys_to_plot.append(img_key)
     if first_key in seq:
-        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox"])
+        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox", target_key])
         seq = batch_seq[batch_idx]
         print(f"taking {batch_idx=} of {len(batch_seq)}")
     if len(seq) > 20:
