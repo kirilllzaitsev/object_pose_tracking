@@ -199,14 +199,14 @@ def get_trackformer_args(args):
     )
     tf_args.deformable = args.tf_use_deformable
 
-    tf_args.focal_loss = True
+    tf_args.focal_loss = args.tf_use_focal_loss
 
     tf_args.multi_frame_attention = True
     tf_args.overflow_boxes = True
     tf_args.multi_frame_encoding = args.tf_use_multi_frame_encoding
 
     tf_args.lr = args.lr
-    tf_args.lr_backbone = tf_args.lr * 0.1
+    tf_args.lr_backbone = args.lr_encoders
     tf_args.lr_linear_proj_mult = tf_args.lr_linear_proj_mult
     tf_args.lr_track = tf_args.lr
     tf_args.with_box_refine = args.tf_use_box_refine
@@ -218,19 +218,16 @@ def get_trackformer_args(args):
     tf_args.rot_out_dim = args.rot_out_dim
     tf_args.t_out_dim = args.t_out_dim
 
-    if tf_args.deformable:
-        tf_args.bbox_loss_coef = 5
-        tf_args.giou_loss_coef = 2
-        tf_args.ce_loss_coef = 2
-    else:
-        tf_args.bbox_loss_coef = 1
-        tf_args.giou_loss_coef = 1
-        tf_args.ce_loss_coef = 1
-    tf_args.rot_loss_coef = 1
-    tf_args.t_loss_coef = 1
-    tf_args.depth_loss_coef = 1
+    tf_args.bbox_loss_coef = args.tf_bbox_loss_coef
+    tf_args.giou_loss_coef = args.tf_giou_loss_coef
+    tf_args.ce_loss_coef = args.tf_ce_loss_coef
+    tf_args.rot_loss_coef = args.tf_rot_loss_coef
+    tf_args.t_loss_coef = args.tf_t_loss_coef
+    tf_args.depth_loss_coef = args.tf_depth_loss_coef
 
     tf_args.opt_only = args.opt_only
+
+    tf_args.backbone = args.encoder_name
 
     return tf_args
 
