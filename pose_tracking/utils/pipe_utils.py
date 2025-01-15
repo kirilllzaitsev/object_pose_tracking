@@ -438,10 +438,10 @@ def get_datasets(
             max_videos=max_train_videos,
             end_frame_idx=end_frame_idx,
         )
-        mesh_paths_orig_train = [d.ds.mesh_path_orig for d in train_dataset.video_datasets]
+        mesh_paths_orig_stems_train = [Path(d.ds.mesh_path_orig).stem for d in train_dataset.video_datasets]
         res["train"] = train_dataset
     else:
-        mesh_paths_orig_train = None
+        mesh_paths_orig_stems_train = None
 
     if "val" in ds_types:
         if do_overfit:
@@ -472,7 +472,7 @@ def get_datasets(
                 ds_kwargs=val_ds_kwargs,
                 num_samples=None,
                 do_preload=do_preload_ds,
-                mesh_paths_to_take=mesh_paths_orig_train,
+                mesh_paths_to_take_stems=mesh_paths_orig_stems_train,
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
             )
@@ -510,7 +510,7 @@ def get_video_ds(
     num_samples=None,
     do_preload=False,
     transforms_rgb=None,
-    mesh_paths_to_take=None,
+    mesh_paths_to_take_stems=None,
     video_ds_cls=VideoDataset,
     max_videos=None,
     end_frame_idx=None,
@@ -521,8 +521,8 @@ def get_video_ds(
         ds_kwargs["end_frame_idx"] = end_frame_idx
         ds = get_obj_ds(ds_name, ds_kwargs, ds_video_subdir=ds_video_subdir)
         seq_len = len(ds) if seq_len is None else seq_len
-        if mesh_paths_to_take is not None:
-            if ds.mesh_path_orig not in mesh_paths_to_take:
+        if mesh_paths_to_take_stems is not None:
+            if Path(ds.mesh_path_orig).stem not in mesh_paths_to_take_stems:
                 continue
         video_ds = video_ds_cls(
             ds=ds,
@@ -594,6 +594,7 @@ def get_ds_dirs(args):
 
     if args.do_split_train_for_val:
         assert args.val_split_share > 0
+        ds_video_subdirs_train = ds_video_subdirs_train + ds_video_subdirs_val
         val_num_subdirs = int(len(ds_video_subdirs_train) * args.val_split_share)
         val_random_idxs = np.random.choice(len(ds_video_subdirs_train), val_num_subdirs, replace=False)
         ds_video_subdirs_val = [ds_video_subdirs_train[i] for i in val_random_idxs]
