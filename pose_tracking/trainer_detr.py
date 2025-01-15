@@ -131,6 +131,8 @@ class TrainerDeformableDETR(Trainer):
             lr=args.lr,
             weight_decay=args.weight_decay,
         )
+        self.grad_accum_steps = 3
+        self.grad_accum_counter = 0
 
     def loader_forward(
         self,
@@ -240,25 +242,14 @@ class TrainerDeformableDETR(Trainer):
             t_gt_abs = pose_gt_abs[:, :3]
             rot_gt_abs = pose_gt_abs[:, 3:]
 
-            if self.model_name == "detr_kpt":
-                extra_kwargs = {}
-                if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
-                    extra_kwargs["intrinsics"] = intrinsics
-                if self.kpt_spatial_dim > 2:
-                    extra_kwargs["depth"] = depth
-                out = self.model(
-                    rgb,
-                    mask=mask,
-                    **extra_kwargs,
-                )
-            else:
-                out = self.model(rgb)
+            model_forward_res = self.model_forward(batch_t)
+            out = model_forward_res["out"]
 
             # POSTPROCESS OUTPUTS
 
             # LOSSES
 
-            loss_dict = self.criterion(out, targets)
+            loss_dict = model_forward_res["loss_dict"]
             indices = loss_dict.pop("indices")
             weight_dict = self.criterion.weight_dict
             loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
@@ -448,6 +439,26 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
+    def model_forward(self, batch_t):
+        targets = [x["intrinsics"] for x in batch_t["target"]]
+        if self.model_name == "detr_kpt":
+            extra_kwargs = {}
+            if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
+                extra_kwargs["intrinsics"] = targets
+            if self.kpt_spatial_dim > 2:
+                extra_kwargs["depth"] = batch_t["depth"]
+            out = self.model(
+                batch_t["image"],
+                mask=batch_t["mask"],
+                **extra_kwargs,
+            )
+        else:
+            out = self.model(batch_t["image"])
+
+        loss_dict = self.criterion(out, targets)
+
+        return {"out": out, "loss_dict": loss_dict}
+
 
 class TrainerTrackformer(TrainerDeformableDETR):
 
@@ -509,247 +520,12 @@ class TrainerTrackformer(TrainerDeformableDETR):
             weight_decay=self.args.weight_decay,
         )
 
-    def batched_seq_forward(
-        self,
-        batched_seq,
-        *,
-        optimizer=None,
-        save_preds=False,
-        preds_dir=None,
-        stage="train",
-        do_vis=False,
-    ):
-
-        is_train = optimizer is not None
-        do_opt_every_ts = is_train and self.use_optim_every_ts
-        do_opt_in_the_end = is_train and not self.use_optim_every_ts
-
-        seq_length = len(batched_seq)
-        batch_size = len(batched_seq[0]["image"])
-        if self.do_debug:
-            for batch_t in batched_seq:
-                for k, v in batch_t.items():
-                    if k not in ["image", "intrinsics", "mesh_bbox", "bbox_2d", "class_id"]:
-                        continue
-                    self.processed_data[k].append(v)
-        batched_seq = transfer_batch_to_device(batched_seq, self.device)
-
-        seq_stats = defaultdict(float)
-        seq_metrics = defaultdict(float)
-        ts_pbar = tqdm(
-            enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=seq_length == 1
-        )
-
-        if do_opt_in_the_end:
-            optimizer.zero_grad()
-            total_loss = 0
-
-        if do_vis:
-            vis_batch_idxs = list(range(min(batch_size, 8)))
-            vis_data = defaultdict(list)
-
-        pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
-        out_prev = None  # raw ouput of the model
-        pose_mat_prev_gt_abs = None
-        prev_latent = None
-        nan_count = 0
-
-        for t, batch_t in ts_pbar:
-            if do_opt_every_ts:
-                optimizer.zero_grad()
-            rgb = batch_t["image"]
-            mask = batch_t["mask"]
-            targets = batch_t["target"]
-            pose_gt_abs = torch.stack([x["pose"] for x in targets])
-            intrinsics = [x["intrinsics"] for x in targets]
-            depth = batch_t["depth"]
-            pts = batch_t["mesh_pts"]
-            h, w = rgb.shape[-2:]
-            t_gt_abs = pose_gt_abs[:, :3]
-            rot_gt_abs = pose_gt_abs[:, 3:]
-
-            out, targets_res, *_ = self.model(rgb, targets)
-
-            # POSTPROCESS OUTPUTS
-
-            # LOSSES
-
-            loss_dict = self.criterion(out, targets_res)
-            indices = loss_dict.pop("indices")
-            weight_dict = self.criterion.weight_dict
-            loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
-
-            # reduce losses over all GPUs for logging purposes
-            loss_dict_reduced = reduce_dict(loss_dict)
-            loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
-            loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
-            losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
-
-            # optim
-            if do_opt_every_ts:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-                if self.do_debug or do_vis:
-                    grad_norms, grad_norm = self.get_grad_info()
-                    if do_vis:
-                        vis_data["grad_norm"].append(grad_norm)
-                        vis_data["grad_norms"].append(grad_norms)
-                    if self.do_debug:
-                        self.processed_data["grad_norm"].append(grad_norm)
-                        self.processed_data["grad_norms"].append(grad_norms)
-
-                optimizer.step()
-            elif do_opt_in_the_end:
-                total_loss += loss
-
-            # METRICS
-
-            bbox_3d = batch_t["mesh_bbox"]
-            diameter = batch_t["mesh_diameter"]
-            m_batch = defaultdict(list)
-
-            if self.use_pose:
-                idx = self.criterion._get_src_permutation_idx(indices)
-                target_rts = torch.cat(
-                    [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
-                )
-
-                pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
-                t_pred = out["t"][idx]
-
-                if self.do_predict_2d_t:
-                    center_depth_pred = out["center_depth"][idx]
-                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                        t_pred, center_depth_pred, intrinsics, hw=(h, w), do_predict_rel_pose=self.do_predict_rel_pose
-                    )
-                    t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
-
-                rot_pred = out["rot"][idx]
-                pred_rts = torch.cat([t_pred, rot_pred], dim=1)
-                pose_mat_pred_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
-
-                for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
-                    m_sample = calc_metrics(
-                        pred_rt=pred_rt,
-                        gt_rt=gt_rt,
-                        pts=pts[sample_idx],
-                        class_name=None,
-                        use_miou=True,
-                        bbox_3d=bbox_3d[sample_idx],
-                        diameter=diameter[sample_idx],
-                        is_meters=True,
-                        log_fn=print if self.logger is None else self.logger.warning,
-                    )
-                    for k, v in m_sample.items():
-                        m_batch[k].append(v)
-                    if any(np.isnan(v) for v in m_sample.values()):
-                        nan_count += 1
-
-            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
-            target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
-            out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
-            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
-            m_batch_avg.update({k: v for k, v in loss_dict_reduced.items() if "cardinality" in k})
-
-            for k, v in m_batch_avg.items():
-                if "classes" in k:
-                    continue
-                seq_metrics[k] += v
-
-            # UPDATE VARS
-
-            # OTHER
-
-            loss_value = losses_reduced_scaled.item()
-            seq_stats["loss"] += loss_value
-            for k, v in {**loss_dict_reduced_scaled}.items():
-                if "indices" in k:
-                    continue
-                seq_stats[k] += v
-            for k in ["class_error"]:
-                if k in loss_dict_reduced:
-                    seq_stats[k] += loss_dict_reduced[k]
-
-            if self.do_log and self.do_log_every_ts:
-                for k, v in m_batch_avg.items():
-                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
-
-            if not math.isfinite(loss_value):
-                self.logger(f"Loss is {loss_value}, stopping training")
-                self.logger(loss_dict_reduced)
-                sys.exit(1)
-
-            self.ts_counts_per_stage[stage] += 1
-
-            if save_preds:
-                assert self.use_pose
-                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                bboxs = []
-                labels = []
-                for bidx, out_b in enumerate(out_formatted):
-                    keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
-                    # keep = torch.ones_like(res['scores']).bool()
-                    if sum(keep) == 0:
-                        print(f"{bidx=} failed")
-                        continue
-                    boxes_b = out_b["boxes"][keep]
-                    labels_b = out_b["labels"][keep]
-                    bboxs.append(boxes_b)
-                    labels.append(labels_b)
-                save_results_v2(
-                    rgb,
-                    intrinsics=intrinsics,
-                    pose_gt=pose_mat_gt_abs,
-                    pose_pred=pose_mat_pred_abs,
-                    rgb_path=batch_t["rgb_path"],
-                    preds_dir=preds_dir,
-                    bboxs=bboxs,
-                    labels=labels,
-                )
-
-            if do_vis:
-                # save inputs to the exp dir
-                vis_keys = ["image", "mesh_bbox"]
-                for k in vis_keys:
-                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
-                vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
-                vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
-                if self.use_pose:
-                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
-
-                # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
-                # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
-                # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
-
-        if do_opt_in_the_end:
-            total_loss /= seq_length
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-            if self.do_debug or do_vis:
-                grad_norms, grad_norm = self.get_grad_info()
-                if do_vis:
-                    vis_data["grad_norm"].append(grad_norm)
-                    vis_data["grad_norms"].append(grad_norms)
-                if self.do_debug:
-                    self.processed_data["grad_norm"].append(grad_norm)
-                    self.processed_data["grad_norms"].append(grad_norms)
-            optimizer.step()
-
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = v / seq_length
-
-        if nan_count > 0:
-            seq_metrics["nan_count"] = nan_count
-
-        if do_vis:
-            os.makedirs(self.vis_dir, exist_ok=True)
-            save_vis_path = f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}.pt"
-            torch.save(vis_data, save_vis_path)
-            self.save_vis_paths.append(save_vis_path)
-            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
-
+    def model_forward(self, batch_t):
+        rgb = batch_t["image"]
+        targets = batch_t["target"]
+        out, targets_res, *_ = self.model(rgb, targets)
+        loss_dict = self.criterion(out, targets_res)
         return {
-            "losses": seq_stats,
-            "metrics": seq_metrics,
+            "out": out,
+            "loss_dict": loss_dict,
         }
