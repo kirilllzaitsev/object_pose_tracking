@@ -5,6 +5,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from cycler import K
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -131,7 +132,7 @@ class TrainerDeformableDETR(Trainer):
             lr=args.lr,
             weight_decay=args.weight_decay,
         )
-        self.grad_accum_steps = 3
+        self.grad_accum_steps = 1
         self.grad_accum_counter = 0
 
     def loader_forward(
@@ -214,9 +215,7 @@ class TrainerDeformableDETR(Trainer):
             enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=seq_length == 1
         )
 
-        if do_opt_in_the_end:
-            optimizer.zero_grad()
-            total_loss = 0
+        total_loss = 0
 
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 8)))
@@ -399,26 +398,30 @@ class TrainerDeformableDETR(Trainer):
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
-        if do_opt_in_the_end:
-            total_loss /= seq_length
-            total_loss.backward()
-            unused_params = []
-            for name, param in self.model.named_parameters():
-                if param.requires_grad and param.grad is None:
-                    unused_params.append(name)
-            if len(unused_params):
-                self.logger.error(f"Unused params: {unused_params}")
-                sys.exit(1)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-            if self.do_debug or do_vis:
-                grad_norms, grad_norm = self.get_grad_info()
-                if do_vis:
-                    vis_data["grad_norm"].append(grad_norm)
-                    vis_data["grad_norms"].append(grad_norms)
-                if self.do_debug:
-                    self.processed_data["grad_norm"].append(grad_norm)
-                    self.processed_data["grad_norms"].append(grad_norms)
-            optimizer.step()
+        self.grad_accum_counter += seq_length
+        if self.grad_accum_counter >= self.grad_accum_steps:
+            if do_opt_in_the_end:
+                total_loss /= seq_length
+                optimizer.zero_grad()
+                total_loss.backward()
+                unused_params = []
+                for name, param in self.model.named_parameters():
+                    if param.requires_grad and param.grad is None:
+                        unused_params.append(name)
+                if len(unused_params):
+                    self.logger.error(f"Unused params: {unused_params}")
+                    sys.exit(1)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
+                if self.do_debug or do_vis:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    if do_vis:
+                        vis_data["grad_norm"].append(grad_norm)
+                        vis_data["grad_norms"].append(grad_norms)
+                    if self.do_debug:
+                        self.processed_data["grad_norm"].append(grad_norm)
+                        self.processed_data["grad_norms"].append(grad_norms)
+                optimizer.step()
+                self.grad_accum_counter %= self.grad_accum_steps
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
