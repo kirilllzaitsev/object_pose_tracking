@@ -333,6 +333,7 @@ class TrainerDeformableDETR(Trainer):
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
             m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
+            m_batch_avg.update({k: v for k, v in loss_dict_reduced.items() if "cardinality" in k})
 
             for k, v in m_batch_avg.items():
                 if "classes" in k:
@@ -400,28 +401,23 @@ class TrainerDeformableDETR(Trainer):
                 if self.model_name == "detr_kpt":
                     vis_data["kpts"].append(extract_idxs(out["kpts"], vis_batch_idxs))
                     vis_data["descriptors"].append(extract_idxs(out["descriptors"], vis_batch_idxs))
+                if self.use_pose:
+                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
 
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
-            if self.do_debug:
-                # add everything to processed_data
-                # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
-                # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
-                # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
-                # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["targets"].append(detach_and_cpu(targets))
-                # self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
-                # self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
-                self.processed_data["out"].append(detach_and_cpu(out))
-                # self.processed_data["pred_classes"].append(detach_and_cpu(out["pred_logits"].argmax(-1) + 1))
-                # self.processed_data["rot_pred"].append(rot_pred)
-                # self.processed_data["t_pred"].append(t_pred)
-
         if do_opt_in_the_end:
             total_loss /= seq_length
             total_loss.backward()
+            unused_params = []
+            for name, param in self.model.named_parameters():
+                if param.requires_grad and param.grad is None:
+                    unused_params.append(name)
+            if len(unused_params):
+                self.logger.error(f"Unused params: {unused_params}")
+                sys.exit(1)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if self.do_debug or do_vis:
                 grad_norms, grad_norm = self.get_grad_info()
@@ -653,6 +649,7 @@ class TrainerTrackformer(TrainerDeformableDETR):
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
             m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
+            m_batch_avg.update({k: v for k, v in loss_dict_reduced.items() if "cardinality" in k})
 
             for k, v in m_batch_avg.items():
                 if "classes" in k:
@@ -717,24 +714,12 @@ class TrainerTrackformer(TrainerDeformableDETR):
                     vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
                 vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
                 vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
+                if self.use_pose:
+                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
 
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
-
-            if self.do_debug:
-                # add everything to processed_data
-                # self.processed_data["pose_gt_abs"].append(pose_gt_abs)
-                # self.processed_data["pose_mat_gt_abs"].append(pose_mat_gt_abs)
-                # self.processed_data["pose_mat_pred_abs"].append(pose_mat_pred_abs)
-                # self.processed_data["pose_prev_pred_abs"].append(pose_prev_pred_abs)
-                self.processed_data["targets"].append(detach_and_cpu(targets))
-                # self.processed_data["m_batch"].append(detach_and_cpu(m_batch))
-                # self.processed_data["out_prev"].append(detach_and_cpu(out_prev))
-                self.processed_data["out"].append(detach_and_cpu(out))
-                # self.processed_data["pred_classes"].append(detach_and_cpu(out["pred_logits"].argmax(-1) + 1))
-                # self.processed_data["rot_pred"].append(rot_pred)
-                # self.processed_data["t_pred"].append(t_pred)
 
         if do_opt_in_the_end:
             total_loss /= seq_length
