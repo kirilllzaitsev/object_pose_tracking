@@ -93,8 +93,18 @@ def get_model(args, num_classes=None):
 
         detr_args = get_trackformer_args(args)
         args.detr_args = detr_args
-        model, criterion, postprocessors = build_model(detr_args, num_classes=num_classes + 1)
+        model, *_ = build_model(detr_args, num_classes=num_classes + 1)
 
+    elif args.model_name in ["detr_pretrained"]:
+        from pose_tracking.models.detr import DETRPretrained
+
+        model = DETRPretrained(
+            num_classes=num_classes,
+            use_pretrained_backbone=True,
+            rot_out_dim=args.rot_out_dim,
+            t_out_dim=args.t_out_dim,
+            opt_only=args.opt_only,
+        )
     elif args.model_name in ["detr_basic", "detr_kpt"]:
         detr_args = dict(
             num_classes=num_classes,
