@@ -543,6 +543,8 @@ class RecurrentCNNSeparated(RecurrentCNN):
         *args,
         **kwargs,
     ):
+        use_obs_belief = kwargs.pop("use_obs_belief", False)
+        kwargs["use_obs_belief"] = False
         super().__init__(*args, **kwargs)
 
         self.roi_size = 7
@@ -570,7 +572,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
             do_predict_2d_t=self.do_predict_2d_t,
             do_predict_6d_rot=self.do_predict_6d_rot,
             use_rnn=self.use_rnn,
-            use_obs_belief=self.use_obs_belief,
+            use_obs_belief=use_obs_belief,
             use_priv_decoder=self.use_priv_decoder,
             use_prev_latent=self.use_prev_latent,
             do_freeze_encoders=self.do_freeze_encoders,
@@ -604,6 +606,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
             num_layers=self.rt_mlps_num_layers,  # rot head should capture rot info
             dropout=self.dropout,
         )
+        self.t_mlp = None
 
         self.hx = None
         self.cx = None
@@ -670,26 +673,6 @@ class RecurrentCNNSeparated(RecurrentCNN):
             rgb, depth, prev_pose=prev_pose, latent_rgb=latent_rgb, latent_depth=latent_depth, prev_latent=prev_latent
         )
 
-        res = {}
-        if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb, latent_depth, self.hx, self.cx)
-            self.hx, self.cx = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(self.hx, latent_depth)
-
-            belief_state = encoder_out["belief_state"]
-            extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
-
-            res.update(
-                {
-                    "encoder_out": encoder_out,
-                    "decoder_out": decoder_out,
-                }
-            )
-            if self.use_priv_decoder:
-                res["priv_decoded"] = decoder_out["priv_decoded"]
-        else:
-            extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
-
         extracted_obs_rot = torch.cat([latent_rgb_roi, latent_depth_roi], dim=1)
 
         if self.use_prev_pose_condition:
@@ -703,6 +686,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
 
         rot = self.rot_mlp(rot_in.view(B, -1))
 
+        res = {}
         res.update(
             {
                 "latent_depth_roi": latent_depth_roi,
@@ -710,17 +694,18 @@ class RecurrentCNNSeparated(RecurrentCNN):
                 "state": {"hx": self.hx, "cx": self.cx},
                 "t": t_net_out["t"],
                 "rot": rot,
+                "decoder_out": t_net_out.get("decoder_out"),
             }
         )
 
         if self.use_prev_latent:
-            res["prev_latent"] = extracted_obs
+            res["prev_latent"] = t_net_out["extracted_obs"]
 
         if self.do_predict_2d_t:
             res["center_depth"] = t_net_out["center_depth"]
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(extracted_obs)
+            kpts = self.kpts_mlp(t_net_out["extracted_obs"])
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
 
