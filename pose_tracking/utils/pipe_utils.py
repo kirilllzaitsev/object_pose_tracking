@@ -134,6 +134,7 @@ def get_model(args, num_classes=None):
 
             model = KeypointDETR(
                 kpt_spatial_dim=args.mt_kpt_spatial_dim,
+                use_mask_on_input=args.mt_use_mask_on_input,
                 **detr_args,
             )
     else:
@@ -182,6 +183,7 @@ def get_model(args, num_classes=None):
             norm_layer_type=args.norm_layer_type,
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
+            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose
         )
 
     return model
@@ -457,7 +459,9 @@ def get_datasets(
                 transforms_rgb=None,
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
+                end_frame_idx=end_frame_idx,
             )
+            assert set(vds.ds.video_dir for vds in val_dataset.video_datasets) - set(vds.ds.video_dir for vds in train_dataset.video_datasets) == set()
         else:
             assert ds_video_dir_val and ds_video_subdirs_val, print(f"{ds_video_dir_val=} {ds_video_subdirs_val}")
             val_ds_kwargs = copy.deepcopy(ds_kwargs)

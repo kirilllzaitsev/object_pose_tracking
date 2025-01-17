@@ -61,6 +61,7 @@ def get_parser():
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
     train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
+    train_args.add_argument("--do_perturb_init_gt_for_rel_pose", action="store_true", help="Apply noise to init gt pose for relative pose estimation")
     train_args.add_argument(
         "--do_chunkify_val", action="store_true", help="Chunkify validation into train's seq_length"
     )
@@ -112,6 +113,7 @@ def get_parser():
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
+    poseformer_args.add_argument("--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)")
     poseformer_args.add_argument(
         "--mt_kpt_spatial_dim",
         type=int,
@@ -180,6 +182,7 @@ def get_parser():
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
+    model_args.add_argument("--use_mlp_for_prev_pose", action="store_true", help="Project previous rot/t with MLP")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument(
@@ -350,6 +353,7 @@ def postprocess_args(args, use_if_provided=True):
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train
     args.use_cuda = args.device == "cuda"
+    args.ds_alias = args.ds_alias or args.ds_name
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"

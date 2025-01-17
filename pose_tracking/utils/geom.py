@@ -151,7 +151,7 @@ def backproj_depth_torch(depth, intrinsics, instance_mask=None, do_flip_xy=True)
 
 
 def backproj_2d_to_3d_batch(pts, depth, K):
-    return torch.stack([backproj_2d_to_3d(p, d, K) for p, d in zip(pts, depth)]).to(pts.device)
+    return torch.stack([backproj_2d_to_3d(p, d, k) for p, d, k in zip(pts, depth, K)]).to(pts.device)
 
 
 def backproj_2d_to_3d(pts, depth, K):
