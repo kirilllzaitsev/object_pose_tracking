@@ -246,6 +246,7 @@ class RecurrentCNN(nn.Module):
         use_rnn=True,
         use_obs_belief=False,
         use_priv_decoder=False,
+        use_mlp_for_prev_pose=False,
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
         use_prev_latent=False,
@@ -285,6 +286,7 @@ class RecurrentCNN(nn.Module):
         self.use_prev_latent = use_prev_latent
         self.do_predict_kpts = do_predict_kpts
         self.do_predict_rot = do_predict_rot
+        self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
 
         self.input_dim = depth_dim + rgb_dim
 
@@ -354,8 +356,26 @@ class RecurrentCNN(nn.Module):
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
-            self.t_mlp_in_dim += self.t_mlp_out_dim
-            self.rot_mlp_in_dim += self.rot_mlp_out_dim
+            if use_mlp_for_prev_pose:
+                self.prev_t_mlp = MLP(
+                    in_dim=self.t_mlp_out_dim,
+                    out_dim=hidden_dim,
+                    hidden_dim=hidden_dim,
+                    num_layers=2,
+                    dropout=dropout,
+                )
+                self.prev_rot_mlp = MLP(
+                    in_dim=self.rot_mlp_out_dim,
+                    out_dim=hidden_dim,
+                    hidden_dim=hidden_dim,
+                    num_layers=2,
+                    dropout=dropout,
+                )
+                self.t_mlp_in_dim += hidden_dim
+                self.rot_mlp_in_dim += hidden_dim
+            else:
+                self.t_mlp_in_dim += self.t_mlp_out_dim
+                self.rot_mlp_in_dim += self.rot_mlp_out_dim
         if use_prev_latent:
             self.t_mlp_in_dim += depth_dim + rgb_dim
             self.rot_mlp_in_dim += depth_dim + rgb_dim
@@ -447,9 +467,11 @@ class RecurrentCNN(nn.Module):
         rot_in = extracted_obs
         if self.use_prev_pose_condition:
             if prev_pose is None:
+                prev_t_dim = self.hidden_dim if self.use_mlp_for_prev_pose else self.t_mlp_out_dim
+                prev_rot_dim = self.hidden_dim if self.use_mlp_for_prev_pose else self.rot_mlp_out_dim
                 prev_pose = {
-                    "t": torch.zeros(latent_rgb.size(0), self.t_mlp_out_dim, device=latent_rgb.device),
-                    "rot": torch.zeros(latent_rgb.size(0), self.rot_mlp_out_dim, device=latent_rgb.device),
+                    "t": torch.zeros(latent_rgb.size(0), prev_t_dim, device=latent_rgb.device),
+                    "rot": torch.zeros(latent_rgb.size(0), prev_rot_dim, device=latent_rgb.device),
                 }
             if self.do_predict_2d_t:
                 prev_pose["center_depth"] = torch.zeros(
@@ -459,8 +481,12 @@ class RecurrentCNN(nn.Module):
                 t_prev = prev_pose["t"][:, :2]
             else:
                 t_prev = prev_pose["t"]
+            rot_prev = prev_pose["rot"]
+            if self.use_mlp_for_prev_pose:
+                t_prev = self.prev_t_mlp(t_prev)
+                rot_prev = self.prev_rot_mlp(prev_pose["rot"])
             t_in = torch.cat([t_in, t_prev], dim=1)
-            rot_in = torch.cat([rot_in, prev_pose["rot"]], dim=1)
+            rot_in = torch.cat([rot_in, rot_prev], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
                 prev_latent = torch.zeros(latent_rgb.size(0), self.depth_dim + self.rgb_dim, device=latent_rgb.device)
