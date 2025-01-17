@@ -388,16 +388,24 @@ class KeypointDETR(DETRBase):
         descriptors = extracted_kpts["descriptors"]
         kpts = extracted_kpts["keypoints"]
 
+        if depth is not None:
+            depth_1d = []
+            for i in range(bs):
+                depth_1d.append(depth[i, 0, kpts[i, :, 1].long(), kpts[i, :, 0].long()])
+            depth_1d = torch.stack(depth_1d, dim=0).to(kpts.device)
         kpts = kpts / torch.tensor([w, h], dtype=kpts.dtype).to(kpts.device)
 
-        if depth is not None:
+        if depth is not None or intrinsics is not None:
             assert intrinsics is not None
-            # get depth_1d by sampling depth map at kpts as int (ignoring zero kpt pos)
-            raise NotImplementedError("Need to implement depth sampling")
-            # TODO: get mask of padded keypoints (can provide as input to the nn.transformer)
-            kpts = backproj_2d_to_3d_batch(kpts, depth=depth, K=intrinsics)
-        elif intrinsics is not None:
-            kpts = calibrate_2d_pts_batch(kpts, K=intrinsics)
+            K_norm = intrinsics.clone()
+            K_norm[..., 0] /= w
+            K_norm[..., 1] /= h
+            K_norm[..., 0, 2] /= w
+            K_norm[..., 1, 2] /= h
+            if depth is not None:
+                kpts = backproj_2d_to_3d_batch(kpts, depth=depth_1d, K=K_norm)
+            else:
+                kpts = calibrate_2d_pts_batch(kpts, K=K_norm)
 
         tokens = descriptors  # B x N x D
 
