@@ -154,6 +154,7 @@ def get_model(args, num_classes=None):
             rgb_dim=rgb_dim,
             hidden_dim=args.hidden_dim,
             rnn_type=args.rnn_type,
+            rnn_state_init_type=args.rnn_state_init_type,
             bdec_priv_decoder_out_dim=priv_dim,
             bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
             bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
@@ -171,6 +172,7 @@ def get_model(args, num_classes=None):
             hidden_attn_num_layers=args.hidden_attn_num_layers,
             rt_mlps_num_layers=args.rt_mlps_num_layers,
             dropout=args.dropout,
+            dropout_rt_scaler=args.dropout_rt_scaler,
             use_rnn=not args.no_rnn,
             use_obs_belief=not args.no_obs_belief,
             use_priv_decoder=args.use_priv_decoder,
@@ -183,6 +185,7 @@ def get_model(args, num_classes=None):
             norm_layer_type=args.norm_layer_type,
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
+            rt_hidden_dim=args.rt_hidden_dim,
             use_mlp_for_prev_pose=args.use_mlp_for_prev_pose
         )
 

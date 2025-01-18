@@ -205,11 +205,13 @@ class RecurrentCNN(nn.Module):
         rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
+        dropout_rt_scaler=1,
         rnn_type="gru",
         encoder_name="resnet18",
         encoder_img_weights="imagenet",
         encoder_depth_weights=None,
         norm_layer_type="frozen_bn",
+        rnn_state_init_type="zeros",
         do_predict_2d_t=False,
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
@@ -223,6 +225,7 @@ class RecurrentCNN(nn.Module):
         do_predict_kpts=False,
         do_predict_rot=True,
         r_num_layers_inc=0,
+        rt_hidden_dim=None,
     ):
         super().__init__()
         self.depth_dim = depth_dim
@@ -244,6 +247,8 @@ class RecurrentCNN(nn.Module):
         self.priv_decoder_num_layers = priv_decoder_num_layers
         self.depth_decoder_num_layers = depth_decoder_num_layers
         self.hidden_attn_num_layers = hidden_attn_num_layers
+        self.rnn_state_init_type = rnn_state_init_type
+        self.dropout_rt_scaler = dropout_rt_scaler
 
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
@@ -259,19 +264,20 @@ class RecurrentCNN(nn.Module):
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
 
         self.input_dim = depth_dim + rgb_dim
+        self.rt_hidden_dim = hidden_dim if rt_hidden_dim is None else rt_hidden_dim
 
         if use_obs_belief:
             if use_rnn:
                 if rnn_type == "lstm":
                     self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
-                elif rnn_type == "lstm_custom":
-                    self.state_cell = LSTMCell(self.input_dim, hidden_dim)
-                elif rnn_type == "gru":
-                    self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
-                elif rnn_type == "gru_custom":
-                    self.state_cell = GRUCell(self.input_dim, hidden_dim)
                 else:
-                    raise ValueError("rnn_type must be 'lstm' or 'gru'")
+                    self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
+
+                for name, param in self.state_cell.named_parameters():
+                    if "weight" in name:
+                        nn.init.xavier_normal_(param)
+                    elif "bias" in name:
+                        nn.init.constant_(param, 0)
             else:
                 self.state_cell = MLP(
                     in_dim=self.input_dim,
@@ -280,6 +286,7 @@ class RecurrentCNN(nn.Module):
                     num_layers=1,
                     dropout=dropout,
                 )
+
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
                 state_cell_out_dim=hidden_dim,
@@ -330,15 +337,15 @@ class RecurrentCNN(nn.Module):
                 self.prev_t_mlp = MLP(
                     in_dim=self.t_mlp_out_dim,
                     out_dim=hidden_dim,
-                    hidden_dim=hidden_dim,
-                    num_layers=2,
+                    hidden_dim=self.rt_hidden_dim,
+                    num_layers=rt_mlps_num_layers,
                     dropout=dropout,
                 )
                 self.prev_rot_mlp = MLP(
                     in_dim=self.rot_mlp_out_dim,
                     out_dim=hidden_dim,
-                    hidden_dim=hidden_dim,
-                    num_layers=2,
+                    hidden_dim=self.rt_hidden_dim,
+                    num_layers=rt_mlps_num_layers,
                     dropout=dropout,
                 )
                 self.t_mlp_in_dim += hidden_dim
@@ -353,18 +360,18 @@ class RecurrentCNN(nn.Module):
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
             out_dim=self.t_mlp_out_dim,
-            hidden_dim=hidden_dim,
+            hidden_dim=self.rt_hidden_dim,
             num_layers=rt_mlps_num_layers,
             act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
-            dropout=dropout,
+            dropout=dropout * dropout_rt_scaler,
         )
         if do_predict_rot:
             self.rot_mlp = MLP(
                 in_dim=self.rot_mlp_in_dim,
                 out_dim=self.rot_mlp_out_dim,
-                hidden_dim=hidden_dim,
+                hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers + r_num_layers_inc,
-                dropout=dropout,
+                dropout=dropout * dropout_rt_scaler,
             )
 
         if self.do_predict_kpts:
@@ -373,7 +380,7 @@ class RecurrentCNN(nn.Module):
             self.kpts_mlp = MLP(
                 in_dim=self.kpts_mlp_in_dim,
                 out_dim=self.kpts_mlp_out_dim,
-                hidden_dim=hidden_dim,
+                hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
                 dropout=dropout,
             )
