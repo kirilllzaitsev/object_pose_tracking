@@ -467,7 +467,7 @@ class RecurrentCNN(nn.Module):
         res.update(
             {
                 "latent_depth": latent_depth,
-                "state": {"hx": self.hx, "cx": self.cx},
+                "state": state_new,
                 "t": t,
             }
         )
@@ -493,16 +493,7 @@ class RecurrentCNN(nn.Module):
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
 
-        self.detach_state()
-
         return res
-
-
-def reset_state_rnn(hidden_dim, batch_size, device, rnn_type):
-    # should be called at the beginning of each sequence
-    hx = torch.zeros(batch_size, hidden_dim, device=device)
-    cx = None if "gru" in rnn_type else torch.zeros(batch_size, hidden_dim, device=device)
-    return hx, cx
 
 
 class RecurrentCNNSeparated(RecurrentCNN):
