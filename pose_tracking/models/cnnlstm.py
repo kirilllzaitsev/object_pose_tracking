@@ -399,8 +399,17 @@ class RecurrentCNN(nn.Module):
         return print_cls(self, extra_str=super().__repr__())
 
     def reset_state(self, batch_size, device):
-        # should be called at the beginning of each sequence
-        self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
+        if self.rnn_state_init_type == "learned":
+            self.hx = nn.Parameter(torch.randn(1, self.hidden_dim, device=device))
+            self.cx = None if "gru" in self.rnn_type else nn.Parameter(torch.randn(1, self.hidden_dim, device=device))
+        elif self.rnn_state_init_type == "zeros":
+            self.hx = torch.zeros(1, self.hidden_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.hidden_dim, device=device)
+        elif self.rnn_state_init_type == "rand":
+            self.hx = torch.randn(1, self.hidden_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.randn(1, self.hidden_dim, device=device)
+        else:
+            raise ValueError(f"Unknown rnn_state_init_type: {self.rnn_state_init_type}")
 
     def detach_state(self):
         if self.training:
