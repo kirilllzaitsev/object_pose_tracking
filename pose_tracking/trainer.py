@@ -195,10 +195,11 @@ class Trainer:
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
             batch_size = len(batched_seq[0]["rgb"])
-            if self.use_ddp:
-                self.model.module.reset_state(batch_size, device=self.device)
-            else:
-                self.model.reset_state(batch_size, device=self.device)
+
+            if self.do_reset_state:
+                if self.model_without_ddp.rnn_state_init_type in ["learned"]:
+                    self.do_reset_state = False
+                self.model_without_ddp.reset_state(batch_size, device=self.device)
 
             if not self.do_chunkify_val or stage == "train":
                 seq_stats = self.batched_seq_forward(
