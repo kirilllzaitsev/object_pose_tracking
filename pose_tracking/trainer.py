@@ -44,6 +44,7 @@ from pose_tracking.utils.misc import (
 )
 from pose_tracking.utils.pose import convert_pose_vector_to_matrix, convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
+    axis_angle_to_matrix,
     matrix_to_axis_angle,
     matrix_to_quaternion,
     matrix_to_rotation_6d,
@@ -51,6 +52,7 @@ from pose_tracking.utils.rotation_conversions import (
     quaternion_to_matrix,
     rotation_6d_to_matrix,
 )
+from scipy.spatial.transform import Rotation
 from tqdm.auto import tqdm
 
 
@@ -84,6 +86,7 @@ class Trainer:
         do_predict_kpts=False,
         do_chunkify_val=False,
         use_prev_latent=False,
+        do_perturb_init_gt_for_rel_pose=False,
         logger=None,
         vis_epoch_freq=None,
         do_vis=False,
@@ -91,6 +94,8 @@ class Trainer:
         model_name=None,
         opt_only=None,
         max_clip_grad_norm=0.1,
+        tf_t_loss_coef=1,
+        tf_rot_loss_coef=1,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -113,6 +118,7 @@ class Trainer:
         self.do_vis = do_vis
         self.do_print_seq_stats = do_print_seq_stats
         self.do_chunkify_val = do_chunkify_val
+        self.do_perturb_init_gt_for_rel_pose = do_perturb_init_gt_for_rel_pose
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -131,7 +137,15 @@ class Trainer:
         self.seq_len = seq_len
         self.opt_only = opt_only
         self.max_clip_grad_norm = max_clip_grad_norm
+        self.tf_t_loss_coef = tf_t_loss_coef
+        self.tf_rot_loss_coef = tf_rot_loss_coef
 
+        if self.use_ddp:
+            self.model_without_ddp = self.model.module
+        else:
+            self.model_without_ddp = self.model
+
+        self.do_reset_state = True
         self.use_pose_loss = criterion_pose is not None
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
@@ -146,10 +160,16 @@ class Trainer:
 
         if self.do_predict_3d_rot:
             self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="axis_angle")
+            self.rot_mat_to_vector_converter_fn = matrix_to_axis_angle
+            self.rot_vector_to_mat_converter_fn = axis_angle_to_matrix
         elif self.do_predict_6d_rot:
             self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="6d")
+            self.rot_mat_to_vector_converter_fn = matrix_to_rotation_6d
+            self.rot_vector_to_mat_converter_fn = rotation_6d_to_matrix
         else:
             self.pose_to_mat_converter_fn = convert_pose_vector_to_matrix
+            self.rot_mat_to_vector_converter_fn = matrix_to_quaternion
+            self.rot_vector_to_mat_converter_fn = quaternion_to_matrix
 
         if do_predict_3d_rot:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
@@ -323,7 +343,9 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
-                    prev_latent = torch.cat([self.model.encoder_img(rgb), self.model.encoder_depth(depth)], dim=1)
+                    prev_latent = torch.cat(
+                        [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)], dim=1
+                    )
 
                     continue
 
@@ -338,11 +360,13 @@ class Trainer:
                 bbox=bbox_2d,
                 prev_pose=prev_pose,
                 prev_latent=prev_latent,
+                state=state,
             )
 
             # POSTPROCESS OUTPUTS
 
             rot_pred, t_pred = out["rot"], out["t"]
+            state = out["state"]
 
             if self.do_predict_2d_t:
                 center_depth_pred = out["center_depth"]
@@ -437,14 +461,14 @@ class Trainer:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_abs)
 
                 if self.opt_only is None:
-                    loss = loss_rot + loss_t
+                    loss = self.tf_t_loss_coef * loss_t + self.tf_rot_loss_coef * loss_rot
                 else:
                     loss = 0
                     assert any(x in self.opt_only for x in ["rot", "t"]), f"Invalid opt_only: {self.opt_only}"
                     if "rot" in self.opt_only:
-                        loss += loss_rot
+                        loss += loss_rot * self.tf_rot_loss_coef
                     if "t" in self.opt_only:
-                        loss += loss_t
+                        loss += loss_t * self.tf_t_loss_coef
 
             # depth loss
             if self.use_obs_belief:
