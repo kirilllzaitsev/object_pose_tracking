@@ -1,38 +1,8 @@
 import torch
 import torch.nn as nn
 from pose_tracking.models.encoders import get_encoders
-from pose_tracking.models.rnn_cells import GRUCell
 from pose_tracking.utils.misc import print_cls
-from torch import jit
-from torch.nn import Parameter
 from torchvision.ops import roi_align
-
-
-class LSTMCell(jit.ScriptModule):
-    def __init__(self, input_size, hidden_size):
-        super(LSTMCell, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.weight_ih = Parameter(torch.randn(4 * hidden_size, input_size))
-        self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
-        self.bias_ih = Parameter(torch.randn(4 * hidden_size))
-        self.bias_hh = Parameter(torch.randn(4 * hidden_size))
-
-    @jit.script_method
-    def forward(self, input, state):
-        hx, cx = state
-        gates = torch.mm(input, self.weight_ih.t()) + self.bias_ih + torch.mm(hx, self.weight_hh.t()) + self.bias_hh
-        ingate, forgetgate, cellgate, outgate = gates.chunk(4, 1)
-
-        ingate = torch.sigmoid(ingate)
-        forgetgate = torch.sigmoid(forgetgate)
-        cellgate = torch.tanh(cellgate)
-        outgate = torch.sigmoid(outgate)
-
-        cy = (forgetgate * cx) + (ingate * cellgate)
-        hy = outgate * torch.tanh(cy)
-
-        return {"hidden_state": hy, "cell_state": cy}
 
 
 class BeliefEncoder(nn.Module):
