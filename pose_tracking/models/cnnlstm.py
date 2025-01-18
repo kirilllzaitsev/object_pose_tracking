@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import torch.nn as nn
 from pose_tracking.models.encoders import get_encoders
@@ -528,44 +530,21 @@ class RecurrentCNNSeparated(RecurrentCNN):
     def __init__(
         self,
         *args,
+        roi_size=7,
         **kwargs,
     ):
         use_obs_belief = kwargs.pop("use_obs_belief", False)
         kwargs["use_obs_belief"] = False
         super().__init__(*args, **kwargs)
 
-        self.roi_size = 7
-
-        self.t_rnn_rt_mlps_num_layers = 1
+        self.t_rnn_kwargs = copy.deepcopy(kwargs)
+        self.t_rnn_kwargs["rt_mlps_num_layers"] = 1
+        self.t_rnn_kwargs["encoder_name"] = None
+        self.t_rnn_kwargs["do_predict_rot"] = False
+        self.t_rnn_kwargs["use_obs_belief"] = use_obs_belief
         self.t_rnn = RecurrentCNN(
-            depth_dim=self.depth_dim,
-            rgb_dim=self.rgb_dim,
-            hidden_dim=self.hidden_dim,
-            benc_belief_enc_hidden_dim=self.benc_belief_enc_hidden_dim,
-            benc_belief_depth_enc_hidden_dim=self.benc_belief_depth_enc_hidden_dim,
-            bdec_priv_decoder_out_dim=self.bdec_priv_decoder_out_dim,
-            bdec_priv_decoder_hidden_dim=self.bdec_priv_decoder_hidden_dim,
-            bdec_depth_decoder_hidden_dim=self.bdec_depth_decoder_hidden_dim,
-            bdec_hidden_attn_hidden_dim=self.bdec_hidden_attn_hidden_dim,
-            benc_belief_enc_num_layers=self.benc_belief_enc_num_layers,
-            benc_belief_depth_enc_num_layers=self.benc_belief_depth_enc_num_layers,
-            priv_decoder_num_layers=self.priv_decoder_num_layers,
-            depth_decoder_num_layers=self.depth_decoder_num_layers,
-            hidden_attn_num_layers=self.hidden_attn_num_layers,
-            rt_mlps_num_layers=self.t_rnn_rt_mlps_num_layers,
-            dropout=self.dropout,
-            rnn_type=self.rnn_type,
-            encoder_name=None,
-            do_predict_2d_t=self.do_predict_2d_t,
-            do_predict_6d_rot=self.do_predict_6d_rot,
-            use_rnn=self.use_rnn,
-            use_obs_belief=use_obs_belief,
-            use_priv_decoder=self.use_priv_decoder,
-            use_prev_latent=self.use_prev_latent,
-            do_freeze_encoders=self.do_freeze_encoders,
-            use_prev_pose_condition=self.use_prev_pose_condition,
-            do_predict_kpts=self.do_predict_kpts,
-            do_predict_rot=False,
+            *args,
+            **self.t_rnn_kwargs,
         )
 
         if self.encoder_name == "resnet50":
@@ -580,6 +559,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
         else:
             raise ValueError(f"Unknown encoder_name: {self.encoder_name}")
 
+        self.roi_size = roi_size
         self.rot_mlp_in_dim = self.mid_feature_dim * 2
         self.rot_mlp_out_dim = 6 if self.do_predict_6d_rot else (3 if self.do_predict_3d_rot else 4)
 
@@ -623,18 +603,16 @@ class RecurrentCNNSeparated(RecurrentCNN):
         )
 
     def reset_state(self, batch_size, device):
-        # should be called at the beginning of each sequence
         self.t_rnn.reset_state(batch_size, device)
-        self.hx, self.cx = reset_state_rnn(self.hidden_dim, batch_size, device, self.rnn_type)
+        super().reset_state(batch_size, device)
 
     def detach_state(self):
-        if self.training:
-            self.hx = self.hx.detach()
-            if self.cx is not None:
-                self.cx = self.cx.detach()
-            self.t_rnn.detach_state()
+        super().detach_state()
+        self.t_rnn.detach_state()
 
-    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
+    def forward(
+        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
+    ):
 
         bbox = kwargs["bbox"]
         B, C, H, W = rgb.size()
@@ -657,7 +635,13 @@ class RecurrentCNNSeparated(RecurrentCNN):
         latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(B, -1)
 
         t_net_out = self.t_rnn(
-            rgb, depth, prev_pose=prev_pose, latent_rgb=latent_rgb, latent_depth=latent_depth, prev_latent=prev_latent
+            rgb,
+            depth,
+            prev_pose=prev_pose,
+            latent_rgb=latent_rgb,
+            latent_depth=latent_depth,
+            prev_latent=prev_latent,
+            state=state,
         )
 
         extracted_obs_rot = torch.cat([latent_rgb_roi, latent_depth_roi], dim=1)
@@ -678,7 +662,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
             {
                 "latent_depth_roi": latent_depth_roi,
                 "latent_depth": latent_depth,
-                "state": {"hx": self.hx, "cx": self.cx},
+                "state": t_net_out["state"],
                 "t": t_net_out["t"],
                 "rot": rot,
                 "decoder_out": t_net_out.get("decoder_out"),
@@ -686,16 +670,14 @@ class RecurrentCNNSeparated(RecurrentCNN):
         )
 
         if self.use_prev_latent:
-            res["prev_latent"] = t_net_out["extracted_obs"]
+            res["prev_latent"] = t_net_out["prev_latent"]
 
         if self.do_predict_2d_t:
             res["center_depth"] = t_net_out["center_depth"]
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(t_net_out["extracted_obs"])
+            kpts = self.kpts_mlp(t_net_out["prev_latent"])
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
-
-        self.detach_state()
 
         return res
