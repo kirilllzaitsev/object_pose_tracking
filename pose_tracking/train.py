@@ -166,6 +166,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         end_frame_idx=args.end_frame_idx,
         rot_repr=args.rot_repr,
         t_repr=args.t_repr,
+        max_random_seq_step=args.max_random_seq_step,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
@@ -176,6 +177,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(ds_video_subdirs_val)=}")
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
+    logger.info(f"{train_dataset.video_datasets[0]=}")
+    logger.info(f"{val_dataset.video_datasets[0]=}")
 
     if is_main_process:
         log_params_to_exp(

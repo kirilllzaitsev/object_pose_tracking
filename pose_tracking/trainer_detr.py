@@ -101,8 +101,8 @@ class TrainerDeformableDETR(Trainer):
 
         if "detr_kpt" in args.model_name:
             self.encoder_module_prefix = "extractor"
-            for p in self.model_without_ddp.extractor.parameters():
-                p.requires_grad = False
+            # for p in self.model_without_ddp.extractor.parameters():
+            #     p.requires_grad = False
         elif "detr" in args.model_name:
             self.encoder_module_prefix = "backbone"
         else:
@@ -209,9 +209,7 @@ class TrainerDeformableDETR(Trainer):
 
         seq_stats = defaultdict(float)
         seq_metrics = defaultdict(float)
-        ts_pbar = tqdm(
-            enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=seq_length == 1
-        )
+        ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=True)
 
         total_loss = 0
 
@@ -253,7 +251,6 @@ class TrainerDeformableDETR(Trainer):
 
             # reduce losses over all GPUs for logging purposes
             loss_dict_reduced = reduce_dict(loss_dict)
-            loss_dict_reduced_unscaled = {f"{k}_unscaled": v for k, v in loss_dict_reduced.items()}
             loss_dict_reduced_scaled = {k: v * weight_dict[k] for k, v in loss_dict_reduced.items() if k in weight_dict}
             losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
@@ -321,7 +318,10 @@ class TrainerDeformableDETR(Trainer):
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
             m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
-            m_batch_avg.update({k: v for k, v in loss_dict_reduced.items() if "cardinality" in k})
+
+            for k, v in loss_dict_reduced.items():
+                if "cardinality" in k:
+                    seq_stats[k] += v
 
             for k, v in m_batch_avg.items():
                 if "classes" in k:
@@ -401,9 +401,6 @@ class TrainerDeformableDETR(Trainer):
             optimizer.zero_grad()
             total_loss.backward()
             unused_params = []
-            for name, param in self.model.named_parameters():
-                if param.requires_grad and param.grad is None:
-                    unused_params.append(name)
             if len(unused_params):
                 self.logger.error(f"Unused params: {unused_params}")
                 sys.exit(1)
@@ -438,11 +435,11 @@ class TrainerDeformableDETR(Trainer):
         }
 
     def model_forward(self, batch_t):
-        targets = [x["intrinsics"] for x in batch_t["target"]]
+        targets = batch_t["target"]
         if self.model_name == "detr_kpt":
             extra_kwargs = {}
             if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
-                extra_kwargs["intrinsics"] = targets
+                extra_kwargs["intrinsics"] = torch.stack([x["intrinsics"] for x in targets]).to(self.device)
             if self.kpt_spatial_dim > 2:
                 extra_kwargs["depth"] = batch_t["depth"]
             out = self.model(

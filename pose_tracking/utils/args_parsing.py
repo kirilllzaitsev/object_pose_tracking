@@ -61,7 +61,11 @@ def get_parser():
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
     train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
-    train_args.add_argument("--do_perturb_init_gt_for_rel_pose", action="store_true", help="Apply noise to init gt pose for relative pose estimation")
+    train_args.add_argument(
+        "--do_perturb_init_gt_for_rel_pose",
+        action="store_true",
+        help="Apply noise to init gt pose for relative pose estimation",
+    )
     train_args.add_argument(
         "--do_chunkify_val", action="store_true", help="Chunkify validation into train's seq_length"
     )
@@ -113,7 +117,9 @@ def get_parser():
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
-    poseformer_args.add_argument("--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)")
+    poseformer_args.add_argument(
+        "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
+    )
     poseformer_args.add_argument(
         "--mt_kpt_spatial_dim",
         type=int,
@@ -205,8 +211,13 @@ def get_parser():
             "trackformer",
         ],
     )
+    model_args.add_argument("--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm"])
     model_args.add_argument(
-        "--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm", "gru_custom", "lstm_custom"]
+        "--rnn_state_init_type",
+        type=str,
+        default="zeros",
+        help="RNN state initialization type",
+        choices=["zeros", "rand", "learned"],
     )
     model_args.add_argument("--encoder_name", type=str, default="resnet18", help="Encoder name for both RGB and depth")
     model_args.add_argument("--encoder_img_weights", type=str, help="Weights for the image encoder")
@@ -219,6 +230,7 @@ def get_parser():
         choices=["frozen_bn", "bn", "id"],
     )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
+    model_args.add_argument("--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim")
     model_args.add_argument(
         "--benc_belief_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief encoder"
     )
@@ -259,6 +271,7 @@ def get_parser():
         "--r_num_layers_inc", type=int, default=0, help="Number of layers to add to the rotation MLP"
     )
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
+    model_args.add_argument("--dropout_rt_scaler", type=int, default=1, help="Dropout rate scaler for rot/t MLPs")
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
@@ -278,6 +291,7 @@ def get_parser():
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
     data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds))")
+    data_args.add_argument("--max_random_seq_step", type=int, default=8, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(
