@@ -417,15 +417,25 @@ class RecurrentCNN(nn.Module):
             if self.cx is not None:
                 self.cx = self.cx.detach()
 
-    def forward(self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, **kwargs):
+    def forward(
+        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
+    ):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
         latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
         res = {}
+        state_new = None
         if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb, latent_depth, self.hx, self.cx)
-            self.hx, self.cx = encoder_out["hx"], encoder_out["cx"]
+            if state is None:
+                hx, cx = (self.hx, self.cx)
+            else:
+                hx, cx = state
+            hx = hx if hx is None else hx.expand(latent_rgb.size(0), -1)
+            cx = cx if cx is None else cx.expand(latent_rgb.size(0), -1)
+            state_prev = (hx, cx)
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, *state_prev)
+            state_new = encoder_out["hx"], encoder_out["cx"]
             decoder_out = self.belief_decoder(self.hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
