@@ -290,8 +290,36 @@ class Trainer:
 
             if self.do_predict_rel_pose:
                 if t == 0:
-                    rot_prev_gt_abs = rot_gt_abs
-                    pose_prev_pred_abs = {"t": t_gt_abs, "rot": rot_prev_gt_abs}
+                    if self.do_perturb_init_gt_for_rel_pose:
+                        noise_t = (
+                            torch.rand_like(t_gt_abs)
+                            * 0.02
+                            * (torch.randint(0, 2, t_gt_abs.shape) * 2 - 1).to(self.device)
+                        )
+                        noise_rot_mat = torch.stack([torch.eye(3) for _ in range(batch_size)])
+                        for i in range(batch_size):
+                            j = torch.randint(0, 3, (1,))
+                            angle = np.random.uniform(1) * 5
+                            if j == 0:
+                                angles = [angle, 0, 0]
+                            elif j == 1:
+                                angles = [0, angle, 0]
+                            else:
+                                angles = [0, 0, angle]
+
+                            noise_rot_mat[i] = torch.tensor(
+                                Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
+                            )
+                        noise_rot_mat = noise_rot_mat.to(self.device)
+                        rot_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])[
+                            ..., :3, :3
+                        ]
+                        rot_mat_gt_abs = torch.bmm(rot_mat_gt_abs, noise_rot_mat)
+                        rot_gt_abs = self.rot_mat_to_vector_converter_fn(rot_mat_gt_abs)
+                    else:
+                        noise_t = 0
+
+                    pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
 
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
