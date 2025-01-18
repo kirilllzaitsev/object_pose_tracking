@@ -256,7 +256,7 @@ class Trainer:
             desc="Timestep",
             leave=False,
             total=len(batched_seq),
-            disable=seq_length == 1 or seq_length < 10,
+            disable=True,
         )
 
         total_loss = 0
@@ -272,6 +272,7 @@ class Trainer:
         out_prev = None  # raw ouput of the model
         pose_mat_prev_gt_abs = None
         prev_latent = None
+        state = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:

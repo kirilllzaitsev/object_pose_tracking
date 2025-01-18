@@ -313,6 +313,9 @@ def get_trainer(
         criterion_rot_name=args.rot_loss_name,
         max_clip_grad_norm=args.max_clip_grad_norm,
         do_chunkify_val=args.do_chunkify_val,
+        do_perturb_init_gt_for_rel_pose=args.do_perturb_init_gt_for_rel_pose,
+        tf_t_loss_coef=args.tf_t_loss_coef,
+        tf_rot_loss_coef=args.tf_rot_loss_coef,
         **extra_kwargs,
     )
 
@@ -380,6 +383,7 @@ def get_datasets(
     end_frame_idx=None,
     rot_repr="quaternion",
     t_repr="3d",
+    max_random_seq_step=8,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -441,6 +445,7 @@ def get_datasets(
             transforms_rgb=transform_rgb,
             video_ds_cls=video_ds_cls,
             max_videos=max_train_videos,
+            max_random_seq_step=max_random_seq_step,
             end_frame_idx=end_frame_idx,
         )
         mesh_paths_orig_stems_train = [Path(d.ds.mesh_path_orig).stem for d in train_dataset.video_datasets]
@@ -462,6 +467,7 @@ def get_datasets(
                 transforms_rgb=None,
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
+                max_random_seq_step=max_random_seq_step,
                 end_frame_idx=end_frame_idx,
             )
             assert set(vds.ds.video_dir for vds in val_dataset.video_datasets) - set(vds.ds.video_dir for vds in train_dataset.video_datasets) == set()
@@ -482,6 +488,7 @@ def get_datasets(
                 mesh_paths_to_take_stems=mesh_paths_orig_stems_train,
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
+                max_random_seq_step=max_random_seq_step,
             )
         res["val"] = val_dataset
 
@@ -501,6 +508,7 @@ def get_datasets(
             do_preload=do_preload_ds,
             video_ds_cls=video_ds_cls,
             max_videos=max_test_videos,
+            max_random_seq_step=max_random_seq_step,
         )
         res["test"] = test_dataset
 
@@ -521,6 +529,7 @@ def get_video_ds(
     video_ds_cls=VideoDataset,
     max_videos=None,
     end_frame_idx=None,
+    max_random_seq_step=8,
 ):
     video_datasets = []
     count = 0
@@ -539,6 +548,7 @@ def get_video_ds(
             num_samples=num_samples,
             do_preload=do_preload,
             transforms_rgb=transforms_rgb,
+            max_random_seq_step=max_random_seq_step,
         )
         video_datasets.append(video_ds)
         count += 1
