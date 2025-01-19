@@ -209,6 +209,9 @@ def get_trackformer_args(args):
     tf_args.multi_frame_attention = True
     tf_args.overflow_boxes = True
     tf_args.multi_frame_encoding = args.tf_use_multi_frame_encoding
+    
+    tf_args.track_query_false_negative_prob = 0.0
+    tf_args.track_query_false_positive_prob = 0.0
 
     tf_args.lr = args.lr
     tf_args.lr_backbone = args.lr_encoders
