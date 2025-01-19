@@ -347,8 +347,9 @@ def eval_batch_det(outs, targets, num_classes=None):
     m_map = MeanAveragePrecision(extended_summary=False).to(device)
     m_iou = IntersectionOverUnion().to(device)
     use_acc = num_classes is not None
+    no_obj_class_id = num_classes
     if use_acc:
-        m_acc = Accuracy(task="multiclass", num_classes=num_classes).to(device)
+        m_acc = Accuracy(task="multiclass", num_classes=num_classes + 1).to(device)
     for idx in range(len(outs)):
         res = outs[idx]
         keep = res["scores"] > res["scores_no_object"]
@@ -361,10 +362,13 @@ def eval_batch_det(outs, targets, num_classes=None):
             pred_labels = pred["labels"]
             gt_labels = target["labels"]
             if pred["labels"].numel() == 0:
-                pred_labels = torch.zeros_like(target["labels"]) - 1
+                pred_labels = torch.zeros_like(target["labels"]) + no_obj_class_id
             elif pred["labels"].numel() > gt_labels.numel():
                 gt_labels = torch.cat(
-                    [gt_labels, torch.zeros(pred_labels.numel() - gt_labels.numel()).long().to(device) - 1]
+                    [
+                        gt_labels,
+                        torch.zeros(pred_labels.numel() - gt_labels.numel()).long().to(device) + no_obj_class_id,
+                    ]
                 )
             m_acc.update(pred_labels, gt_labels)
     metrics = m_map.compute()

@@ -317,7 +317,7 @@ class TrainerDeformableDETR(Trainer):
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
             out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
-            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes + 1))
+            m_batch_avg.update(eval_batch_det(out_formatted, targets, num_classes=self.num_classes))
 
             for k, v in loss_dict_reduced.items():
                 if "cardinality" in k:
