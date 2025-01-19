@@ -148,7 +148,11 @@ class TrackingDataset(Dataset):
             sample["mesh_diameter"] = self.mesh_diameter
 
         if self.include_bbox_2d:
-            bbox_2d = infer_bounding_box(sample["mask"])
+            if not self.include_mask:
+                mask = self.get_mask(i)
+                if self.do_erode_mask:
+                    mask = mask_morph(mask, kernel_size=11)
+            bbox_2d = infer_bounding_box(mask)
             if bbox_2d is None:
                 logger.error(f"Could not infer bbox for {self.color_files[i]}")
                 return None

@@ -78,7 +78,7 @@ class TrainerDeformableDETR(Trainer):
 
         self.do_calibrate_kpt = do_calibrate_kpt
 
-        self.num_classes = num_classes
+        self.num_classes = num_classes  # excluding bg class
         self.aux_loss = aux_loss
         self.num_dec_layers = num_dec_layers
         self.kpt_spatial_dim = kpt_spatial_dim
@@ -91,7 +91,10 @@ class TrainerDeformableDETR(Trainer):
 
         self.matcher = build_matcher(self.tf_args)
         self.criterion = build_criterion(
-            self.tf_args, num_classes=self.num_classes, matcher=self.matcher, device=self.args.device
+            self.tf_args,
+            num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes,
+            matcher=self.matcher,
+            device=self.args.device,
         )
 
         if self.use_ddp:
@@ -227,15 +230,11 @@ class TrainerDeformableDETR(Trainer):
             if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["image"]
-            mask = batch_t["mask"]
             targets = batch_t["target"]
             pose_gt_abs = torch.stack([x["pose"] for x in targets])
             intrinsics = [x["intrinsics"] for x in targets]
-            depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
-            t_gt_abs = pose_gt_abs[:, :3]
-            rot_gt_abs = pose_gt_abs[:, 3:]
 
             model_forward_res = self.model_forward(batch_t)
             out = model_forward_res["out"]
