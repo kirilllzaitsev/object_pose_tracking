@@ -186,7 +186,7 @@ def get_model(args, num_classes=None):
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
-            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose
+            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
         )
 
     return model
@@ -209,7 +209,7 @@ def get_trackformer_args(args):
     tf_args.multi_frame_attention = True
     tf_args.overflow_boxes = True
     tf_args.multi_frame_encoding = args.tf_use_multi_frame_encoding
-    
+
     tf_args.track_query_false_negative_prob = 0.0
     tf_args.track_query_false_positive_prob = 0.0
 
@@ -377,6 +377,7 @@ def get_datasets(
     do_overfit=False,
     do_preload_ds=False,
     include_mask=False,
+    include_depth=False,
     include_bbox_2d=False,
     do_convert_pose_to_quat=True,
     max_train_videos=None,
@@ -393,13 +394,15 @@ def get_datasets(
     is_tf_model = "trackformer" in model_name
     is_cnnlstm_model = "cnnlstm" in model_name
     is_detr_model = "detr" in model_name or is_tf_model
+    is_detr_kpt_model = "detr_kpt" in model_name
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
     include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=np.inf,
-        include_mask=include_mask or include_bbox_2d,  # mask is needed for 2d bbox
+        include_mask=include_mask,
+        include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model,
         include_bbox_2d=include_bbox_2d,
         start_frame_idx=start_frame_idx,
         do_convert_pose_to_quat=do_convert_pose_to_quat,
@@ -473,7 +476,11 @@ def get_datasets(
                 max_random_seq_step=max_random_seq_step,
                 end_frame_idx=end_frame_idx,
             )
-            assert set(vds.ds.video_dir for vds in val_dataset.video_datasets) - set(vds.ds.video_dir for vds in train_dataset.video_datasets) == set()
+            assert (
+                set(vds.ds.video_dir for vds in val_dataset.video_datasets)
+                - set(vds.ds.video_dir for vds in train_dataset.video_datasets)
+                == set()
+            )
         else:
             assert ds_video_dir_val and ds_video_subdirs_val, print(f"{ds_video_dir_val=} {ds_video_subdirs_val}")
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
