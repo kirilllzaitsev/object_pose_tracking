@@ -1,3 +1,5 @@
+import functools
+
 import torch
 from pose_tracking.dataset.dataloading import preload_ds
 from pose_tracking.dataset.ds_common import adjust_img_for_torch
@@ -6,7 +8,13 @@ from pose_tracking.dataset.transforms import (
     get_transforms_video,
 )
 from pose_tracking.utils.common import adjust_img_for_plt
+from pose_tracking.utils.geom import convert_3d_t_for_2d, pose_to_egocentric_delta_pose
 from pose_tracking.utils.misc import print_cls
+from pose_tracking.utils.pose import (
+    convert_pose_matrix_to_vector,
+    convert_pose_vector_to_matrix,
+)
+from pose_tracking.utils.rotation_conversions import convert_rotation_representation
 from torch.utils.data import Dataset
 
 
@@ -31,8 +39,10 @@ class VideoDataset(Dataset):
         do_preload=False,
         transforms_rgb=None,
         max_random_seq_step=8,
+        do_predict_rel_pose=False,
     ):
         self.do_preload = do_preload
+        self.do_predict_rel_pose = do_predict_rel_pose
 
         self.ds = ds
         self.seq_start = seq_start
@@ -95,8 +105,15 @@ class VideoDataset(Dataset):
 
 
 class VideoDatasetTracking(VideoDataset):
-    """Trackformer data adapter
-    """
+    """Trackformer data adapter"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.t_repr = self.ds.t_repr
+        self.rot_repr = self.ds.rot_repr
+        self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr=self.rot_repr)
+        self.pose_mat_to_vector_converter_fn = functools.partial(convert_pose_matrix_to_vector, rot_repr=self.rot_repr)
 
     def __getitem__(self, idx):
         seq = []
@@ -159,6 +176,28 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["labels"] = new_sample.pop("class_id")
             new_sample["prev_boxes"] = new_sample.pop("prev_bbox_2d")
             new_sample["prev_labels"] = new_sample.pop("prev_class_id")
+            new_sample["prev_rgb_path"] = sample_prev["rgb_path"]
+
+            if self.do_predict_rel_pose:
+                pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(prev_pose)
+                pose_mat_gt_abs = self.pose_to_mat_converter_fn(pose)
+                if pose_mat_prev_gt_abs.ndim == 2:
+                    pose_mat_prev_gt_abs = pose_mat_prev_gt_abs[None]
+                    pose_mat_gt_abs = pose_mat_gt_abs[None]
+
+                t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_prev_gt_abs, pose_mat_gt_abs)
+                rot_gt_rel = convert_rotation_representation(rot_gt_rel_mat, rot_representation=self.ds.rot_repr)
+
+                if self.t_repr == "2d":
+                    t_2d_norm_rel, center_depth_rel = convert_3d_t_for_2d(
+                        t_gt_rel, intrinsics=new_sample["intrinsics"], hw=new_sample["size"]
+                    )
+                    new_sample["center_depth_rel"] = center_depth_rel[None]
+                    new_sample["xy_rel"] = t_2d_norm_rel
+                else:
+                    new_sample["t_rel"] = t_gt_rel
+                new_sample["pose_rel"] = torch.cat([t_gt_rel, rot_gt_rel], dim=-1)
+                new_sample["rot_rel"] = rot_gt_rel
 
             for k in ["boxes", "prev_boxes", "rot", "t", "prev_rot", "prev_t", "xy", "center_depth"]:
                 if k not in new_sample:
@@ -177,7 +216,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_target"] = {
                 k.replace("prev_", ""): v
                 for k, v in new_sample.items()
-                if k.startswith("prev_") and k not in ["prev_image"]
+                if k.startswith("prev_") and k not in ["prev_image", "prev_rgb_path"]
             }
             for k in new_sample["prev_target"]:
                 new_sample.pop(f"prev_{k}")
@@ -197,7 +236,13 @@ class VideoDatasetTracking(VideoDataset):
                     "t",
                     "xy",
                     "center_depth",
-                ] if k in new_sample
+                    "center_depth_rel",
+                    "xy_rel",
+                    "t_rel",
+                    "pose_rel",
+                    "rot_rel",
+                ]
+                if k in new_sample
             }
 
             new_sample["target"]["prev_target"] = new_sample.pop("prev_target")
@@ -227,3 +272,5 @@ class MultiVideoDataset(Dataset):
             if idx < dataset_len:
                 return self.video_datasets[dataset_idx][idx]
             idx -= dataset_len
+
+        raise IndexError(f"Index {idx} out of range for {len(self)=}")
