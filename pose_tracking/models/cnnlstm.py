@@ -154,14 +154,13 @@ class MLP(nn.Module):
         self.num_layers = num_layers
 
         if num_layers > 1:
-            self.layers = []
+            self.layers = [nn.Linear(in_dim, hidden_dim)]
             if dropout > 0:
                 self.layers.append(nn.Dropout(dropout))
-            self.layers.append(nn.Linear(in_dim, hidden_dim))
             for i in range(num_layers - 2):
+                self.layers.append(nn.Linear(hidden_dim, hidden_dim))
                 if dropout > 0:
                     self.layers.append(nn.Dropout(dropout))
-                self.layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.layers.append(nn.Linear(hidden_dim, out_dim))
         else:
             self.layers = [nn.Linear(in_dim, out_dim)]
@@ -399,7 +398,6 @@ class RecurrentCNN(nn.Module):
                 weights_depth=encoder_depth_weights,
                 norm_layer_type=norm_layer_type,
                 out_dim=encoder_out_dim,
-                # dropout=dropout,
             )
 
         self.hx = None
