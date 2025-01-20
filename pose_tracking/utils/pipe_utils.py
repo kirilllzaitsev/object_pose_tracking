@@ -207,6 +207,7 @@ def get_trackformer_args(args):
     tf_args.focal_loss = args.tf_use_focal_loss
 
     tf_args.multi_frame_attention = True
+    tf_args.merge_frame_features = args.tf_do_merge_frame_features
     tf_args.overflow_boxes = True
     tf_args.multi_frame_encoding = args.tf_use_multi_frame_encoding
 
@@ -379,7 +380,6 @@ def get_datasets(
     include_mask=False,
     include_depth=False,
     include_bbox_2d=False,
-    do_convert_pose_to_quat=True,
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
@@ -388,6 +388,7 @@ def get_datasets(
     rot_repr="quaternion",
     t_repr="3d",
     max_random_seq_step=8,
+    do_predict_rel_pose=False,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -405,7 +406,6 @@ def get_datasets(
         include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model,
         include_bbox_2d=include_bbox_2d,
         start_frame_idx=start_frame_idx,
-        do_convert_pose_to_quat=do_convert_pose_to_quat,
         mask_pixels_prob=mask_pixels_prob,
         do_normalize_bbox=True if is_detr_model or is_tf_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",
@@ -452,6 +452,7 @@ def get_datasets(
             video_ds_cls=video_ds_cls,
             max_videos=max_train_videos,
             max_random_seq_step=max_random_seq_step,
+            do_predict_rel_pose=do_predict_rel_pose,
             end_frame_idx=end_frame_idx,
         )
         mesh_paths_orig_stems_train = [Path(d.ds.mesh_path_orig).stem for d in train_dataset.video_datasets]
@@ -474,6 +475,7 @@ def get_datasets(
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
                 max_random_seq_step=max_random_seq_step,
+                do_predict_rel_pose=do_predict_rel_pose,
                 end_frame_idx=end_frame_idx,
             )
             assert (
@@ -499,6 +501,7 @@ def get_datasets(
                 video_ds_cls=video_ds_cls,
                 max_videos=max_val_videos,
                 max_random_seq_step=max_random_seq_step,
+                do_predict_rel_pose=do_predict_rel_pose,
             )
         res["val"] = val_dataset
 
@@ -519,6 +522,7 @@ def get_datasets(
             video_ds_cls=video_ds_cls,
             max_videos=max_test_videos,
             max_random_seq_step=max_random_seq_step,
+            do_predict_rel_pose=do_predict_rel_pose,
         )
         res["test"] = test_dataset
 
@@ -540,6 +544,7 @@ def get_video_ds(
     max_videos=None,
     end_frame_idx=None,
     max_random_seq_step=8,
+    do_predict_rel_pose=False,
 ):
     video_datasets = []
     count = 0
@@ -559,6 +564,7 @@ def get_video_ds(
             do_preload=do_preload,
             transforms_rgb=transforms_rgb,
             max_random_seq_step=max_random_seq_step,
+            do_predict_rel_pose=do_predict_rel_pose,
         )
         video_datasets.append(video_ds)
         count += 1
