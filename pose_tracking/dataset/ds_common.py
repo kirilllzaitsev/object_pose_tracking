@@ -18,7 +18,6 @@ def get_ds_sample(
     intrinsics=None,
     transforms_rgb=None,
     priv=None,
-    do_convert_pose_to_quat=False,
     mask_pixels_prob=0.0,
     pixels_masked_max_percent=0.1,
     rot_repr="quaternion",
@@ -53,7 +52,7 @@ def get_ds_sample(
             t_2d_norm, center_depth = convert_3d_t_for_2d(cast_to_torch(t), cast_to_torch(intrinsics), hw)
             sample["center_depth"] = center_depth[None]
             sample["xy"] = t_2d_norm
-        if do_convert_pose_to_quat and rot_repr != "None":
+        if rot_repr is not None:
             quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
             pose = np.concatenate([t, quat])
 

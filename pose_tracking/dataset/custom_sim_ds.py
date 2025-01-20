@@ -75,12 +75,12 @@ class CustomSimDataset(TrackingDataset):
         if cam_pose_path is not None:
             assert cam_init_rot is not None
             self.cam_pose_path = Path(cam_pose_path)
-            self.cam_pose = load_pose(cam_pose_path)
+            self.c2w = load_pose(cam_pose_path)
             self.cam_init_rot = quaternion_to_matrix(torch.tensor(cam_init_rot)).numpy()
-            self.cam_pose[:3, :3] = self.cam_pose[:3, :3] @ self.cam_init_rot
-            self.w2c = get_inv_pose(pose=self.cam_pose)
+            self.c2w[:3, :3] = self.c2w[:3, :3] @ self.cam_init_rot
+            self.w2c = get_inv_pose(pose=self.c2w)
         else:
-            self.cam_pose = None
+            self.c2w = None
 
     def get_pose_paths(self):
         paths = []
@@ -176,7 +176,7 @@ class CustomSimDatasetIkea(CustomSimDataset):
         metadata_path = f"{self.video_dir}/metadata.json"
         assert os.path.exists(metadata_path)
         self.metadata = json.load(open(metadata_path))
-        self.mesh_path_orig = self.metadata[0]['usd_path']
+        self.mesh_path_orig = self.metadata[0]["usd_path"]
 
         if do_load_bbox_from_metadata:
             assert self.metadata is not None, f"metadata not found at {metadata_path}"

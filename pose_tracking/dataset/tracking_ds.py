@@ -40,7 +40,6 @@ class TrackingDataset(Dataset):
         include_mask=True,
         include_pose=True,
         include_bbox_2d=False,
-        do_convert_pose_to_quat=False,
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
@@ -72,7 +71,6 @@ class TrackingDataset(Dataset):
         self.downscale = downscale
         self.zfar = zfar
         self.transforms_rgb = transforms_rgb
-        self.do_convert_pose_to_quat = do_convert_pose_to_quat
         self.mask_pixels_prob = mask_pixels_prob
         self.num_mesh_pts = num_mesh_pts
         self.start_frame_idx = start_frame_idx
@@ -184,7 +182,6 @@ class TrackingDataset(Dataset):
         sample = process_raw_sample(
             sample,
             transforms_rgb=self.transforms_rgb,
-            do_convert_pose_to_quat=self.do_convert_pose_to_quat,
             mask_pixels_prob=self.mask_pixels_prob,
             rot_repr=self.rot_repr,
             t_repr=self.t_repr,
