@@ -38,7 +38,7 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
     elif rot_repr == "axis_angle":
         assert rot.shape[-1] == 3, rot.shape
         rot_mat = axis_angle_to_matrix(rot)
-    elif rot_repr == "6d":
+    elif rot_repr == "rotation6d":
         assert rot.shape[-1] == 6, rot.shape
         rot_mat = rotation_6d_to_matrix(rot)
     else:
@@ -57,7 +57,7 @@ def convert_pose_matrix_to_vector(pose, rot_repr="quaternion"):
         rot = matrix_to_quaternion(rot)
     elif rot_repr == "axis_angle":
         rot = matrix_to_axis_angle(rot)
-    elif rot_repr == "6d":
+    elif rot_repr == "rotation6d":
         rot = matrix_to_rotation_6d(rot)
     else:
         raise ValueError(f"Unknown rotation representation: {rot_repr}")

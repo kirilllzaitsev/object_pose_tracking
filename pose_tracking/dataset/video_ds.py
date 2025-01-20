@@ -190,7 +190,7 @@ class VideoDatasetTracking(VideoDataset):
 
                 if self.t_repr == "2d":
                     t_2d_norm_rel, center_depth_rel = convert_3d_t_for_2d(
-                        t_gt_rel, intrinsics=new_sample["intrinsics"], hw=new_sample["size"]
+                        t_gt_rel, intrinsics=new_sample["intrinsics"][None], hw=new_sample["size"]
                     )
                     new_sample["center_depth_rel"] = center_depth_rel[None]
                     new_sample["xy_rel"] = t_2d_norm_rel

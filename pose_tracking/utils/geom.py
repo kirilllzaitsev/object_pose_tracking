@@ -620,27 +620,24 @@ def convert_3d_t_for_2d(t_gt_abs, intrinsics, hw):
     return t_gt_2d_norm, depth_gt
 
 
-def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None, do_predict_rel_pose=False):
+def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):
     res = {}
-    if do_predict_rel_pose:
-        t_pred = torch.cat([t_pred, depth_pred], dim=1)
-    else:
-        # abs 2d center to abs 3d
-        t_pred_2d_denorm = t_pred.detach().clone()
-        if hw is not None:
-            t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
-            t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
+    # abs 2d center to abs 3d center
+    t_pred_2d_denorm = t_pred.detach().clone()
+    if hw is not None:
+        t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
+        t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
 
-        t_pred_2d_backproj = []
-        for sample_idx in range(len(t_pred)):
-            t_pred_2d_backproj.append(
-                backproj_2d_to_3d(
-                    t_pred_2d_denorm[sample_idx][None],
-                    depth_pred[sample_idx],
-                    intrinsics[sample_idx],
-                ).squeeze()
-            )
-        t_pred = torch.stack(t_pred_2d_backproj).to(depth_pred.device)
-        res["t_pred_2d_denorm"] = t_pred_2d_denorm
+    t_pred_2d_backproj = []
+    for sample_idx in range(len(t_pred)):
+        t_pred_2d_backproj.append(
+            backproj_2d_to_3d(
+                t_pred_2d_denorm[sample_idx][None],
+                depth_pred[sample_idx],
+                intrinsics[sample_idx],
+            ).squeeze()
+        )
+    t_pred = torch.stack(t_pred_2d_backproj).to(depth_pred.device)
+    res["t_pred_2d_denorm"] = t_pred_2d_denorm
     res["t_pred"] = t_pred
     return res

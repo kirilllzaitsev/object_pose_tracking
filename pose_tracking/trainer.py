@@ -163,7 +163,7 @@ class Trainer:
             self.rot_mat_to_vector_converter_fn = matrix_to_axis_angle
             self.rot_vector_to_mat_converter_fn = axis_angle_to_matrix
         elif self.do_predict_6d_rot:
-            self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="6d")
+            self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="rotation6d")
             self.rot_mat_to_vector_converter_fn = matrix_to_rotation_6d
             self.rot_vector_to_mat_converter_fn = rotation_6d_to_matrix
         else:
@@ -371,9 +371,7 @@ class Trainer:
 
             if self.do_predict_2d_t:
                 center_depth_pred = out["center_depth"]
-                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                    t_pred, center_depth_pred, intrinsics, hw=hw, do_predict_rel_pose=self.do_predict_rel_pose
-                )
+                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics, hw=hw)
                 t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
