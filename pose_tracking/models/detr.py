@@ -67,6 +67,7 @@ class DETRBase(nn.Module):
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
+        self.do_predict_2d_t = t_out_dim == 2
         self.pe_encoder = self.get_pos_encoder(encoding_type)
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -100,6 +101,16 @@ class DETRBase(nn.Module):
             self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, 1), n_layers)
         if self.use_rot:
             self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, 2), n_layers)
+        if self.do_predict_2d_t:
+            self.depth_embed = get_clones(
+                MLP(
+                    in_dim=d_model,
+                    out_dim=1,
+                    hidden_dim=d_model,
+                    num_layers=2,
+                ),
+                n_layers,
+            )
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
@@ -156,6 +167,9 @@ class DETRBase(nn.Module):
             if self.use_t:
                 pred_t = self.t_mlps[layer_idx](o)
                 out["t"] = pred_t
+            if self.do_predict_2d_t:
+                outputs_depth = self.depth_embed[layer_idx](o)
+                out["center_depth"] = outputs_depth
 
             outs.append(out)
         last_out = outs.pop()
@@ -168,6 +182,8 @@ class DETRBase(nn.Module):
             res["rot"] = last_out["rot"]
         if self.use_t:
             res["t"] = last_out["t"]
+        if self.do_predict_2d_t:
+            res["center_depth"] = last_out["center_depth"]
 
         return res
 
