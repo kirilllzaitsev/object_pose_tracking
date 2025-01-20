@@ -425,8 +425,9 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
 
 
 def plot_seq(
-    seq, keys_to_plot=[], take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
+    seq, keys_to_plot=None, take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
 ):
+    keys_to_plot = keys_to_plot or []
     target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
     def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):

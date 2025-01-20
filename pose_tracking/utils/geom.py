@@ -200,8 +200,8 @@ def calibrate_2d_pts(pts, K):
 
 def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
     """Extract r and t deltas from two poses in the same frame"""
-    trans_delta = cur_pose_mat[:, :3, 3] - prev_pose_mat[:, :3, 3]
-    rot_mat_delta = cur_pose_mat[:, :3, :3] @ prev_pose_mat[:, :3, :3].permute(0, 2, 1)
+    trans_delta = cur_pose_mat[..., :3, 3] - prev_pose_mat[..., :3, 3]
+    rot_mat_delta = cur_pose_mat[..., :3, :3] @ prev_pose_mat[..., :3, :3].transpose(-2, -1)
     return trans_delta, rot_mat_delta
 
 

@@ -4,6 +4,9 @@ import trimesh
 from bop_toolkit_lib.transform import euler_matrix
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
+    matrix_to_axis_angle,
+    matrix_to_quaternion,
+    matrix_to_rotation_6d,
     quaternion_to_matrix,
     rotation_6d_to_matrix,
 )
@@ -43,6 +46,22 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
 
     pose_matrix[..., :3, :3] = rot_mat
     return pose_matrix
+
+
+def convert_pose_matrix_to_vector(pose, rot_repr="quaternion"):
+    if pose.shape[-2:] != (3, 3):
+        return pose
+    t = pose[..., :3, 3]
+    rot = pose[..., :3, :3]
+    if rot_repr == "quaternion":
+        rot = matrix_to_quaternion(rot)
+    elif rot_repr == "axis_angle":
+        rot = matrix_to_axis_angle(rot)
+    elif rot_repr == "6d":
+        rot = matrix_to_rotation_6d(rot)
+    else:
+        raise ValueError(f"Unknown rotation representation: {rot_repr}")
+    return torch.cat([t, rot], dim=-1)
 
 
 def sample_views_icosphere(n_views, subdivisions=None, radius=1):
