@@ -95,6 +95,7 @@ class TrainerDeformableDETR(Trainer):
             num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes,
             matcher=self.matcher,
             device=self.args.device,
+            use_rel_pose=self.args.do_predict_rel_pose,
         )
 
         if self.use_ddp:
@@ -294,7 +295,28 @@ class TrainerDeformableDETR(Trainer):
 
                 rot_pred = out["rot"][idx]
                 pred_rts = torch.cat([t_pred, rot_pred], dim=1)
-                pose_mat_pred_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
+                pose_mat_pred = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
+
+                if self.do_predict_rel_pose:
+                    if t == 0:
+                        pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
+                        pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
+                    pose_mat_prev_pred_abs = torch.stack(
+                        [
+                            self.pose_to_mat_converter_fn(rt)
+                            for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
+                        ]
+                    )
+                    pose_mat_pred_abs = egocentric_delta_pose_to_pose(
+                        pose_mat_prev_pred_abs,
+                        trans_delta=pose_mat_pred[:, :3, 3],
+                        rot_mat_delta=pose_mat_pred[:, :3, :3],
+                        do_couple_rot_t=False,
+                    )
+                else:
+                    pose_mat_pred_abs = pose_mat_pred
+                t_pred_abs = pose_mat_pred_abs[:, :3, 3]
+                rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
 
                 for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
                     m_sample = calc_metrics(
@@ -326,6 +348,23 @@ class TrainerDeformableDETR(Trainer):
                 seq_metrics[k] += v
 
             # UPDATE VARS
+
+            if self.use_pose and seq_length > 1:
+                if self.do_predict_rel_pose:
+                    if self.do_predict_3d_rot:
+                        rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
+                    elif self.do_predict_6d_rot:
+                        rot_prev_pred_abs = matrix_to_rotation_6d(rot_mat_pred_abs)
+                    else:
+                        rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
+                    pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
+                else:
+                    pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
+                if self.do_predict_2d_t:
+                    pose_prev_pred_abs["center_depth"] = center_depth_pred
+                pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
+
+                pose_mat_prev_gt_abs = pose_mat_gt_abs
 
             # OTHER
 
