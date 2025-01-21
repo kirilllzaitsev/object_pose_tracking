@@ -34,7 +34,7 @@ class TrackingDataset(Dataset):
         downscale=1,
         obj_name=None,
         shorter_side=None,
-        zfar=np.inf,
+        zfar=10,
         include_rgb=True,
         include_depth=True,
         include_mask=True,

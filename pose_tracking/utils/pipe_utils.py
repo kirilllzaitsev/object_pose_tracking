@@ -98,12 +98,16 @@ def get_model(args, num_classes=None):
     elif args.model_name in ["detr_pretrained"]:
         from pose_tracking.models.detr import DETRPretrained
 
+        assert args.mt_n_layers == 6, args.mt_n_layers
+
         model = DETRPretrained(
             num_classes=num_classes,
             use_pretrained_backbone=True,
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
             opt_only=args.opt_only,
+            n_layers=args.mt_n_layers,
+            dropout=args.dropout,
         )
     elif args.model_name in ["detr_basic", "detr_kpt"]:
         detr_args = dict(
@@ -401,7 +405,7 @@ def get_datasets(
     include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
     ds_kwargs_common = dict(
         shorter_side=None,
-        zfar=np.inf,
+        zfar=10,
         include_mask=include_mask,
         include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model,
         include_bbox_2d=include_bbox_2d,
