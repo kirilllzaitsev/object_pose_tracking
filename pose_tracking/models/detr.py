@@ -269,6 +269,7 @@ class DETRPretrained(nn.Module):
         opt_only=[],
         d_model=256,
         n_layers=6,
+        dropout=0.0,
     ):
         super().__init__()
 
@@ -278,18 +279,26 @@ class DETRPretrained(nn.Module):
         self.opt_only = opt_only
         self.d_model = d_model
         self.n_layers = n_layers
+        self.num_classes = num_classes
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
 
         self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
 
-        self.model.class_embed = nn.Linear(self.model.class_embed.in_features, num_classes + 1)
+        self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
+        self.bbox_embed = get_clones(nn.Linear(256, 4), n_layers)
+        self.model.class_embed = nn.Identity()
+        self.model.bbox_embed = nn.Identity()
+        # set prob in all dropouts to 0.0
+        for m in self.model.modules():
+            if isinstance(m, nn.Dropout):
+                m.p = dropout
 
         if self.use_t:
-            self.t_mlps = MLP(d_model, t_out_dim, d_model, 2)
+            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, num_layers=2, dropout=dropout), n_layers)
         if self.use_rot:
-            self.rot_mlps = MLP(d_model, rot_out_dim, d_model, 2)
+            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, num_layers=2, dropout=dropout), n_layers)
 
         self.decoder_outs = {}
         for i, layer in enumerate(self.model.transformer.decoder.layers):
@@ -300,22 +309,22 @@ class DETRPretrained(nn.Module):
         main_out = self.model(x)
         outs = []
         for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
-            if layer_idx != self.n_layers - 1:
-                continue
             out = {}
+            out["pred_logits"] = self.class_embed[layer_idx](o).transpose(0, 1)
+            out["pred_boxes"] = self.bbox_embed[layer_idx](o).sigmoid().transpose(0, 1)
             if self.use_rot:
-                pred_rot = self.rot_mlps(o)
+                pred_rot = self.rot_mlps[layer_idx](o)
                 out["rot"] = pred_rot.transpose(0, 1)
             if self.use_t:
-                pred_t = self.t_mlps(o)
+                pred_t = self.t_mlps[layer_idx](o)
                 out["t"] = pred_t.transpose(0, 1)
 
             outs.append(out)
         last_out = outs.pop()
         res = {
-            "pred_logits": main_out["pred_logits"],
-            "pred_boxes": main_out["pred_boxes"],
-            # "aux_outputs": outs,
+            "pred_logits": last_out["pred_logits"],
+            "pred_boxes": last_out["pred_boxes"],
+            "aux_outputs": outs,
         }
         if self.use_rot:
             res["rot"] = last_out["rot"]
