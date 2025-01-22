@@ -105,10 +105,11 @@ class TrackingDataset(Dataset):
         intrinsics_path = f"{video_dir}/cam_K.txt"
         if not os.path.exists(intrinsics_path):
             intrinsics_path = f"{video_dir}/intrinsics.txt"
-            assert os.path.exists(intrinsics_path), f"Could not find intrinsics file at {intrinsics_path}"
-
-        self.K = np.loadtxt(intrinsics_path).reshape(3, 3)
-        self.K[:2] *= self.downscale
+        if os.path.exists(intrinsics_path):
+            self.K = np.loadtxt(intrinsics_path).reshape(3, 3)
+            self.K[:2] *= self.downscale
+        else:
+            print(f"Could not find intrinsics file at {intrinsics_path}")
 
     def __len__(self):
         return self.num_frames
