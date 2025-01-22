@@ -95,6 +95,26 @@ def get_model(args, num_classes=None):
         args.detr_args = detr_args
         model, *_ = build_model(detr_args, num_classes=num_classes + 1)
 
+        if args.use_pretrained_model:
+            assert args.hidden_dim == 288, args.hidden_dim
+            obj_detect_checkpoint = torch.load(
+                f"{TF_DIR}/models/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint_hidden_dim_288.pth",
+                map_location="cpu",
+            )
+
+            obj_detect_state_dict = obj_detect_checkpoint["model"]
+
+            obj_detect_state_dict = {
+                k.replace("detr.", ""): v
+                for k, v in obj_detect_state_dict.items()
+                if "track_encoding" not in k and "class_embed" not in k
+            }
+
+            model.load_state_dict(obj_detect_state_dict, strict=False)
+
+            if hasattr(model, "tracking"):
+                model.tracking()
+
     elif args.model_name in ["detr_pretrained"]:
         from pose_tracking.models.detr import DETRPretrained
 
