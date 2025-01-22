@@ -92,25 +92,26 @@ class DETRBase(nn.Module):
 
         num_classes_bg = num_classes + 1
         self.class_mlps = get_clones(
-            MLP(in_dim=d_model, out_dim=num_classes_bg, hidden_dim=head_hidden_dim, num_layers=1),
+            MLP(
+                in_dim=d_model, out_dim=num_classes_bg, hidden_dim=head_hidden_dim, num_layers=1, dropout=dropout_heads
+            ),
             n_layers,
         )
         self.bbox_mlps = get_clones(
-            MLP(in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers),
+            MLP(
+                in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers, dropout=dropout_heads
+            ),
             n_layers,
         )
         if self.use_t:
-            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, 1), n_layers)
+            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers)
         if self.use_rot:
-            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, 2), n_layers)
+            self.rot_mlps = get_clones(
+                MLP(d_model, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
+            )
         if self.do_predict_2d_t:
             self.depth_embed = get_clones(
-                MLP(
-                    in_dim=d_model,
-                    out_dim=1,
-                    hidden_dim=d_model,
-                    num_layers=2,
-                ),
+                MLP(in_dim=d_model, out_dim=1, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads),
                 n_layers,
             )
 
@@ -272,6 +273,8 @@ class DETRPretrained(nn.Module):
         d_model=256,
         n_layers=6,
         dropout=0.0,
+        dropout_heads=0.0,
+        head_num_layers=2,
     ):
         super().__init__()
 
@@ -282,6 +285,9 @@ class DETRPretrained(nn.Module):
         self.d_model = d_model
         self.n_layers = n_layers
         self.num_classes = num_classes
+        self.dropout = dropout
+        self.dropout_heads = dropout_heads
+        self.head_num_layers = head_num_layers
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
@@ -289,18 +295,23 @@ class DETRPretrained(nn.Module):
         self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
 
         self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
-        self.bbox_embed = get_clones(nn.Linear(256, 4), n_layers)
+        self.bbox_embed = get_clones(MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers)
         self.model.class_embed = nn.Identity()
         self.model.bbox_embed = nn.Identity()
-        # set prob in all dropouts to 0.0
+        self.model.transformer.decoder.norm = nn.Identity()
+
         for m in self.model.modules():
             if isinstance(m, nn.Dropout):
                 m.p = dropout
 
         if self.use_t:
-            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, num_layers=2, dropout=dropout), n_layers)
+            self.t_mlps = get_clones(
+                MLP(d_model, t_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+            )
         if self.use_rot:
-            self.rot_mlps = get_clones(MLP(d_model, rot_out_dim, d_model, num_layers=2, dropout=dropout), n_layers)
+            self.rot_mlps = get_clones(
+                MLP(d_model, rot_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+            )
 
         self.decoder_outs = {}
         for i, layer in enumerate(self.model.transformer.decoder.layers):
