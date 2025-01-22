@@ -149,7 +149,7 @@ class TrainerDeformableDETR(Trainer):
         if stage == "train":
             self.train_epoch_count += 1
         running_stats = defaultdict(float)
-        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
         if stage == "train":
             optimizer = self.optimizer
@@ -289,7 +289,7 @@ class TrainerDeformableDETR(Trainer):
                 if self.do_predict_2d_t:
                     center_depth_pred = out["center_depth"][idx]
                     convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                        t_pred, center_depth_pred, intrinsics, hw=(h, w), do_predict_rel_pose=self.do_predict_rel_pose
+                        t_pred, center_depth_pred, intrinsics, hw=(h, w)
                     )
                     t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
@@ -418,8 +418,10 @@ class TrainerDeformableDETR(Trainer):
 
             if do_vis:
                 # save inputs to the exp dir
-                vis_keys = ["image", "mesh_bbox", "mask"]
+                vis_keys = ["image", "mesh_bbox", "mask", "depth"]
                 for k in vis_keys:
+                    if len(batch_t.get(k, [])) == 0:
+                        continue
                     vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
                 vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
                 vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))

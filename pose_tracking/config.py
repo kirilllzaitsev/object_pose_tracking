@@ -17,6 +17,7 @@ WORKSPACE_DIR = PROJ_DIR if (IS_REMOTE or IS_CLUSTER) else PROJ_DIR.parent
 
 DATA_DIR = Path(os.environ['DATA_DIR']) if 'DATA_DIR' in os.environ else PROJ_DIR / "data"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
+TF_DIR = RELATED_DIR / "obj_det/trackformer"
 
 ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"

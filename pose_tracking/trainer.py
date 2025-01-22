@@ -190,7 +190,7 @@ class Trainer:
             self.train_epoch_count += 1
         running_stats = defaultdict(float)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
-        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
