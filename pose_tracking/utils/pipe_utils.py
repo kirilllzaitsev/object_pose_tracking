@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import torch
 import yaml
 from pose_tracking.config import (
     ARTIFACTS_DIR,
@@ -14,6 +15,7 @@ from pose_tracking.config import (
     PROJ_DIR,
     PROJ_NAME,
     RELATED_DIR,
+    TF_DIR,
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
 )
@@ -128,6 +130,8 @@ def get_model(args, num_classes=None):
             opt_only=args.opt_only,
             n_layers=args.mt_n_layers,
             dropout=args.dropout,
+            dropout_heads=args.dropout_heads,
+            head_num_layers=args.rt_mlps_num_layers,
         )
     elif args.model_name in ["detr_basic", "detr_kpt"]:
         detr_args = dict(
@@ -140,8 +144,10 @@ def get_model(args, num_classes=None):
             encoding_type=args.mt_encoding_type,
             opt_only=args.opt_only,
             dropout=args.dropout,
+            dropout_heads=args.dropout_heads,
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
+            head_num_layers=args.rt_mlps_num_layers,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -196,7 +202,7 @@ def get_model(args, num_classes=None):
             hidden_attn_num_layers=args.hidden_attn_num_layers,
             rt_mlps_num_layers=args.rt_mlps_num_layers,
             dropout=args.dropout,
-            dropout_rt_scaler=args.dropout_rt_scaler,
+            dropout_heads=args.dropout_heads,
             use_rnn=not args.no_rnn,
             use_obs_belief=not args.no_obs_belief,
             use_priv_decoder=args.use_priv_decoder,
@@ -220,7 +226,7 @@ def get_trackformer_args(args):
     tf_args = argparse.Namespace(
         **yaml.load(
             open(
-                f"{RELATED_DIR}/obj_det/trackformer/config.yaml",
+                f"{TF_DIR}/config.yaml",
                 "r",
             ),
             Loader=yaml.Loader,
@@ -247,6 +253,7 @@ def get_trackformer_args(args):
     tf_args.enc_layers = args.mt_n_layers
     tf_args.dec_layers = args.mt_n_layers
     tf_args.dropout = args.dropout
+    tf_args.dropout_heads = args.dropout_heads
     tf_args.hidden_dim = 288
     tf_args.rot_out_dim = args.rot_out_dim
     tf_args.t_out_dim = args.t_out_dim
