@@ -192,6 +192,7 @@ def get_parser():
     model_args.add_argument("--use_mlp_for_prev_pose", action="store_true", help="Project previous rot/t with MLP")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
+    model_args.add_argument("--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture")
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
@@ -272,7 +273,7 @@ def get_parser():
         "--r_num_layers_inc", type=int, default=0, help="Number of layers to add to the rotation MLP"
     )
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
-    model_args.add_argument("--dropout_rt_scaler", type=int, default=1, help="Dropout rate scaler for rot/t MLPs")
+    model_args.add_argument("--dropout_heads", type=float, default=0.0, help="Dropout rate for rot/t/bbox/clf MLPs")
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
@@ -291,7 +292,7 @@ def get_parser():
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
-    data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds))")
+    data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step")
     data_args.add_argument("--max_random_seq_step", type=int, default=8, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
@@ -364,6 +365,7 @@ def postprocess_args(args, use_if_provided=True):
 
     if args.do_overfit:
         args.dropout = 0.0
+        args.dropout_heads = 0.0
         args.weight_decay = 0.0
     args.use_es_train = args.do_overfit and args.use_es
     args.use_es_val = args.use_es and not args.use_es_train

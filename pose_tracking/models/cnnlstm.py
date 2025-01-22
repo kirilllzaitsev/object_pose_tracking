@@ -207,7 +207,7 @@ class RecurrentCNN(nn.Module):
         rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
-        dropout_rt_scaler=1,
+        dropout_heads=0.0,
         rnn_type="gru",
         encoder_name="resnet18",
         encoder_img_weights="imagenet",
@@ -245,12 +245,12 @@ class RecurrentCNN(nn.Module):
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
         self.dropout = dropout
+        self.dropout_heads = dropout_heads
         self.rt_mlps_num_layers = rt_mlps_num_layers
         self.priv_decoder_num_layers = priv_decoder_num_layers
         self.depth_decoder_num_layers = depth_decoder_num_layers
         self.hidden_attn_num_layers = hidden_attn_num_layers
         self.rnn_state_init_type = rnn_state_init_type
-        self.dropout_rt_scaler = dropout_rt_scaler
 
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
@@ -365,7 +365,7 @@ class RecurrentCNN(nn.Module):
             hidden_dim=self.rt_hidden_dim,
             num_layers=rt_mlps_num_layers,
             act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
-            dropout=dropout * dropout_rt_scaler,
+            dropout=dropout_heads,
         )
         if do_predict_rot:
             self.rot_mlp = MLP(
@@ -373,7 +373,7 @@ class RecurrentCNN(nn.Module):
                 out_dim=self.rot_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers + r_num_layers_inc,
-                dropout=dropout * dropout_rt_scaler,
+                dropout=dropout_heads,
             )
 
         if self.do_predict_kpts:
@@ -384,7 +384,7 @@ class RecurrentCNN(nn.Module):
                 out_dim=self.kpts_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                dropout=dropout,
+                dropout=dropout_heads,
             )
 
         self.encoder_name = encoder_name

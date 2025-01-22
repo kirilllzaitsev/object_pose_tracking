@@ -46,6 +46,7 @@ class DETRBase(nn.Module):
         encoding_type="learned",
         opt_only=[],
         dropout=0.0,
+        dropout_heads=0.0,
         rot_out_dim=4,
         t_out_dim=3,
     ):
@@ -59,6 +60,7 @@ class DETRBase(nn.Module):
         self.n_queries = n_queries
         self.encoding_type = encoding_type
         self.dropout = dropout
+        self.dropout_heads = dropout_heads
         self.rot_out_dim = rot_out_dim
         self.t_out_dim = t_out_dim
         self.opt_only = opt_only
