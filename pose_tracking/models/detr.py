@@ -18,7 +18,7 @@ from pose_tracking.utils.geom import (
     backproj_2d_to_3d_batch,
     calibrate_2d_pts_batch,
 )
-from pose_tracking.utils.kpt_utils import get_kpt_within_mask_indicator, load_extractor
+from pose_tracking.utils.kpt_utils import extract_kpts, get_kpt_within_mask_indicator, load_extractor
 from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from torchvision.models import resnet18, resnet50, resnet101
@@ -295,7 +295,9 @@ class DETRPretrained(nn.Module):
         self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
 
         self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
-        self.bbox_embed = get_clones(MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers)
+        self.bbox_embed = get_clones(
+            MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+        )
         self.model.class_embed = nn.Identity()
         self.model.bbox_embed = nn.Identity()
         self.model.transformer.decoder.norm = nn.Identity()
@@ -403,25 +405,8 @@ class KeypointDETR(DETRBase):
             mask = torch.stack([mask_morph(m, op_name="dilate") for m in mask]).unsqueeze(1)
             x = x * mask
         bs, c, h, w = x.shape
-        memory_key_padding_mask = None
-        if bs > 1:
-            extracted_kpts = [self.extractor.extract(x[i : i + 1]) for i in range(bs)]
-            extracted_kpts = [{k: v[0] for k, v in kpts.items()} for kpts in extracted_kpts]
-            # pad with zeros up to the max number of keypoints
-            max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
-            memory_key_padding_mask = torch.zeros(bs, max_kpts, dtype=torch.bool, device=x.device)
-            # extracted_kpts = copy.deepcopy(extracted_kpts)
-            for bidx, kpts in enumerate(extracted_kpts):
-                for k in ["keypoints", "descriptors"]:
-                    pad_len = max_kpts - len(kpts[k])
-                    if pad_len > 0:
-                        memory_key_padding_mask[bidx, -pad_len:] = True
-                        kpts[k] = F.pad(kpts[k], (0, 0, 0, pad_len), value=0)
-            extracted_kpts = {
-                k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors"]
-            }
-        else:
-            extracted_kpts = self.extractor.extract(x)
+        extracted_kpts = extract_kpts(x, extractor=self.extractor)
+        memory_key_padding_mask = extracted_kpts.get("memory_key_padding_mask")
 
         descriptors = extracted_kpts["descriptors"]
         kpts = extracted_kpts["keypoints"]

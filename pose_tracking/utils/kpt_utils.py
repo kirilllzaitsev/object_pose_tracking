@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
+import torch.nn.functional as F
 import yaml
 from albumentations import transforms as A
 from pose_tracking.config import RELATED_DIR
@@ -235,3 +236,36 @@ def get_kpt_within_mask_indicator(keypoints, binary_mask):
     # inside_bounds = (0 <= y) & (y < binary_mask.shape[0]) & (0 <= x) & (x < binary_mask.shape[1])
     indicator = (binary_mask[..., y, x] == 1).long()
     return indicator
+
+
+def extract_kpts(x, extractor, do_normalize=False, use_zeros_for_pad=True):
+    bs, c, h, w = x.shape
+    memory_key_padding_mask = None
+    if bs > 1:
+        extracted_kpts = [extractor.extract(x[i : i + 1]) for i in range(bs)]
+        extracted_kpts = [{k: v[0] for k, v in kpts.items()} for kpts in extracted_kpts]
+        # pad with zeros up to the max number of keypoints
+        max_kpts = max([len(kpts["keypoints"]) for kpts in extracted_kpts])
+        memory_key_padding_mask = torch.zeros(bs, max_kpts, dtype=torch.bool, device=x.device)
+        # extracted_kpts = copy.deepcopy(extracted_kpts)
+        for bidx, kpts in enumerate(extracted_kpts):
+            for k in ["keypoints", "descriptors"]:
+                pad_len = max_kpts - len(kpts[k])
+                if pad_len > 0:
+                    if use_zeros_for_pad:
+                        memory_key_padding_mask[bidx, -pad_len:] = True
+                        kpts[k] = F.pad(kpts[k], (0, 0, 0, pad_len), value=0)
+                    else:
+                        # duplicate random pts
+                        pad_idxs = torch.randint(0, len(kpts[k]), (pad_len,))
+                        kpts[k] = torch.cat([kpts[k], kpts[k][pad_idxs]])
+        extracted_kpts = {k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors"]}
+    else:
+        extracted_kpts = extractor.extract(x)
+
+    if do_normalize:
+        extracted_kpts["keypoints"] = extracted_kpts["keypoints"] / torch.tensor([w, h], dtype=extracted_kpts["keypoints"].dtype).to(
+            extracted_kpts["keypoints"].device
+        )
+
+    return {**extracted_kpts, "padding_mask": memory_key_padding_mask}
