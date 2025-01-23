@@ -383,8 +383,15 @@ class TrainerDeformableDETR(Trainer):
                     self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
 
             if not math.isfinite(loss_value):
-                self.logger(f"Loss is {loss_value}, stopping training")
-                self.logger(loss_dict_reduced)
+                self.logger.error(f"Loss is {loss_value}, stopping training")
+                self.logger.error(loss_dict_reduced)
+                if t > 0:
+                    self.logger.error(f"{batched_seq[t-1]=}")
+                self.logger.error(f"{batched_seq[t]=}")
+                if self.use_pose:
+                    self.logger.error(f"rot_pred: {rot_pred}")
+                self.logger.error(f"seq_metrics: {seq_metrics}")
+                self.logger.error(f"seq_stats: {seq_stats}")
                 sys.exit(1)
 
             self.ts_counts_per_stage[stage] += 1

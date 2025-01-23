@@ -290,18 +290,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             verbose=True,
         )
 
-    trainer = get_trainer(
-        args,
-        model,
-        device=device,
-        writer=writer,
-        world_size=world_size,
-        logger=logger,
-        do_vis=args.do_vis and is_main_process,
-        exp_dir=logdir,
-        num_classes=num_classes,
-    )
-
     logger.info(trainer)
     if logdir is not None:
         logger.info(f"{logdir=} {os.path.basename(logdir)}")
