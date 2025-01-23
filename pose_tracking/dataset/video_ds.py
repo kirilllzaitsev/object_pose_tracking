@@ -84,14 +84,21 @@ class VideoDataset(Dataset):
 
         assert seq_step > 0, f"{seq_step=}"
 
-        for t in range(timesteps):
-            frame_idx = seq_start + t * seq_step
-            if self.do_preload:
-                sample = self.seq[frame_idx]
-            else:
-                sample = self.ds[frame_idx]
-            if sample is None:
-                return None
+        if timesteps > 10:
+            idxs = [seq_start + t * seq_step for t in range(timesteps)]
+            seq = preload_ds(self.ds, idxs=idxs)
+        else:
+            for t in range(timesteps):
+                frame_idx = seq_start + t * seq_step
+                if self.do_preload:
+                    sample = self.seq[frame_idx]
+                else:
+                    sample = self.ds[frame_idx]
+                if sample is None:
+                    return None
+                seq.append(sample)
+
+        for idx, sample in enumerate(seq):
             if self.transforms_rgb is not None:
                 if t == 0:
                     t_res = self.transforms_rgb(image=adjust_img_for_plt(sample["rgb"]))
@@ -99,8 +106,8 @@ class VideoDataset(Dataset):
                     t_res = apply_replay_transform(adjust_img_for_plt(sample["rgb"]), t_res)
                 new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
                 new_sample["rgb"] = adjust_img_for_torch(t_res["image"])
-                sample = new_sample
-            seq.append(sample)
+                seq[idx] = new_sample
+
         return seq
 
 
