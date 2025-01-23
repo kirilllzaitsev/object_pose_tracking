@@ -235,6 +235,12 @@ def get_trackformer_args(args):
     tf_args.deformable = args.tf_use_deformable
 
     tf_args.focal_loss = args.tf_use_focal_loss
+    tf_args.use_kpts = args.tf_use_kpts
+    tf_args.use_kpts_as_ref_pt = args.tf_use_kpts_as_ref_pt
+    tf_args.use_kpts_as_img = args.tf_use_kpts_as_img
+
+    if args.tf_use_kpts:
+        tf_args.lr_backbone_names = ['extractor']
 
     tf_args.multi_frame_attention = True
     tf_args.merge_frame_features = args.tf_do_merge_frame_features
