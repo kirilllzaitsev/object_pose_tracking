@@ -199,11 +199,16 @@ class VideoDatasetTracking(VideoDataset):
                 rot_gt_rel = convert_rotation_representation(rot_gt_rel_mat, rot_representation=self.ds.rot_repr)
 
                 if self.t_repr == "2d":
-                    t_2d_norm_rel, center_depth_rel = convert_3d_t_for_2d(
-                        t_gt_rel, intrinsics=new_sample["intrinsics"][None], hw=new_sample["size"]
+                    prev_t_gt_2d, _ = convert_3d_t_for_2d(
+                        new_sample["prev_t"][None],
+                        intrinsics=new_sample["prev_intrinsics"][None],
+                        hw=new_sample["prev_size"],
                     )
-                    new_sample["center_depth_rel"] = center_depth_rel[None]
-                    new_sample["xy_rel"] = t_2d_norm_rel
+                    t_gt_2d, _ = convert_3d_t_for_2d(
+                        new_sample["t"][None], intrinsics=new_sample["intrinsics"][None], hw=new_sample["size"]
+                    )
+                    new_sample["xy_rel"] = t_gt_2d - prev_t_gt_2d
+                    new_sample["center_depth_rel"] = t_gt_rel[..., 2:]
                 else:
                     new_sample["t_rel"] = t_gt_rel
                 new_sample["pose_rel"] = torch.cat([t_gt_rel, rot_gt_rel], dim=-1)
@@ -215,6 +220,8 @@ class VideoDatasetTracking(VideoDataset):
                 new_sample[k] = new_sample[k].float()
                 new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
 
+            frame_idx = idxs[idx]
+            frame_idx_prev = idxs[idx - 1]
             new_sample["image_id"] = torch.tensor([frame_idx])
             new_sample["track_ids"] = torch.tensor(
                 [0]
@@ -257,8 +264,10 @@ class VideoDatasetTracking(VideoDataset):
 
             new_sample["target"]["prev_target"] = new_sample.pop("prev_target")
 
-            sample = new_sample
-            seq.append(sample)
+            seq[idx - 1] = new_sample
+
+        seq = seq[:-1]  # the last one does not have a pair
+
         return seq
 
 
