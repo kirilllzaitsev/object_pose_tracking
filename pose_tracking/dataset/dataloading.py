@@ -36,7 +36,9 @@ def load_sample(i, ds):
     return ds[i]
 
 
-def preload_ds(ds):
+def preload_ds(ds, last_idx=None, idxs=None):
+    last_idx = len(ds) if last_idx is None else last_idx
+    idxs = range(last_idx) if idxs is None else idxs
     with ThreadPool() as pool:
-        seq = pool.map(functools.partial(load_sample, ds=ds), range(len(ds)))
+        seq = pool.map(functools.partial(load_sample, ds=ds), idxs)
     return seq
