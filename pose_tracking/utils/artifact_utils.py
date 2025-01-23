@@ -129,23 +129,24 @@ def load_from_ckpt(
     }
 
 
-def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int, suffix=None) -> str:
+def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int, suffix=None, do_log_session=False) -> str:
     """Logs the training artifacts to the experiment and saves the model and session to the log directory."""
 
     suffix = epoch if suffix is None else suffix
     save_path_model = os.path.join(log_dir, f"model_{suffix}.pth")
     save_model(artifacts["model"], save_path_model)
-    save_path_session = os.path.join(log_dir, "session.pth")
-    torch.save(
-        {
-            "optimizer": artifacts["optimizer"].state_dict(),
-            "scheduler": artifacts["scheduler"].state_dict(),
-            "epoch": epoch,
-        },
-        save_path_session,
-    )
     log_ckpt_to_exp(exp, save_path_model, "ckpt")
-    log_ckpt_to_exp(exp, save_path_session, "ckpt")
+    if do_log_session:
+        save_path_session = os.path.join(log_dir, "session.pth")
+        torch.save(
+            {
+                "optimizer": artifacts["optimizer"].state_dict(),
+                "scheduler": artifacts["scheduler"].state_dict(),
+                "epoch": epoch,
+            },
+            save_path_session,
+        )
+        log_ckpt_to_exp(exp, save_path_session, "ckpt")
     return save_path_model
 
 

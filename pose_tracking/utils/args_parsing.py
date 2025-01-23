@@ -171,6 +171,9 @@ def get_parser():
     tf_args.add_argument("--tf_do_merge_frame_features", action="store_true", help="Concat frame features at t-1 and t")
     tf_args.add_argument("--tf_use_box_refine", action="store_true", help="Use box refinement")
     tf_args.add_argument("--tf_use_focal_loss", action="store_true", help="Use focal_loss")
+    tf_args.add_argument("--tf_use_kpts", action="store_true", help="Use keypoints in tf")
+    tf_args.add_argument("--tf_use_kpts_as_ref_pt", action="store_true", help="Use keypoints as reference points for encoder")
+    tf_args.add_argument("--tf_use_kpts_as_img", action="store_true", help="Use keypoints instead of images")
     tf_args.add_argument("--tf_bbox_loss_coef", type=float, default=5)
     tf_args.add_argument("--tf_giou_loss_coef", type=float, default=2)
     tf_args.add_argument("--tf_ce_loss_coef", type=float, default=2)
@@ -293,7 +296,7 @@ def get_parser():
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
     data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step")
-    data_args.add_argument("--max_random_seq_step", type=int, default=8, help="Max random step when sampling sequences")
+    data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(

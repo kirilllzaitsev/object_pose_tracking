@@ -612,12 +612,17 @@ def bbox_to_8_point_centered(min_coords=None, max_coords=None, center=None, bbox
 
 def convert_3d_t_for_2d(t_gt_abs, intrinsics, hw):
     t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
-    t_gt_2d_norm = t_gt_2d.clone()
-    t_gt_2d_norm[..., 0] = t_gt_2d_norm[..., 0] / hw[1]
-    t_gt_2d_norm[..., 1] = t_gt_2d_norm[..., 1] / hw[0]
+    t_gt_2d_norm = normalize_2d_kpts(t_gt_2d, hw)
 
     depth_gt = t_gt_abs[..., 2]
     return t_gt_2d_norm, depth_gt
+
+
+def normalize_2d_kpts(t_gt_2d, hw):
+    t_gt_2d_norm = t_gt_2d.clone()
+    t_gt_2d_norm[..., 0] = t_gt_2d_norm[..., 0] / hw[1]
+    t_gt_2d_norm[..., 1] = t_gt_2d_norm[..., 1] / hw[0]
+    return t_gt_2d_norm
 
 
 def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):

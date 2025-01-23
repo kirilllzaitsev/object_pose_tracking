@@ -148,7 +148,7 @@ def load_artifacts_from_comet(
             sorted_assets = sorted(logged_models, key=lambda x: x["step"], reverse=True)
             model_assets = [x for x in sorted_assets if artifact_name in x["fileName"]]
             if len(model_assets) == 0:
-                print(f"WARN: No model found with name {artifact_name}")
+                print(f"WARN: No model found with name {artifact_name}. Trying the alternative")
                 artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
                 model_assets = [x for x in sorted_assets if artifact_name in x["fileName"]]
                 assert len(model_assets) > 0, f"No model found with name {artifact_name}"

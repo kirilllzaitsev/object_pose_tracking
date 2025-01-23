@@ -63,7 +63,10 @@ def reduce_metric(value, world_size):
     """Synchronize and average a metric across all processes."""
     if world_size < 2:
         return value
-    tensor = torch.tensor(value, device="cuda")
+    if not is_tensor(value):
+        tensor = torch.tensor(value, device="cuda")
+    else:
+        tensor = value
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
     return tensor.item() / world_size
 
