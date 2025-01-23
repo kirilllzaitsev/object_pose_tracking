@@ -123,7 +123,6 @@ class VideoDatasetTracking(VideoDataset):
         self.pose_mat_to_vector_converter_fn = functools.partial(convert_pose_matrix_to_vector, rot_repr=self.rot_repr)
 
     def __getitem__(self, idx):
-        seq = []
         timesteps = min(self.seq_len, len(self.ds) - 1)
         seq_start = self.seq_start
         seq_step = self.seq_step
@@ -144,13 +143,17 @@ class VideoDatasetTracking(VideoDataset):
 
         assert seq_step > 0, f"{seq_step=}"
 
-        for t in range(timesteps):
-            frame_idx = seq_start + t * seq_step
-            frame_idx_prev = frame_idx - seq_step
-            sample = self.ds[frame_idx]
+        idxs = [seq_start - seq_step] + [seq_start + t * seq_step for t in range(timesteps)]
+        if timesteps > 50:
+            seq = preload_ds(self.ds, idxs=idxs)
+        else:
+            seq = [self.ds[idx] for idx in idxs]
+
+        for idx in range(1, len(seq)):
+            sample = seq[idx]
+            sample_prev = seq[idx - 1]
             if sample is None:
                 return None
-            sample_prev = self.ds[frame_idx_prev]
             if sample_prev is None:
                 return None
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
