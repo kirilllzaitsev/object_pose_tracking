@@ -243,19 +243,35 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             broadcast_buffers=False,  # how does this affect training on diff subsets
         )
 
-    optimizer = optim.AdamW(
-        [
-            {
-                "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
-                "lr": args.lr_encoders,
-            },
-            {
-                "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
-                "lr": args.lr,
-            },
-        ],
-        weight_decay=args.weight_decay,
+    trainer = get_trainer(
+        args,
+        model,
+        device=device,
+        writer=writer,
+        world_size=world_size,
+        logger=logger,
+        do_vis=args.do_vis and is_main_process,
+        exp_dir=logdir,
+        num_classes=num_classes,
     )
+
+    if "cnnlstm" in args.model_name:
+        optimizer = optim.AdamW(
+            [
+                {
+                    "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
+                    "lr": args.lr_encoders,
+                },
+                {
+                    "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
+                    "lr": args.lr,
+                },
+            ],
+            weight_decay=args.weight_decay,
+        )
+    else:
+        optimizer = trainer.optimizer
+        
     if args.lrs_type == "step" or not args.use_lrs:
         lr_scheduler = optim.lr_scheduler.StepLR(
             optimizer,
