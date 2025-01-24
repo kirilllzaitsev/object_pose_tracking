@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 
 import numpy as np
@@ -22,6 +23,7 @@ def get_ds_sample(
     pixels_masked_max_percent=0.1,
     rot_repr="quaternion",
     t_repr="3d",
+    max_depth_m=np.inf,
 ):
     if transforms_rgb is not None:
         transformed = transforms_rgb(image=color)
@@ -51,6 +53,8 @@ def get_ds_sample(
             hw = rgb.shape[-2:]
             t_2d_norm, center_depth = convert_3d_t_for_2d(cast_to_torch(t), cast_to_torch(intrinsics), hw)
             sample["center_depth"] = center_depth[None]
+            if math.isfinite(max_depth_m):
+                sample["center_depth"] = sample["center_depth"] / max_depth_m
             sample["xy"] = t_2d_norm
         if rot_repr is not None:
             quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
@@ -158,7 +162,7 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
     # from keyxseq_lenxbatch to batchxseq_lenxkey
     res = []
     keys = keys or batch.keys()
-    img_key = "rgb" if "rgb" in batch and len(batch['rgb']) else "image"
+    img_key = "rgb" if "rgb" in batch and len(batch["rgb"]) else "image"
     for bidx in range(len(batch[img_key][0])):
         news = []
         for sidx in range(len(batch[img_key])):

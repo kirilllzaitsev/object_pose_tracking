@@ -55,6 +55,7 @@ class TrackingDataset(Dataset):
         color_file_id_strs=None,
         rot_repr="quaternion",
         t_repr="3d",
+        is_intrinsics_for_all_samples=True,
     ):
         self.include_rgb = include_rgb
         self.include_mask = include_mask
@@ -84,16 +85,17 @@ class TrackingDataset(Dataset):
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
         if color_file_id_strs is not None:
             self.color_files = [f for f in self.color_files if Path(f).stem in color_file_id_strs]
-        self.end_frame_idx = end_frame_idx or len(self.color_files)
-        self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
-        self.num_frames = len(self.color_files)
 
         self.id_strs = [Path(f).stem for f in self.color_files]
         self.pose_files = self.get_pose_paths()
+        self.end_frame_idx = end_frame_idx or len(self.color_files)
+        self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
+        self.pose_files = self.pose_files[self.start_frame_idx : self.end_frame_idx]
+        self.num_frames = len(self.color_files)
 
         self.mesh = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
-        self.init_mask = self.get_mask(0)
+        self.init_mask = self.get_mask(0) if include_mask else None
         self.t_dim = 3 if t_repr == "3d" else 2
 
         if shorter_side is not None:
@@ -102,14 +104,15 @@ class TrackingDataset(Dataset):
         self.h = int(self.h * self.downscale)
         self.w = int(self.w * self.downscale)
 
-        intrinsics_path = f"{video_dir}/cam_K.txt"
-        if not os.path.exists(intrinsics_path):
-            intrinsics_path = f"{video_dir}/intrinsics.txt"
-        if os.path.exists(intrinsics_path):
-            self.K = np.loadtxt(intrinsics_path).reshape(3, 3)
-            self.K[:2] *= self.downscale
-        else:
-            print(f"Could not find intrinsics file at {intrinsics_path}")
+        if is_intrinsics_for_all_samples:
+            intrinsics_path = f"{video_dir}/cam_K.txt"
+            if not os.path.exists(intrinsics_path):
+                intrinsics_path = f"{video_dir}/intrinsics.txt"
+            if os.path.exists(intrinsics_path):
+                self.K = np.loadtxt(intrinsics_path).reshape(3, 3)
+                self.K[:2] *= self.downscale
+            else:
+                print(f"Could not find intrinsics file at {intrinsics_path}")
 
     def __len__(self):
         return self.num_frames
@@ -223,7 +226,19 @@ class TrackingDataset(Dataset):
         self.mesh_path_orig = mesh_path
 
     def __repr__(self):
-        return print_cls(self, excluded_attrs=["color_files", "pose_files", "id_strs", "init_mask", "mesh_pts"])
+        return print_cls(
+            self,
+            excluded_attrs=[
+                "color_files",
+                "pose_files",
+                "id_strs",
+                "init_mask",
+                "mesh_pts",
+                "meta_file",
+                "color_file_id_strs",
+                "meta_paths",
+            ],
+        )
 
 
 class TrackingDatasetEval:

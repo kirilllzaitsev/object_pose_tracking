@@ -40,7 +40,12 @@ class HO3DDataset(TrackingDataset):
         # print(f"Taking {len(color_file_id_strs)}/{len(meta_paths)} frames from {Path(video_dir).name}")
 
         super().__init__(
-            *args, video_dir=video_dir, rgb_file_extension="jpg", color_file_id_strs=color_file_id_strs, **kwargs
+            *args,
+            video_dir=video_dir,
+            rgb_file_extension="jpg",
+            color_file_id_strs=color_file_id_strs,
+            is_intrinsics_for_all_samples=False,
+            **kwargs,
         )
 
         self.meta_file_path = self.color_files[0].replace(".jpg", ".pkl").replace("rgb", "meta")
