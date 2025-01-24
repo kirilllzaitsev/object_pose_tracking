@@ -92,9 +92,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         gpus_per_node = int(os.environ["SLURM_GPUS_ON_NODE"])
         assert gpus_per_node == torch.cuda.device_count()
 
-    args.lr_encoders = args.lr_encoders * np.sqrt(world_size)
-    args.lr = args.lr * np.sqrt(world_size)
-
     external_tools = True
     if exp_tools is None:
         external_tools = False
