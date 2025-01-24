@@ -240,7 +240,7 @@ def get_trackformer_args(args):
     tf_args.use_kpts_as_img = args.tf_use_kpts_as_img
 
     if args.tf_use_kpts:
-        tf_args.lr_backbone_names = ['extractor']
+        tf_args.lr_backbone_names = ["extractor"]
 
     tf_args.multi_frame_attention = True
     tf_args.merge_frame_features = args.tf_do_merge_frame_features
@@ -426,6 +426,8 @@ def get_datasets(
     t_repr="3d",
     max_random_seq_step=8,
     do_predict_rel_pose=False,
+    seq_len_max_val=200,
+    max_depth_m=10,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -438,7 +440,7 @@ def get_datasets(
     include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
     ds_kwargs_common = dict(
         shorter_side=None,
-        zfar=10,
+        zfar=max_depth_m,
         include_mask=include_mask,
         include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model,
         include_bbox_2d=include_bbox_2d,
@@ -502,7 +504,7 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_train,
                 ds_name=ds_name,
-                seq_len=None,
+                seq_len=seq_len_max_val,
                 seq_step=1,
                 seq_start=0,
                 ds_kwargs=train_ds_kwargs,
@@ -528,7 +530,7 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
-                seq_len=seq_len if is_pizza_model else None,
+                seq_len=seq_len if is_pizza_model else seq_len_max_val,
                 seq_step=seq_step if is_pizza_model else 1,
                 seq_start=0,
                 ds_kwargs=val_ds_kwargs,
