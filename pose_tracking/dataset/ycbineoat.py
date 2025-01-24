@@ -41,6 +41,7 @@ class YCBineoatDataset(TrackingDataset):
             kwargs["end_frame_idx"] = -80
         elif "sugar_box1" in str(kwargs["video_dir"]):
             kwargs["end_frame_idx"] = 840
+        kwargs["start_frame_idx"] = kwargs.pop("start_frame_idx", 50)  # remove still frames
 
         super().__init__(*args, pose_dirname="annotated_poses", **kwargs)
         self.ycb_meshes_dir = ycb_meshes_dir
