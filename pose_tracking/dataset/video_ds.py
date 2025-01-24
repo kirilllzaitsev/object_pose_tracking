@@ -84,21 +84,19 @@ class VideoDataset(Dataset):
 
         assert seq_step > 0, f"{seq_step=}"
 
-        if timesteps > 10:
-            idxs = [seq_start + t * seq_step for t in range(timesteps)]
+        idxs = [seq_start + t * seq_step for t in range(timesteps)]
+        if self.do_preload:
+            seq = [self.seq[idx] for idx in idxs]
+        elif timesteps > 10:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             for t in range(timesteps):
-                frame_idx = seq_start + t * seq_step
-                if self.do_preload:
-                    sample = self.seq[frame_idx]
-                else:
-                    sample = self.ds[frame_idx]
-                if sample is None:
-                    return None
+                sample = self.ds[idxs[t]]
                 seq.append(sample)
 
         for idx, sample in enumerate(seq):
+            if sample is None:
+                return None
             if self.transforms_rgb is not None:
                 if t == 0:
                     t_res = self.transforms_rgb(image=adjust_img_for_plt(sample["rgb"]))
@@ -144,7 +142,10 @@ class VideoDatasetTracking(VideoDataset):
         assert seq_step > 0, f"{seq_step=}"
 
         idxs = [seq_start - seq_step] + [seq_start + t * seq_step for t in range(timesteps)]
-        if timesteps > 50:
+
+        if self.do_preload:
+            seq = [self.seq[idx] for idx in idxs]
+        elif timesteps > 10:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             seq = [self.ds[idx] for idx in idxs]
