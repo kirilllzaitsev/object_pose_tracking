@@ -139,52 +139,19 @@ class TrainerDeformableDETR(Trainer):
 
     def loader_forward(
         self,
-        loader,
-        *,
+        *args,
         optimizer=None,
-        save_preds=False,
-        preds_dir=None,
         stage="train",
+        **kwargs,
     ):
         if stage == "train":
-            self.train_epoch_count += 1
-        running_stats = defaultdict(float)
-        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
-        seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
-        if stage == "train":
             optimizer = self.optimizer
-
-        for seq_pack_idx, batched_seq in enumerate(seq_pbar):
-            seq_stats = self.batched_seq_forward(
-                batched_seq=batched_seq,
-                optimizer=optimizer,
-                save_preds=save_preds,
-                preds_dir=preds_dir,
-                stage=stage,
-                do_vis=do_vis,
-            )
-
-            for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
-                running_stats[k] += v
-                if self.do_log and self.do_log_every_seq:
-                    self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
-            self.seq_counts_per_stage[stage] += 1
-
-            if self.do_print_seq_stats:
-                seq_pbar.set_postfix({k: v / (seq_pack_idx + 1) for k, v in running_stats.items()})
-
-            do_vis = False  # only do vis for the first seq
-
-        for k, v in running_stats.items():
-            if self.use_ddp:
-                v = reduce_metric(v, world_size=self.world_size)
-            running_stats[k] = v / len(loader)
-
-        if self.do_log:
-            for k, v in running_stats.items():
-                self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
-
-        return running_stats
+        return super().loader_forward(
+            *args,
+            optimizer=optimizer,
+            stage=stage,
+            **kwargs,
+        )
 
     def batched_seq_forward(
         self,
