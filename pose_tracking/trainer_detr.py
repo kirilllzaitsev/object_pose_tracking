@@ -105,12 +105,20 @@ class TrainerDeformableDETR(Trainer):
 
         if "detr_kpt" in args.model_name:
             self.encoder_module_prefix = "extractor"
-            # for p in self.model_without_ddp.extractor.parameters():
-            #     p.requires_grad = False
-        elif "detr" in args.model_name:
+        elif "detr" in args.model_name or "trackformer" in args.model_name:
             self.encoder_module_prefix = "backbone"
         else:
-            self.encoder_module_prefix = ""
+            self.encoder_module_prefix = None
+
+        if self.args.do_freeze_encoders:
+            self.freeze_encoder()
+
+        params_wo_grad = [
+            (i, n) for i, (n, p) in enumerate(self.model_without_ddp.named_parameters()) if not p.requires_grad
+        ]
+        if len(params_wo_grad):
+            self.logger.warning(f"Params without grad: {params_wo_grad}")
+            self.logger.warning(f"{len(params_wo_grad)=}")
 
         param_dicts = [
             {
@@ -136,6 +144,11 @@ class TrainerDeformableDETR(Trainer):
             lr=args.lr,
             weight_decay=args.weight_decay,
         )
+
+    def freeze_encoder(self):
+        for name, p in self.model_without_ddp.named_parameters():
+            if is_param_part_of_encoders(name, self.encoder_module_prefix):
+                p.requires_grad = False
 
     def loader_forward(
         self,
@@ -255,9 +268,7 @@ class TrainerDeformableDETR(Trainer):
 
                 if self.do_predict_2d_t:
                     center_depth_pred = out["center_depth"][idx]
-                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                        t_pred, center_depth_pred, intrinsics, hw=(h, w)
-                    )
+                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics, hw=(h, w))
                     t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
                 rot_pred = out["rot"][idx]
@@ -409,8 +420,12 @@ class TrainerDeformableDETR(Trainer):
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
+        num_steps = seq_length
+        if self.do_predict_rel_pose:
+            num_steps -= 1
+
         if do_opt_in_the_end:
-            total_loss /= seq_length
+            total_loss /= num_steps
             optimizer.zero_grad()
             total_loss.backward()
             unused_params = []
@@ -430,7 +445,7 @@ class TrainerDeformableDETR(Trainer):
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
-                stats[k] = v / seq_length
+                stats[k] = v / num_steps
 
         if nan_count > 0:
             seq_metrics["nan_count"] = nan_count
