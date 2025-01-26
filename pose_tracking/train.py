@@ -133,6 +133,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         num_classes = None
 
+    args.num_classes = num_classes
     if is_main_process:
         log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
     print_args(args, logger=logger)
@@ -268,7 +269,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         )
     else:
         optimizer = trainer.optimizer
-        
+
     if args.lrs_type == "step" or not args.use_lrs:
         lr_scheduler = optim.lr_scheduler.StepLR(
             optimizer,

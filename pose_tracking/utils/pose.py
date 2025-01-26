@@ -32,6 +32,12 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
     pose_matrix[..., :3, 3] = t
 
     rot = pose[..., 3:]
+    rot_mat = convert_rot_vector_to_matrix(rot, rot_repr)
+    pose_matrix[..., :3, :3] = rot_mat
+    return pose_matrix
+
+
+def convert_rot_vector_to_matrix(rot, rot_repr="quaternion"):
     if rot_repr == "quaternion":
         assert rot.shape[-1] == 4, rot.shape
         rot_mat = quaternion_to_matrix(rot)
@@ -43,9 +49,7 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
         rot_mat = rotation_6d_to_matrix(rot)
     else:
         raise ValueError(f"Unknown rotation representation: {rot_repr}")
-
-    pose_matrix[..., :3, :3] = rot_mat
-    return pose_matrix
+    return rot_mat
 
 
 def convert_pose_matrix_to_vector(pose, rot_repr="quaternion"):

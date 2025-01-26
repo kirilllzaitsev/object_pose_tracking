@@ -560,8 +560,8 @@ def plot_optical_flow(flow):
 
 
 @plot
-def plot_pose(color, pose, K, bbox=None, scale=0.05):
-    return vis_pose(color, pose, K, bbox=bbox, scale=scale)
+def plot_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
+    return vis_pose(color, pose, K, bbox=bbox, scale=scale, bbox_color=bbox_color)
 
 
 def plot_rgb_depth(color, depth, axs=None):

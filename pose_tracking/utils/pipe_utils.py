@@ -274,6 +274,7 @@ def get_trackformer_args(args):
     tf_args.opt_only = args.opt_only
 
     tf_args.backbone = args.encoder_name
+    tf_args.head_num_layers = args.rt_mlps_num_layers
 
     return tf_args
 
