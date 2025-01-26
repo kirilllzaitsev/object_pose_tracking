@@ -45,10 +45,10 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
         extra_tags.append(f"{tag_prefix}{v}")
 
     tags_to_log = extra_tags
-    if len(args.exp_tags) > 0 and args.exp_tags[0] != "":
+    if len(args.exp_tags) > 0:
         # et=exp tags
         tag_prefix = "et_"
-        tags_to_log += [f"{tag_prefix}{x}" for x in args.exp_tags]
+        tags_to_log += [f"{tag_prefix}{x}" for x in args.exp_tags if x]
     exp.add_tags(tags_to_log)
 
 
@@ -243,7 +243,7 @@ def create_tracking_exp(
     api_key = get_comet_api_key()
     exp_init_args = dict(
         api_key=api_key,
-        auto_output_logging="simple",
+        auto_output_logging="native",
         auto_metric_logging=True,
         auto_param_logging=False,
         log_env_details=True,
@@ -251,7 +251,7 @@ def create_tracking_exp(
         log_env_gpu=True,
         log_env_cpu=True,
         log_code=False,
-        parse_args=True,
+        parse_args=False,
         display_summary_level=0,
         disabled=disabled,
     )
