@@ -636,8 +636,12 @@ class Trainer:
             out_prev = {"t": out["t"], "rot": out["rot"]}
             prev_latent = out["prev_latent"].detach() if self.use_prev_latent else None
 
+        num_steps = seq_length
+        if self.do_predict_rel_pose:
+            num_steps -= 1
+
         if do_opt_in_the_end:
-            total_loss /= seq_length
+            total_loss /= num_steps
             optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
@@ -649,7 +653,7 @@ class Trainer:
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
-                stats[k] = v / seq_length
+                stats[k] = v / num_steps
 
         if nan_count > 0:
             seq_metrics["nan_count"] = nan_count
