@@ -67,6 +67,9 @@ def get_parser():
         help="Apply noise to init gt pose for relative pose estimation",
     )
     train_args.add_argument(
+        "--include_abs_pose_loss_for_rel", action="store_true", help="Include additional abs pose loss when training with relative pose"
+    )
+    train_args.add_argument(
         "--do_chunkify_val", action="store_true", help="Chunkify validation into train's seq_length"
     )
     train_args.add_argument("--vis_epoch_freq", type=int, default=3, help="Visualize a random sequence every N epochs")

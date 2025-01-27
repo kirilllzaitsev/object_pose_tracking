@@ -82,6 +82,7 @@ class Trainer:
         do_print_seq_stats=False,
         use_ddp=False,
         use_prev_pose_condition=False,
+        include_abs_pose_loss_for_rel=False,
         do_predict_rel_pose=False,
         do_predict_kpts=False,
         do_chunkify_val=False,
@@ -147,6 +148,7 @@ class Trainer:
 
         self.do_reset_state = True
         self.use_pose_loss = criterion_pose is not None
+        self.include_abs_pose_loss_for_rel = include_abs_pose_loss_for_rel and do_predict_rel_pose
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
@@ -459,6 +461,16 @@ class Trainer:
                     else:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_abs)
 
+                if self.include_abs_pose_loss_for_rel:
+                    loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
+                    loss_t += loss_t_abs
+                    if self.use_rot_mat_for_loss:
+                        loss_rot_abs = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
+                    else:
+                        rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
+                        loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
+                    loss_rot += loss_rot_abs
+
                 if self.opt_only is None:
                     loss = self.tf_t_loss_coef * loss_t + self.tf_rot_loss_coef * loss_rot
                 else:
@@ -540,6 +552,9 @@ class Trainer:
             else:
                 seq_stats["loss_rot"] += loss_rot
                 seq_stats["loss_t"] += loss_t
+                if self.include_abs_pose_loss_for_rel:
+                    seq_stats["loss_t_abs"] += loss_t_abs
+                    seq_stats["loss_rot_abs"] += loss_rot_abs
             if "priv_decoded" in out:
                 seq_stats["loss_priv"] += loss_priv
             if self.do_predict_kpts:

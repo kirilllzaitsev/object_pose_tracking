@@ -358,6 +358,7 @@ def get_trainer(
         do_perturb_init_gt_for_rel_pose=args.do_perturb_init_gt_for_rel_pose,
         tf_t_loss_coef=args.tf_t_loss_coef,
         tf_rot_loss_coef=args.tf_rot_loss_coef,
+        include_abs_pose_loss_for_rel=args.include_abs_pose_loss_for_rel,
         **extra_kwargs,
     )
 
