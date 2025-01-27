@@ -350,6 +350,10 @@ class Trainer:
                         [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)], dim=1
                     )
 
+                    if save_preds:
+                        assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                        save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
+
                     continue
 
             if self.use_prev_pose_condition:
@@ -611,7 +615,8 @@ class Trainer:
                         vis_data["pose_mat_gt_rel"].append(detach_and_cpu(pose_mat_gt_rel))
                     else:
                         vis_data["t_gt_rel"].append(detach_and_cpu(t_gt_rel))
-                        vis_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
+                        if not self.use_rot_mat_for_loss:
+                            vis_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
                         vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
 
