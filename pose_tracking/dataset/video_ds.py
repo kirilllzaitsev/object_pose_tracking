@@ -94,7 +94,7 @@ class VideoDataset(Dataset):
                 sample = self.ds[idxs[t]]
                 seq.append(sample)
 
-        for idx, sample in enumerate(seq):
+        for t, sample in enumerate(seq):
             if sample is None:
                 return None
             if self.transforms_rgb is not None:
@@ -104,7 +104,7 @@ class VideoDataset(Dataset):
                     t_res = apply_replay_transform(adjust_img_for_plt(sample["rgb"]), t_res)
                 new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
                 new_sample["rgb"] = adjust_img_for_torch(t_res["image"])
-                seq[idx] = new_sample
+                seq[t] = new_sample
 
         return seq
 
