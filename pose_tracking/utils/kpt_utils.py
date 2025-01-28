@@ -189,6 +189,9 @@ def load_kpt_det_and_match(features, filter_threshold=0.1):
 def load_extractor(features, max_num_keypoints=1024):
     if features == "superpoint":
         extractor = SuperPoint(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
+        for n,p in extractor.named_parameters():
+            if 'convPa' in n or 'convPb' in n:
+                p.requires_grad = False
     elif features == "disk":
         # or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
         extractor = DISK(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
