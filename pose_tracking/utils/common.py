@@ -22,6 +22,11 @@ def print_args(args, logger=None):
 
 def adjust_img_for_plt(img):
     img = cast_to_numpy(img)
+    if len(img.shape) == 4:
+        if img.shape[0] == 1:
+            img = img[0]
+        else:
+            raise RuntimeError(f"Expected 1 image, got {img.shape[0]}")
     if img.shape[0] == 1 or img.shape[0] == 3:
         img = img.transpose(1, 2, 0)
     if np.max(img) <= 1:
@@ -32,6 +37,11 @@ def adjust_img_for_plt(img):
 
 def adjust_depth_for_plt(img):
     img = cast_to_numpy(img)
+    if len(img.shape) == 4:
+        if img.shape[0] == 1:
+            img = img[0]
+        else:
+            raise RuntimeError(f"Expected 1 image, got {img.shape[0]}")
     if img.shape[0] == 1:
         img = img.transpose(1, 2, 0)
     return img

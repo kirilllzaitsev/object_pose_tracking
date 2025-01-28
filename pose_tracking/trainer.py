@@ -146,7 +146,7 @@ class Trainer:
         else:
             self.model_without_ddp = self.model
 
-        self.do_reset_state = True
+        self.do_reset_state = "lstm" in model_name
         self.use_pose_loss = criterion_pose is not None
         self.include_abs_pose_loss_for_rel = include_abs_pose_loss_for_rel and do_predict_rel_pose
         self.do_log = writer is not None
@@ -154,6 +154,7 @@ class Trainer:
         self.vis_dir = f"{self.exp_dir}/vis"
         self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement", "geodesic_mat"]
         self.save_vis_paths = []
+        self.seq_stats_all_seq = defaultdict(lambda: defaultdict(list))
 
         self.processed_data = defaultdict(list)
         self.seq_counts_per_stage = defaultdict(int)
@@ -568,6 +569,9 @@ class Trainer:
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
                     self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+            if self.do_debug:
+                for k, v in {**m_batch_avg, **{"loss_rot": loss_rot.item(), "loss_t": loss_t.item()}}.items():
+                    self.seq_stats_all_seq[self.seq_counts_per_stage[stage]][k].append(v)
 
             self.ts_counts_per_stage[stage] += 1
 

@@ -155,8 +155,6 @@ class MLP(nn.Module):
 
         if num_layers > 1:
             self.layers = []
-            if dropout > 0:
-                self.layers.append(nn.Dropout(dropout))
             self.layers.append(nn.Linear(in_dim, hidden_dim))
             for i in range(num_layers - 2):
                 if dropout > 0:
