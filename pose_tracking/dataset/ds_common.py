@@ -171,16 +171,16 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
     return res
 
 
-def convert_batch_seq_to_seq_batch(batch, keys=None):
+def convert_batch_seq_to_seq_batch(batch, keys=None, device=None):
     # from keyxbatchxseq_len to seq_lenxkeyxbatch
     res = []
-    img_key = "rgb" if "rgb" in batch else "image"
     keys = keys or batch.keys()
-    for sidx in range(len(batch[img_key][0])):
-        news = {}
+    keys = list(keys)
+    for sidx in range(len(batch[keys[0]][0])):
+        news = defaultdict(list)
         for k, v in batch.items():
             if k in keys:
                 news[k] = [v[bidx][sidx] for bidx in range(len(v))]
-                news[k] = cast_to_numpy(news[k])
+                news[k] = cast_to_torch(news[k], include_top_list=True, device=device)
         res.append(news)
     return res
