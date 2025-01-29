@@ -15,6 +15,8 @@ def transfer_batch_to_device(batch: t.Union[dict, list], device):
 
 def _transfer_batch_to_device(batch: dict, device: DeviceType) -> dict:
     """Transfer the batch of data to the device. The data can be a dictionary, list, or a tensor."""
+    if not isinstance(batch, dict):
+        return batch
     for k, v in batch.items():
         if is_tensor(v):
             batch[k] = to(v, device)

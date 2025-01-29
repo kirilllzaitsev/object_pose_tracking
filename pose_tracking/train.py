@@ -253,7 +253,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         num_classes=num_classes,
     )
 
-    if "cnnlstm" in args.model_name:
+    if any(x in args.model_name for x in ["cnnlstm", "pizza"]):
         optimizer = optim.AdamW(
             [
                 {

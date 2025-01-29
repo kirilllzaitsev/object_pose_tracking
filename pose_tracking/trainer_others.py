@@ -310,7 +310,7 @@ class TrainerPizza(Trainer):
             rot_pred, t_pred = out["rot"], out["t"]
 
             if self.do_predict_2d_t:
-                center_depth_pred = out["center_depth"]
+                center_depth_pred = out["center_depth"].squeeze(-1)
                 convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics.float(), hw=hw)
                 t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
