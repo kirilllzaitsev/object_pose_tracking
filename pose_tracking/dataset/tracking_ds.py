@@ -90,12 +90,14 @@ class TrackingDataset(Dataset):
         self.pose_files = self.get_pose_paths()
         self.end_frame_idx = end_frame_idx or len(self.color_files)
         self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
+        self.color_files = np.array(self.color_files)
         self.pose_files = self.pose_files[self.start_frame_idx : self.end_frame_idx]
+        self.pose_files = np.array(self.pose_files)
         self.num_frames = len(self.color_files)
 
         self.mesh = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
-        self.init_mask = self.get_mask(0) if include_mask else None
+        self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
         self.t_dim = 3 if t_repr == "3d" else 2
 
         if shorter_side is not None:
@@ -109,7 +111,7 @@ class TrackingDataset(Dataset):
             if not os.path.exists(intrinsics_path):
                 intrinsics_path = f"{video_dir}/intrinsics.txt"
             if os.path.exists(intrinsics_path):
-                self.K = np.loadtxt(intrinsics_path).reshape(3, 3)
+                self.K = torch.tensor(np.loadtxt(intrinsics_path).reshape(3, 3))
                 self.K[:2] *= self.downscale
             else:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
