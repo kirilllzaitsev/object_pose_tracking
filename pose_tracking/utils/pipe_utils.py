@@ -33,8 +33,10 @@ from pose_tracking.dataset.video_ds import (
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
+from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
+from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -49,9 +51,15 @@ def get_model(args, num_classes=None):
         # args.backbone = "transformer"
         model = VideoPose(args)
     elif args.model_name == "pizza":
-        from pizza.lib.model.network import PIZZA
 
-        model = PIZZA(backbone="resnet18", img_feature_dim=512, multi_frame=False).cuda()
+        model_pizza = PIZZA(
+            backbone=args.encoder_name,
+            img_feature_dim=args.encoder_out_dim,
+            multi_frame=False,
+            # multi_frame=True,
+        )
+
+        model = PizzaWrapper(model_pizza)
     elif args.model_name == "detr":
         from deformable_detr.models.backbone import build_backbone
         from deformable_detr.models.deformable_detr import DeformableDETR
@@ -98,6 +106,7 @@ def get_model(args, num_classes=None):
         model, *_ = build_model(detr_args, num_classes=num_classes + 1)
 
         if args.use_pretrained_model:
+            # mind bbox embed. should have 3 layers
             assert args.hidden_dim == 288, args.hidden_dim
             obj_detect_checkpoint = torch.load(
                 f"{TF_DIR}/models/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint_hidden_dim_288.pth",
@@ -294,7 +303,9 @@ def get_trainer(
     if args.model_name in ["videopose"]:
         trainer_cls = TrainerVideopose
     elif args.model_name in ["pizza"]:
+        assert args.do_predict_rel_pose and args.t_repr == "2d" and args.rot_repr == "axis_angle"
         trainer_cls = TrainerPizza
+        # trainer_cls = Trainer
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
     elif "trackformer" in args.model_name:
