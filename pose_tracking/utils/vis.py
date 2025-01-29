@@ -425,7 +425,7 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
 
 
 def plot_seq(
-    seq, keys_to_plot=None, take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False
+    seq, keys_to_plot=None, take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False, rot_repr="quaternion"
 ):
     keys_to_plot = keys_to_plot or []
     target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
@@ -499,8 +499,8 @@ def plot_seq(
                 )
             elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
                 pose = img
-                if pose.shape[-1] == 7:
-                    pose = convert_pose_vector_to_matrix(pose)
+                if pose.shape[-2:] != (4, 4):
+                    pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
                 grid_img = draw_pose_on_img(
                     fetcher_fn(img_key, sidx),
                     fetcher_fn("intrinsics", sidx),

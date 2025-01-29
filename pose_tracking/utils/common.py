@@ -67,7 +67,7 @@ def cast_to_torch(x, device=None, include_top_list=False):
         return x
     elif type(x) in [list, tuple]:
         res = [cast_to_torch(xx, device=device) for xx in x]
-        if include_top_list:
+        if include_top_list and not isinstance(res[0], str):
             return torch.stack(res)
         return res
     elif isinstance(x, dict):
