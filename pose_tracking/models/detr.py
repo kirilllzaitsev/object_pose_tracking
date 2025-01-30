@@ -1,6 +1,7 @@
 import copy
 import math
 
+import einops
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,13 +13,18 @@ from pose_tracking.models.pos_encoding import (
     PosEncoding,
     PosEncodingCoord,
     SpatialPosEncoding,
+    sinusoidal_embedding,
 )
 from pose_tracking.utils.geom import (
     backproj_2d_to_3d,
     backproj_2d_to_3d_batch,
     calibrate_2d_pts_batch,
 )
-from pose_tracking.utils.kpt_utils import extract_kpts, get_kpt_within_mask_indicator, load_extractor
+from pose_tracking.utils.kpt_utils import (
+    extract_kpts,
+    get_kpt_within_mask_indicator,
+    load_extractor,
+)
 from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from torchvision.models import resnet18, resnet50, resnet101
@@ -49,8 +55,12 @@ class DETRBase(nn.Module):
         dropout_heads=0.0,
         rot_out_dim=4,
         t_out_dim=3,
+        use_pose_tokens=False,
+        pose_token_time_encoding="sin",
     ):
         super().__init__()
+
+        self.use_pose_tokens = use_pose_tokens
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -66,11 +76,12 @@ class DETRBase(nn.Module):
         self.opt_only = opt_only
         self.head_hidden_dim = head_hidden_dim
         self.head_num_layers = head_num_layers
+        self.pose_token_time_encoding = pose_token_time_encoding
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
         self.do_predict_2d_t = t_out_dim == 2
-        self.pe_encoder = self.get_pos_encoder(encoding_type)
+        self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -138,9 +149,10 @@ class DETRBase(nn.Module):
             name = f"layer_{i}"
             layer.register_forward_hook(get_hook(self.decoder_outs, name))
 
-    def get_pos_encoder(self, encoding_type, sin_max_len=1024):
+    def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
-            pe_encoder = nn.Parameter(torch.rand((1, self.n_tokens, self.d_model)), requires_grad=True)
+            assert n_tokens is not None
+            pe_encoder = nn.Parameter(torch.rand((1, n_tokens, self.d_model)), requires_grad=True)
         elif encoding_type == "sin":
             # tweak sin_max_len=1024 for img-based pe
             pe_encoder = PosEncoding(self.d_model, max_len=sin_max_len)
