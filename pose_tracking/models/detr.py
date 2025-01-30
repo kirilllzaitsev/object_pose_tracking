@@ -133,8 +133,8 @@ class DETRBase(nn.Module):
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
 
-    def forward(self, x, *args, **kwargs):
-        extract_res = self.extract_tokens(x, *args, **kwargs)
+    def forward(self, x, pose_tokens=None, **kwargs):
+        extract_res = self.extract_tokens(x, **kwargs)
         tokens = extract_res["tokens"]
 
         if self.encoding_type == "learned":
@@ -144,9 +144,9 @@ class DETRBase(nn.Module):
         else:
             raise ValueError(f"Unknown encoding type {self.encoding_type}")
 
-        return self.forward_tokens(tokens, pos_enc)
+        return self.forward_tokens(tokens, pos_enc, prev_pose_tokens=pose_tokens)
 
-    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None):
+    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
         out_encoder = self.t_encoder(tokens + pos_enc, src_key_padding_mask=memory_key_padding_mask)
@@ -164,16 +164,33 @@ class DETRBase(nn.Module):
                 "pred_logits": pred_logits,
                 "pred_boxes": pred_boxes,
             }
+            if self.use_pose_tokens:
+                pose_token = self.pose_proj(o)
+                if prev_pose_tokens is not None and len(prev_pose_tokens) > 0:
+                    # time_pos_embed = sinusoidal_embedding(len(prev_pose_tokens), self.d_model)
+                    prev_pose_tokens_layer = prev_pose_tokens[layer_idx]
+                    num_prev_tokens, b, *_ = prev_pose_tokens_layer.shape
+                    time_pos_embed = torch.cat(
+                        [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
+                    ).to(pose_token.device)
+                    prev_pose_tokens_pos = prev_pose_tokens_layer + time_pos_embed[:-1].unsqueeze(1).unsqueeze(1)
+                    prev_pose_tokens_pos = einops.rearrange(prev_pose_tokens_pos, "t b q d -> b (t q) d")
+                    pose_tokens = torch.cat([prev_pose_tokens_pos, pose_token + time_pos_embed[-1:]], dim=1)
+                    pose_tokens_enc = self.pose_token_transformer(pose_tokens)
+                    pose_token = pose_tokens_enc[:, -self.n_queries :]
+            else:
+                pose_token = o
             if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](o)
+                pred_rot = self.rot_mlps[layer_idx](pose_token)
                 out["rot"] = pred_rot
             if self.use_t:
-                pred_t = self.t_mlps[layer_idx](o)
+                pred_t = self.t_mlps[layer_idx](pose_token)
                 out["t"] = pred_t
             if self.do_predict_2d_t:
-                outputs_depth = self.depth_embed[layer_idx](o)
+                outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
 
+            out["pose_token"] = pose_token
             outs.append(out)
         last_out = outs.pop()
         res = {
@@ -187,6 +204,8 @@ class DETRBase(nn.Module):
             res["t"] = last_out["t"]
         if self.do_predict_2d_t:
             res["center_depth"] = last_out["center_depth"]
+        if self.use_pose_tokens:
+            res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
 
         return res
 
@@ -379,8 +398,8 @@ class KeypointDETR(DETRBase):
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
 
-    def forward(self, x, *args, **kwargs):
-        extract_res = self.extract_tokens(x, *args, **kwargs)
+    def forward(self, x, pose_tokens=None, **kwargs):
+        extract_res = self.extract_tokens(x, **kwargs)
         tokens = extract_res["tokens"]
         memory_key_padding_mask = extract_res.get("memory_key_padding_mask")
 
@@ -393,7 +412,9 @@ class KeypointDETR(DETRBase):
         else:
             pos_enc = self.pe_encoder(extract_res["kpts"])
 
-        out = self.forward_tokens(tokens, pos_enc, memory_key_padding_mask=memory_key_padding_mask)
+        out = self.forward_tokens(
+            tokens, pos_enc, memory_key_padding_mask=memory_key_padding_mask, prev_pose_tokens=pose_tokens
+        )
 
         for k in ["kpts", "descriptors"]:
             out[k] = extract_res[k]
@@ -445,13 +466,13 @@ class KeypointDETR(DETRBase):
             "memory_key_padding_mask": memory_key_padding_mask,
         }
 
-    def get_pos_encoder(self, encoding_type):
+    def get_pos_encoder(self, encoding_type, n_tokens=None):
         if encoding_type == "spatial":
             pe_encoder = SpatialPosEncoding(self.d_model, ndim=self.kpt_spatial_dim)
         elif encoding_type == "sin_coord":
             pe_encoder = PosEncodingCoord(self.d_model)
         else:
-            pe_encoder = super().get_pos_encoder(encoding_type)
+            pe_encoder = super().get_pos_encoder(encoding_type, n_tokens=n_tokens)
         return pe_encoder
 
 
