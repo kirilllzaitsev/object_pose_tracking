@@ -291,14 +291,18 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def vis_kpts(img_PIL, points_2d, color="blue", do_fix_img_color=False):
+def vis_kpts(img_PIL, points_2d, color="blue", do_fix_img_color=False, conf=None):
+    if conf is not None:
+        sorted, indices = torch.sort(conf)
+
     img = adjust_img_for_plt(img_PIL)
     if do_fix_img_color:
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     points_2d = cast_to_numpy(points_2d).astype(int)
-    for point in points_2d:
-        img = cv2.circle(img, tuple(point), 3, (255, 0, 0), -1)
+    for idx, point in enumerate(points_2d):
+        size = 3 if conf is None else int(3 + 3 * conf[idx] * 2)
+        img = cv2.circle(img, tuple(point), size, (255, 0, 0), -1)
 
     img = cv2.putText(
         img,
@@ -425,10 +429,18 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
 
 
 def plot_seq(
-    seq, keys_to_plot=None, take_n=None, batch_idx=0, bbox_format="xyxy", bbox_is_normalized=False, use_label=False, rot_repr="quaternion"
+    seq,
+    keys_to_plot=None,
+    take_n=None,
+    batch_idx=0,
+    bbox_format="xyxy",
+    bbox_is_normalized=False,
+    use_label=False,
+    rot_repr="quaternion",
 ):
     keys_to_plot = keys_to_plot or []
     target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
+
     def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):
             raise ValueError(f"{k} not found in the sequence")
