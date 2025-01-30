@@ -166,6 +166,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         t_repr=args.t_repr,
         max_random_seq_step=args.max_random_seq_step,
         do_predict_rel_pose=args.do_predict_rel_pose,
+        do_subtract_bg=args.do_subtract_bg,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]

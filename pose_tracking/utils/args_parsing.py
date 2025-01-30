@@ -120,6 +120,7 @@ def get_parser():
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
+    poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
     )
@@ -283,6 +284,7 @@ def get_parser():
 
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
+    data_args.add_argument("--do_subtract_bg", action="store_true", help="Subtract background from RGBD")
     data_args.add_argument(
         "--do_split_train_for_val", action="store_true", help="Obtain train/val by splitting the train set"
     )

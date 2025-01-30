@@ -559,7 +559,7 @@ class TrainerTrackformer(TrainerDeformableDETR):
             weight_decay=self.args.weight_decay,
         )
 
-    def model_forward(self, batch_t):
+    def model_forward(self, batch_t, pose_tokens=None):
         rgb = batch_t["image"]
         targets = batch_t["target"]
         out, targets_res, *_ = self.model(rgb, targets)
