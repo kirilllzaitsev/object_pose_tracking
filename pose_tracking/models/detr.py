@@ -114,6 +114,23 @@ class DETRBase(nn.Module):
                 MLP(in_dim=d_model, out_dim=1, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads),
                 n_layers,
             )
+        if use_pose_tokens:
+            self.pose_proj = nn.Linear(d_model, d_model)
+            pose_token_encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=n_heads,
+                dim_feedforward=4 * d_model,
+                dropout=dropout,
+                batch_first=True,
+            )
+            pose_token_n_layers = 1
+            self.pose_token_transformer = nn.TransformerEncoder(
+                pose_token_encoder_layer, num_layers=pose_token_n_layers
+            )
+            # TODO
+            if pose_token_time_encoding == "learned":
+                seq_len = 3
+                self.time_pos_encoder = self.get_pos_encoder("learned", n_tokens=seq_len)
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
