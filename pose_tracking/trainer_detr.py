@@ -71,12 +71,14 @@ class TrainerDeformableDETR(Trainer):
         focal_alpha=0.25,
         kpt_spatial_dim=2,
         do_calibrate_kpt=False,
+        use_pose_tokens=False,
         **kwargs,
     ):
 
         super().__init__(*args_, **kwargs)
 
         self.do_calibrate_kpt = do_calibrate_kpt
+        self.use_pose_tokens = use_pose_tokens
 
         self.num_classes = num_classes  # excluding bg class
         self.aux_loss = aux_loss
@@ -205,6 +207,7 @@ class TrainerDeformableDETR(Trainer):
         out_prev = None  # raw ouput of the model
         pose_mat_prev_gt_abs = None
         prev_latent = None
+        pose_tokens_per_layer = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:
@@ -217,10 +220,17 @@ class TrainerDeformableDETR(Trainer):
             pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
 
-            model_forward_res = self.model_forward(batch_t)
+            model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
             out = model_forward_res["out"]
 
             # POSTPROCESS OUTPUTS
+
+            if self.use_pose_tokens:
+                pose_tokens_per_layer = (
+                    out["pose_tokens"].unsqueeze(0)
+                    if pose_tokens_per_layer is None
+                    else torch.cat([pose_tokens_per_layer, out["pose_tokens"].unsqueeze(0)], dim=0)
+                )[-(self.seq_len - 1) :]
 
             # LOSSES
 
@@ -462,7 +472,7 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
-    def model_forward(self, batch_t):
+    def model_forward(self, batch_t, pose_tokens=None):
         targets = batch_t["target"]
         if self.model_name == "detr_kpt":
             extra_kwargs = {}
@@ -473,10 +483,11 @@ class TrainerDeformableDETR(Trainer):
             out = self.model(
                 batch_t["image"],
                 mask=batch_t["mask"],
+                pose_tokens=pose_tokens,
                 **extra_kwargs,
             )
         else:
-            out = self.model(batch_t["image"])
+            out = self.model(batch_t["image"], pose_tokens=pose_tokens)
 
         loss_dict = self.criterion(out, targets)
 
