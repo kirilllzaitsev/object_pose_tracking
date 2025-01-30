@@ -227,10 +227,15 @@ class TrainerDeformableDETR(Trainer):
 
             if self.use_pose_tokens:
                 pose_tokens_per_layer = (
-                    out["pose_tokens"].unsqueeze(0)
+                    [o.unsqueeze(0) for o in out["pose_tokens"]]
                     if pose_tokens_per_layer is None
-                    else torch.cat([pose_tokens_per_layer, out["pose_tokens"].unsqueeze(0)], dim=0)
-                )[-(self.seq_len - 1) :]
+                    else [
+                        torch.cat([pose_tokens_per_layer[i], out["pose_tokens"][i].unsqueeze(0)], dim=0)[
+                            -(self.seq_len - 1) :
+                        ]
+                        for i in range(self.num_dec_layers)
+                    ]
+                )
 
             # LOSSES
 
