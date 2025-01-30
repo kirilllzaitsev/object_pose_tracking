@@ -43,6 +43,7 @@ class TrackingDataset(Dataset):
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
+        do_subtract_bg=False,
         do_normalize_depth=False,
         max_depth=10,
         bbox_format="xyxy",
@@ -57,6 +58,9 @@ class TrackingDataset(Dataset):
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
     ):
+        if do_subtract_bg:
+            assert do_subtract_bg and include_mask, do_subtract_bg
+
         self.include_rgb = include_rgb
         self.include_mask = include_mask
         self.include_depth = include_depth
@@ -66,6 +70,7 @@ class TrackingDataset(Dataset):
         self.do_convert_depth_to_m = do_convert_depth_to_m
         self.do_normalize_bbox = do_normalize_bbox
         self.do_normalize_depth = do_normalize_depth
+        self.do_subtract_bg = do_subtract_bg
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -137,6 +142,11 @@ class TrackingDataset(Dataset):
                 depth /= self.max_depth
                 sample["max_depth"] = self.max_depth
             sample["depth"] = depth
+
+        if self.do_subtract_bg:
+            sample["rgb"] = sample["rgb"] * sample["mask"][...,None]
+            if self.include_depth:
+                sample["depth"] = sample["depth"] * sample["mask"]
 
         if self.include_pose:
             sample["pose"] = self.get_pose(i)
