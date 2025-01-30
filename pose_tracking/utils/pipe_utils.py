@@ -55,8 +55,8 @@ def get_model(args, num_classes=None):
         model_pizza = PIZZA(
             backbone=args.encoder_name,
             img_feature_dim=args.encoder_out_dim,
-            multi_frame=False,
-            # multi_frame=True,
+            # multi_frame=False,
+            multi_frame=True,
         )
 
         model = PizzaWrapper(model_pizza)
@@ -151,6 +151,7 @@ def get_model(args, num_classes=None):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
             encoding_type=args.mt_encoding_type,
+            use_pose_tokens=args.mt_use_pose_tokens,
             opt_only=args.opt_only,
             dropout=args.dropout,
             dropout_heads=args.dropout_heads,
@@ -319,6 +320,7 @@ def get_trainer(
         extra_kwargs = {
             "num_classes": num_classes,
             "num_dec_layers": args.mt_n_layers,
+            "use_pose_tokens": args.mt_use_pose_tokens,
             "aux_loss": True,
         }
         if "detr_kpt" in args.model_name:
@@ -427,6 +429,7 @@ def get_datasets(
     use_priv_decoder=False,
     do_overfit=False,
     do_preload_ds=False,
+    do_subtract_bg=False,
     include_mask=False,
     include_depth=False,
     include_bbox_2d=False,
@@ -451,6 +454,7 @@ def get_datasets(
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
     include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
+    include_mask = include_mask or do_subtract_bg
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=max_depth_m,
@@ -465,6 +469,7 @@ def get_datasets(
         do_normalize_depth=True if is_cnnlstm_model else False,
         rot_repr=rot_repr,
         t_repr=t_repr,
+        do_subtract_bg=do_subtract_bg,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(
@@ -543,8 +548,8 @@ def get_datasets(
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
-                seq_len=seq_len if is_pizza_model else seq_len_max_val,
-                seq_step=seq_step if is_pizza_model else 1,
+                seq_len=seq_len_max_val,
+                seq_step=seq_step,
                 seq_start=0,
                 ds_kwargs=val_ds_kwargs,
                 num_samples=None,
