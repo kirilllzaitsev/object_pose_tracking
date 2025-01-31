@@ -220,7 +220,9 @@ class TrainerDeformableDETR(Trainer):
             pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
 
-            model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
+            if self.do_predict_rel_pose and t == 0:
+                pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
+                pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
             out = model_forward_res["out"]
 
             # POSTPROCESS OUTPUTS
@@ -291,9 +293,6 @@ class TrainerDeformableDETR(Trainer):
                 pose_mat_pred = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
 
                 if self.do_predict_rel_pose:
-                    if t == 0:
-                        pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
-                        pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
                     pose_mat_prev_pred_abs = torch.stack(
                         [
                             self.pose_to_mat_converter_fn(rt)
