@@ -208,6 +208,7 @@ class TrainerDeformableDETR(Trainer):
         pose_mat_prev_gt_abs = None
         prev_latent = None
         pose_tokens_per_layer = None
+        prev_tokens = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:
@@ -223,6 +224,16 @@ class TrainerDeformableDETR(Trainer):
             if self.do_predict_rel_pose and t == 0:
                 pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
                 pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
+            if stage == "train" and self.do_predict_rel_pose and t == 0:
+                with torch.no_grad():
+                    model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
+
+                out = model_forward_res["out"]
+                pose_tokens_per_layer = [o.unsqueeze(0).detach() for o in out["pose_tokens"]]
+                prev_tokens = out["prev_tokens"]
+                continue
+
+            model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer, prev_tokens=prev_tokens)
             out = model_forward_res["out"]
 
             # POSTPROCESS OUTPUTS
