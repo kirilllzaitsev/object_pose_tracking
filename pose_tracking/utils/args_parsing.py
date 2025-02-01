@@ -303,6 +303,7 @@ def get_parser():
     data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step")
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
+    data_args.add_argument("--num_classes", type=int, help="Hard-coded number of classes")
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(
         "--obj_names_val",
@@ -399,6 +400,9 @@ def postprocess_args(args, use_if_provided=True):
         "rotation6d" if args.do_predict_6d_rot else ("axis_angle" if args.do_predict_3d_rot else "quaternion")
     )
     args.t_repr = "2d" if args.do_predict_2d_t else "3d"
+
+    if args.do_predict_rel_pose:
+        args.seq_len += 1  # since skipping the first frame
 
     return args
 
