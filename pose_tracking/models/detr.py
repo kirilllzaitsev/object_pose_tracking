@@ -162,7 +162,7 @@ class DETRBase(nn.Module):
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
 
-    def forward(self, x, pose_tokens=None, **kwargs):
+    def forward(self, x, pose_tokens=None, prev_tokens=None, **kwargs):
         extract_res = self.extract_tokens(x, **kwargs)
         tokens = extract_res["tokens"]
 
@@ -173,15 +173,22 @@ class DETRBase(nn.Module):
         else:
             raise ValueError(f"Unknown encoding type {self.encoding_type}")
 
-        return self.forward_tokens(tokens, pos_enc, prev_pose_tokens=pose_tokens)
+        return self.forward_tokens(tokens, pos_enc, prev_pose_tokens=pose_tokens, prev_tokens=prev_tokens)
 
-    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None):
+    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None, prev_tokens=None):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
-        out_encoder = self.t_encoder(tokens + pos_enc, src_key_padding_mask=memory_key_padding_mask)
+        tokens_enc = self.t_encoder(tokens + pos_enc, src_key_padding_mask=memory_key_padding_mask)
 
-        out_decoder = self.t_decoder(
-            self.queries.repeat(len(out_encoder), 1, 1), out_encoder, memory_key_padding_mask=memory_key_padding_mask
+        if prev_tokens is None:
+            # unclear if have to concat with itself as in trackformer
+            tokens_dec = tokens_enc
+            prev_tokens = tokens_enc
+        else:
+            tokens_dec = torch.cat([tokens_enc, prev_tokens], dim=1)
+
+        queries_dec = self.t_decoder(
+            self.queries.repeat(len(tokens_dec), 1, 1), tokens_dec, memory_key_padding_mask=memory_key_padding_mask
         )
 
         outs = []
@@ -235,6 +242,7 @@ class DETRBase(nn.Module):
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
+        res["prev_tokens"] = prev_tokens
 
         return res
 
