@@ -24,7 +24,7 @@ def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_m
     else:
         extra_tags.append("e_local")
     for k, v in vars(args).items():
-        if k in ["use_cuda", "use_test_set"] or any(
+        if k in ["use_cuda", "use_test_set", "no_rnn"] or any(
             [x in k for x in ["save_", "use_es", "do_log", "print", "ignore_file_args_with_provided", "focal_loss"]]
         ):
             continue

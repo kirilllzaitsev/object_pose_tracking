@@ -121,19 +121,22 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     ds_video_subdirs_train = ds_dirs["ds_video_subdirs_train"]
     ds_video_subdirs_val = ds_dirs["ds_video_subdirs_val"]
 
-    if args.ds_name == "ikea":
-        metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
-        if args.ds_alias == "cube_large":
-            num_classes = 1
+    if args.num_classes is None:
+        if args.ds_name == "ikea":
+            metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
+            if args.ds_alias == "cube_large":
+                num_classes = 1
+            else:
+                num_classes = metadata["num_classes"]
+            logger.info(f"{num_classes=}")
+        elif args.ds_name in ["ycbi", "ho3d_v3"]:
+            num_classes = len(YCBV_OBJ_NAME_TO_ID)
         else:
-            num_classes = metadata["num_classes"]
-        logger.info(f"{num_classes=}")
-    elif args.ds_name in ["ycbi", "ho3d_v3"]:
-        num_classes = len(YCBV_OBJ_NAME_TO_ID)
+            num_classes = None
+        args.num_classes = num_classes
     else:
-        num_classes = None
+        num_classes = args.num_classes
 
-    args.num_classes = num_classes
     if is_main_process:
         log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
     print_args(args, logger=logger)

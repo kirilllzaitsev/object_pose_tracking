@@ -437,6 +437,7 @@ def plot_seq(
     bbox_is_normalized=False,
     use_label=False,
     rot_repr="quaternion",
+    nrow=None,
 ):
     keys_to_plot = keys_to_plot or []
     target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
@@ -526,7 +527,7 @@ def plot_seq(
                 grid_img = adjust_img_for_plt(img)
                 dtype = np.uint8
             arr.append(grid_img)
-        res = make_grid_image(arr, nrow=5, padding=5, dtype=dtype, use_existing_fig=True)
+        res = make_grid_image(arr, nrow=nrow, padding=5, dtype=dtype, use_existing_fig=True)
         plt.figure(figsize=(5 * 5, 5 * take_n))
         plt.imshow(res)
         plt.axis("off")

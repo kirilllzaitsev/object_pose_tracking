@@ -487,7 +487,7 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
-    def model_forward(self, batch_t, pose_tokens=None):
+    def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, **kwargs):
         targets = batch_t["target"]
         if self.model_name == "detr_kpt":
             extra_kwargs = {}
@@ -499,10 +499,11 @@ class TrainerDeformableDETR(Trainer):
                 batch_t["image"],
                 mask=batch_t["mask"],
                 pose_tokens=pose_tokens,
+                prev_tokens=prev_tokens,
                 **extra_kwargs,
             )
         else:
-            out = self.model(batch_t["image"], pose_tokens=pose_tokens)
+            out = self.model(batch_t["image"], pose_tokens=pose_tokens, prev_tokens=prev_tokens)
 
         loss_dict = self.criterion(out, targets)
 
@@ -518,6 +519,8 @@ class TrainerTrackformer(TrainerDeformableDETR):
     ):
 
         super().__init__(*args_, **kwargs)
+
+        assert self.seq_len == 1
 
         param_dicts = [
             {
@@ -569,12 +572,13 @@ class TrainerTrackformer(TrainerDeformableDETR):
             weight_decay=self.args.weight_decay,
         )
 
-    def model_forward(self, batch_t, pose_tokens=None):
+    def model_forward(self, batch_t, targets_res=None, **kwargs):
         rgb = batch_t["image"]
-        targets = batch_t["target"]
+        targets = batch_t["target"] if targets_res is None else targets_res
         out, targets_res, *_ = self.model(rgb, targets)
         loss_dict = self.criterion(out, targets_res)
         return {
             "out": out,
             "loss_dict": loss_dict,
+            "targets_res": targets_res,
         }
