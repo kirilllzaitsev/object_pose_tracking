@@ -420,6 +420,10 @@ class RecurrentCNN(nn.Module):
         else:
             raise ValueError(f"Unknown rnn_state_init_type: {self.rnn_state_init_type}")
 
+    def set_state(self, state):
+        assert state is not None
+        self.hx, self.cx = state
+
     def detach_state(self):
         if self.training:
             self.hx = self.hx.detach()
@@ -445,7 +449,7 @@ class RecurrentCNN(nn.Module):
             state_prev = (hx, cx)
             encoder_out = self.belief_encoder(latent_rgb, latent_depth, *state_prev)
             state_new = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(self.hx, latent_depth)
+            decoder_out = self.belief_decoder(hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
             extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
