@@ -699,4 +699,7 @@ class Trainer:
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
         grad_norm = sum(grad_norms) / len(grad_norms)
+        if self.do_debug:
+            self.processed_data["grad_norm"].append(grad_norm)
+            self.processed_data["grad_norms"].append(grad_norms)
         return grad_norms, grad_norm

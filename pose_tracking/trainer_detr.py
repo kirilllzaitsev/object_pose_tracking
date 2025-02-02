@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
+import yaml
 from cycler import K
-from pose_tracking.config import default_logger
+from pose_tracking.config import TF_DIR, default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
@@ -276,9 +277,6 @@ class TrainerDeformableDETR(Trainer):
                     if do_vis:
                         vis_data["grad_norm"].append(grad_norm)
                         vis_data["grad_norms"].append(grad_norms)
-                    if self.do_debug:
-                        self.processed_data["grad_norm"].append(grad_norm)
-                        self.processed_data["grad_norms"].append(grad_norms)
 
                 optimizer.step()
             elif do_opt_in_the_end:
@@ -451,8 +449,6 @@ class TrainerDeformableDETR(Trainer):
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
         num_steps = seq_length
-        if self.do_predict_rel_pose:
-            num_steps -= 1
 
         if do_opt_in_the_end:
             total_loss /= num_steps
@@ -468,9 +464,6 @@ class TrainerDeformableDETR(Trainer):
                 if do_vis:
                     vis_data["grad_norm"].append(grad_norm)
                     vis_data["grad_norms"].append(grad_norms)
-                if self.do_debug:
-                    self.processed_data["grad_norm"].append(grad_norm)
-                    self.processed_data["grad_norms"].append(grad_norms)
             optimizer.step()
 
         for stats in [seq_stats, seq_metrics]:
@@ -524,8 +517,6 @@ class TrainerTrackformer(TrainerDeformableDETR):
     ):
 
         super().__init__(*args_, **kwargs)
-
-        assert self.seq_len == 1
 
         param_dicts = [
             {
