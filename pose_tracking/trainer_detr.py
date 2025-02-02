@@ -94,7 +94,7 @@ class TrainerDeformableDETR(Trainer):
         self.matcher = build_matcher(self.tf_args)
         self.criterion = build_criterion(
             self.tf_args,
-            num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes,
+            num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes + 1,
             matcher=self.matcher,
             device=self.args.device,
             use_rel_pose=self.args.do_predict_rel_pose,
