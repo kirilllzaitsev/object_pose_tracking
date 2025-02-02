@@ -1,9 +1,10 @@
 import torch
+import torch.nn.functional as F
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from torchvision.ops.boxes import batched_nms
 
 
-def postprocess_detr_outputs(outputs, target_sizes):
+def postprocess_detr_outputs(outputs, target_sizes, is_focal_loss=True):
     """https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_detr.py
     Args:
         outputs: raw outputs of the model
@@ -16,14 +17,16 @@ def postprocess_detr_outputs(outputs, target_sizes):
     # assert len(out_logits) == len(target_sizes)
     assert target_sizes.ndim == 1 or target_sizes.shape[1] == 2
 
-    prob = out_logits.sigmoid()
-    topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), out_logits.shape[-2], dim=1)
-    scores = topk_values
-    scores_no_object = 1 - scores
-    topk_boxes = topk_indexes // out_logits.shape[2]
-    labels = topk_indexes % out_logits.shape[2]
+    if is_focal_loss:
+        prob = out_logits.sigmoid()
+        scores, labels = prob.max(-1)
+        scores_no_object = 1 - scores
+    else:
+        prob = F.softmax(out_logits, -1)
+        scores, labels = prob[..., :-1].max(-1)
+        scores_no_object = prob[..., -1]
+
     boxes = box_cxcywh_to_xyxy(out_bbox)
-    boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1, 1, 4))
 
     # and from relative [0, 1] to absolute [0, height] coordinates
     img_h, img_w = target_sizes.unbind(1)
