@@ -233,7 +233,12 @@ class TrainerDeformableDETR(Trainer):
                 prev_tokens = out["prev_tokens"]
                 continue
 
-            model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer, prev_tokens=prev_tokens)
+            model_forward_res = self.model_forward(
+                batch_t,
+                pose_tokens=pose_tokens_per_layer,
+                prev_tokens=prev_tokens,
+                prev_features=prev_features,
+            )
             out = model_forward_res["out"]
 
             # POSTPROCESS OUTPUTS
@@ -249,6 +254,7 @@ class TrainerDeformableDETR(Trainer):
                         for i in range(self.num_dec_layers)
                     ]
                 )
+            prev_features = model_forward_res.get("features")
 
             # LOSSES
 
@@ -402,7 +408,9 @@ class TrainerDeformableDETR(Trainer):
             if save_preds:
                 assert self.use_pose
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                out_formatted = postprocess_detr_outputs(out, target_sizes=target_sizes)
+                out_formatted = postprocess_detr_outputs(
+                    out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
+                )
                 bboxs = []
                 labels = []
                 for bidx, out_b in enumerate(out_formatted):
@@ -572,13 +580,17 @@ class TrainerTrackformer(TrainerDeformableDETR):
             weight_decay=self.args.weight_decay,
         )
 
-    def model_forward(self, batch_t, targets_res=None, **kwargs):
+    def model_forward(self, batch_t, prev_features=None, **kwargs):
         rgb = batch_t["image"]
-        targets = batch_t["target"] if targets_res is None else targets_res
-        out, targets_res, *_ = self.model(rgb, targets)
+        targets = batch_t["target"]
+        # when .eval(), clears all track_* in targets in detr_tracking
+        out, targets_res, features, *_ = self.model(rgb, targets, prev_features=prev_features)
+        out, targets_res, features, *_ = self.model(rgb, targets, prev_features=prev_features)
         loss_dict = self.criterion(out, targets_res)
         return {
             "out": out,
             "loss_dict": loss_dict,
+            "features": features,
             "targets_res": targets_res,
+            "features": features,
         }
