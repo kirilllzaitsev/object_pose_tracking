@@ -204,11 +204,10 @@ class TrainerDeformableDETR(Trainer):
             vis_data = defaultdict(list)
 
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
-        out_prev = None  # raw ouput of the model
         pose_mat_prev_gt_abs = None
-        prev_latent = None
         pose_tokens_per_layer = None
         prev_tokens = None
+        prev_features = None
         nan_count = 0
 
         for t, batch_t in ts_pbar:
@@ -341,8 +340,6 @@ class TrainerDeformableDETR(Trainer):
                     )
                     for k, v in m_sample.items():
                         m_batch[k].append(v)
-                    if any(np.isnan(v) for v in m_sample.values()):
-                        nan_count += 1
 
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
@@ -585,12 +582,10 @@ class TrainerTrackformer(TrainerDeformableDETR):
         targets = batch_t["target"]
         # when .eval(), clears all track_* in targets in detr_tracking
         out, targets_res, features, *_ = self.model(rgb, targets, prev_features=prev_features)
-        out, targets_res, features, *_ = self.model(rgb, targets, prev_features=prev_features)
         loss_dict = self.criterion(out, targets_res)
         return {
             "out": out,
             "loss_dict": loss_dict,
-            "features": features,
             "targets_res": targets_res,
             "features": features,
         }
