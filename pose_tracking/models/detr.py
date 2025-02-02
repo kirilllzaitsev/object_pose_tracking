@@ -435,7 +435,7 @@ class KeypointDETR(DETRBase):
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
 
-    def forward(self, x, pose_tokens=None, **kwargs):
+    def forward(self, x, pose_tokens=None, prev_tokens=None, **kwargs):
         extract_res = self.extract_tokens(x, **kwargs)
         tokens = extract_res["tokens"]
         memory_key_padding_mask = extract_res.get("memory_key_padding_mask")
@@ -450,7 +450,11 @@ class KeypointDETR(DETRBase):
             pos_enc = self.pe_encoder(extract_res["kpts"])
 
         out = self.forward_tokens(
-            tokens, pos_enc, memory_key_padding_mask=memory_key_padding_mask, prev_pose_tokens=pose_tokens
+            tokens,
+            pos_enc,
+            memory_key_padding_mask=memory_key_padding_mask,
+            prev_pose_tokens=pose_tokens,
+            prev_tokens=prev_tokens,
         )
 
         for k in ["kpts", "descriptors"]:

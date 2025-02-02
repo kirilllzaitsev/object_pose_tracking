@@ -183,6 +183,8 @@ def get_parser():
     tf_args.add_argument("--tf_ce_loss_coef", type=float, default=2)
     tf_args.add_argument("--tf_rot_loss_coef", type=float, default=1)
     tf_args.add_argument("--tf_t_loss_coef", type=float, default=1)
+    tf_args.add_argument("--tf_track_query_false_negative_prob", type=float, default=0.4)
+    tf_args.add_argument("--tf_track_query_false_positive_prob", type=float, default=0.1)
     tf_args.add_argument("--tf_depth_loss_coef", type=float, default=1)
 
     model_args = parser.add_argument_group("Model arguments")
