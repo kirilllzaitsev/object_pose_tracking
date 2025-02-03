@@ -64,7 +64,7 @@ class VideoDataset(Dataset):
         return self.num_samples
 
     def __repr__(self) -> str:
-        return print_cls(self, excluded_attrs=["seq"])
+        return print_cls(self, excluded_attrs=["seq", "c2w", "cam_init_rot"])
 
     def __getitem__(self, idx):
         seq = []
@@ -73,7 +73,13 @@ class VideoDataset(Dataset):
         seq_step = self.seq_step
 
         if not seq_step:
-            seq_step = torch.randint(1, self.max_random_seq_step, (1,)).item()
+            max_random_seq_step = self.max_random_seq_step
+            seq_step = torch.randint(1, max_random_seq_step, (1,)).item()
+            while max_random_seq_step * (timesteps - 1) >= len(self.ds) and max_random_seq_step > 0:
+                seq_step = torch.randint(1, max_random_seq_step, (1,)).item()
+                max_random_seq_step -= 1
+            if max_random_seq_step == 0:
+                raise ValueError(f"{self.ds=}\nCould not find a valid seq_step given {timesteps=} and {len(self.ds)=}")
 
         if seq_start is None:
             seq_start = torch.randint(
