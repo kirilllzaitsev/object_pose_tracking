@@ -97,6 +97,7 @@ class Trainer:
         max_clip_grad_norm=0.1,
         tf_t_loss_coef=1,
         tf_rot_loss_coef=1,
+        use_entire_seq_in_train=False,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -120,6 +121,7 @@ class Trainer:
         self.do_print_seq_stats = do_print_seq_stats
         self.do_chunkify_val = do_chunkify_val
         self.do_perturb_init_gt_for_rel_pose = do_perturb_init_gt_for_rel_pose
+        self.use_entire_seq_in_train = use_entire_seq_in_train
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger

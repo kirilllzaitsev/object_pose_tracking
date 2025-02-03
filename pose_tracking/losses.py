@@ -6,11 +6,6 @@ from pose_tracking.utils.misc import pick_library
 from torch import nn
 from torch.nn import functional as F
 
-try:
-    from pose_tracking.chamfer_distance import ChamferDistance
-except Exception as e:
-    print(f"Failed to import a custom ChamferDistance: {e}. Loading an alternative.")
-    ChamferDistance = None
 
 
 def normalize_quaternion(quat, eps=1e-8):
@@ -104,6 +99,11 @@ def compute_add_loss(pose_pred, pose_gt, points):
 
 
 def compute_chamfer_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    try:
+        from pose_tracking.chamfer_distance import ChamferDistance
+    except Exception as e:
+        print(f"Failed to import a custom ChamferDistance: {e}. Loading an alternative.")
+        ChamferDistance = None
     if ChamferDistance is None:
         return torch.tensor(torch.nan)
     chamfer_dist = ChamferDistance()
