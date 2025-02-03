@@ -206,7 +206,7 @@ class Trainer:
                     self.do_reset_state = False
                 self.model_without_ddp.reset_state(batch_size, device=self.device)
 
-            if not self.do_chunkify_val or stage == "train":
+            if (stage != "train" and not self.do_chunkify_val) or (stage == "train" and not self.use_entire_seq_in_train):
                 seq_stats = self.batched_seq_forward(
                     batched_seq=batched_seq,
                     optimizer=optimizer,
@@ -218,8 +218,9 @@ class Trainer:
             else:
                 batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
                 seq_stats = defaultdict(lambda: defaultdict(float))
+                num_chunks = len(batched_seq_chunks)
 
-                for chunk in tqdm(batched_seq_chunks, desc="Subseq", leave=False):
+                for cidx, chunk in tqdm(enumerate(batched_seq_chunks), desc="Subseq", leave=False, total=num_chunks):
                     seq_stats_chunk = self.batched_seq_forward(
                         batched_seq=chunk,
                         optimizer=optimizer,
@@ -267,7 +268,7 @@ class Trainer:
         do_vis=False,
     ):
 
-        is_train = optimizer is not None
+        is_train = stage == "train"
         do_opt_every_ts = is_train and self.use_optim_every_ts
         do_opt_in_the_end = is_train and not self.use_optim_every_ts
 
@@ -645,12 +646,7 @@ class Trainer:
             # UPDATE VARS
 
             if self.do_predict_rel_pose:
-                if self.do_predict_3d_rot:
-                    rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
-                elif self.do_predict_6d_rot:
-                    rot_prev_pred_abs = matrix_to_rotation_6d(rot_mat_pred_abs)
-                else:
-                    rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
+                rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                 pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
             else:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
@@ -668,7 +664,6 @@ class Trainer:
 
         if do_opt_in_the_end:
             total_loss /= num_steps
-            optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if do_vis:
@@ -676,13 +671,15 @@ class Trainer:
                 vis_data["grad_norm"].append(grad_norm)
                 vis_data["grad_norms"].append(grad_norms)
             optimizer.step()
+            optimizer.zero_grad()
+
+        self.model_without_ddp.set_state(state)
+        self.model_without_ddp.detach_state()
+        torch.cuda.empty_cache()
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
                 stats[k] = v / num_steps
-
-        if nan_count > 0:
-            seq_metrics["nan_count"] = nan_count
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
