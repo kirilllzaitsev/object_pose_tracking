@@ -372,6 +372,7 @@ def get_trainer(
         tf_t_loss_coef=args.tf_t_loss_coef,
         tf_rot_loss_coef=args.tf_rot_loss_coef,
         include_abs_pose_loss_for_rel=args.include_abs_pose_loss_for_rel,
+        use_entire_seq_in_train=args.use_entire_seq_in_train,
         **extra_kwargs,
     )
 
@@ -440,10 +441,11 @@ def get_datasets(
     end_frame_idx=None,
     rot_repr="quaternion",
     t_repr="3d",
-    max_random_seq_step=8,
+    max_random_seq_step=4,
     do_predict_rel_pose=False,
     seq_len_max_val=200,
     max_depth_m=10,
+    use_entire_seq_in_train=False
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -499,7 +501,7 @@ def get_datasets(
         train_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_train,
             ds_name=ds_name,
-            seq_len=seq_len,
+            seq_len=seq_len_max_val if use_entire_seq_in_train else seq_len,
             seq_step=seq_step,
             seq_start=seq_start,
             ds_kwargs=train_ds_kwargs,

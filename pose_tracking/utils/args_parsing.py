@@ -287,6 +287,7 @@ def get_parser():
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
     data_args.add_argument("--do_subtract_bg", action="store_true", help="Subtract background from RGBD")
+    data_args.add_argument("--use_entire_seq_in_train", action="store_true", help="Instead of seq_len, use seq_len_max_val for train sequences")
     data_args.add_argument(
         "--do_split_train_for_val", action="store_true", help="Obtain train/val by splitting the train set"
     )
@@ -402,9 +403,6 @@ def postprocess_args(args, use_if_provided=True):
         "rotation6d" if args.do_predict_6d_rot else ("axis_angle" if args.do_predict_3d_rot else "quaternion")
     )
     args.t_repr = "2d" if args.do_predict_2d_t else "3d"
-
-    if args.do_predict_rel_pose:
-        args.seq_len += 1  # since skipping the first frame
 
     return args
 
