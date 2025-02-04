@@ -90,10 +90,12 @@ def convert_pts_to_pcd(x, color=[0.2, 0.2, 0.2]):
 
 def vis_pcls(xs, colors=None):
     if colors is None:
-        colors = [np.array([0.2, 0.2, 0.2]) + i * 0.1 for i in range(len(xs))]
+        colors = [np.array([0.0, 0.0, 0.0]) + i * 0.2 for i in range(len(xs))]
+        # colors = [np.random.rand(3) for _ in range(len(xs))]
     assert len(xs) == len(colors), "Number of point clouds and colors should be the same"
     pcds = []
-    for x, color in zip(xs, colors):
+    for idx, (x, color) in enumerate( zip(xs, colors)):
+        print(f"{idx=} {color=}")
         pcd = convert_pts_to_pcd(x, color)
         pcds.append(pcd)
     o3d.visualization.draw_plotly(pcds)

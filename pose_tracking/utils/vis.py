@@ -420,11 +420,13 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
         else:
             nrow = 1
     nrow = min(len(imgs), max(nrow, 1))
+    grid = torchvision.utils.make_grid(imgs, nrow=nrow, padding=padding, pad_value=pad_value)
+    grid = grid.permute(1, 2, 0).contiguous().data.cpu().numpy().astype(dtype)
     if not use_existing_fig:
         plt.figure(figsize=(nrow * 5, (len(imgs) // nrow) * 5))
         plt.axis("off")
-    grid = torchvision.utils.make_grid(imgs, nrow=nrow, padding=padding, pad_value=pad_value)
-    grid = grid.permute(1, 2, 0).contiguous().data.cpu().numpy().astype(dtype)
+        plt.imshow(grid)
+        plt.show()
     return grid
 
 
