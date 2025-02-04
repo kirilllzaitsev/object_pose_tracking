@@ -286,6 +286,9 @@ def get_trackformer_args(args):
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
 
+    # if args.tf_use_kpts_as_img:
+    #     tf_args.num_feature_levels = 2
+
     return tf_args
 
 
@@ -443,9 +446,11 @@ def get_datasets(
     t_repr="3d",
     max_random_seq_step=4,
     do_predict_rel_pose=False,
+    seq_len_max_train=100,
     seq_len_max_val=200,
     max_depth_m=10,
-    use_entire_seq_in_train=False
+    use_entire_seq_in_train=False,
+    do_normalize_depth=False,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -468,7 +473,7 @@ def get_datasets(
         do_normalize_bbox=True if is_detr_model or is_tf_model else False,
         bbox_format="cxcywh" if is_detr_model else "xyxy",
         model_name="pizza" if is_pizza_model else model_name,
-        do_normalize_depth=True if is_cnnlstm_model else False,
+        do_normalize_depth=True if (is_cnnlstm_model or do_normalize_depth) else False,
         rot_repr=rot_repr,
         t_repr=t_repr,
         do_subtract_bg=do_subtract_bg,
@@ -501,7 +506,7 @@ def get_datasets(
         train_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_train,
             ds_name=ds_name,
-            seq_len=seq_len_max_val if use_entire_seq_in_train else seq_len,
+            seq_len=seq_len_max_train if use_entire_seq_in_train else seq_len,
             seq_step=seq_step,
             seq_start=seq_start,
             ds_kwargs=train_ds_kwargs,
