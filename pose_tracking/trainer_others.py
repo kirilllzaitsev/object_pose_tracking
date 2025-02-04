@@ -29,7 +29,7 @@ from pose_tracking.utils.rotation_conversions import (
     matrix_to_rotation_6d,
 )
 from scipy.spatial.transform import Rotation
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 class TrainerVideopose(Trainer):
@@ -171,7 +171,7 @@ class TrainerPizza(Trainer):
                     do_vis=do_vis,
                 )
             else:
-                num_chunks = len(batched_seq['rgb'][0]) // self.seq_len
+                num_chunks = len(batched_seq["rgb"][0]) // self.seq_len
                 batched_seq_chunks = {
                     k: ([split_arr(vv, num_chunks) if len(v) > 0 else v for vv in v]) for k, v in batched_seq.items()
                 }
@@ -180,7 +180,7 @@ class TrainerPizza(Trainer):
 
                 for cidx in tqdm(range(num_chunks), desc="Subseq", leave=False):
                     chunk = {k: v[cidx] for k, v in batched_seq_chunks.items()}
-                    for k in ['rgb', 'pose', 'center_depth']:
+                    for k in ["rgb", "pose", "center_depth"]:
                         if k in chunk:
                             chunk[k] = torch.stack(chunk[k])
                     seq_stats_chunk = self.batched_seq_forward(

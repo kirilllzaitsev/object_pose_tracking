@@ -47,7 +47,7 @@ from pose_tracking.utils.pipe_utils import (
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 @record

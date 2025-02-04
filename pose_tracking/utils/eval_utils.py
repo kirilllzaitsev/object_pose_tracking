@@ -126,12 +126,12 @@ def plot_pose_drift(r_errors, t_errors, axs=None):
     if axs is None:
         fig, axs = plt.subplots(1, 2, figsize=(20, 5))
     num_ts = len(r_errors)
-    axs[0].set_title(f"Rotation drift over {num_ts} frames")
+    axs[0].set_title(f"Rotation error over {num_ts} frames")
     axs[0].plot(r_errors)
     axs[0].set_ylabel("Rotation error, deg")
-    axs[1].set_title(f"Translation drift over {num_ts} frames")
+    axs[1].set_title(f"Translation error over {num_ts} frames")
     axs[1].plot(t_errors)
-    axs[1].set_ylabel("Translation error, cm")
+    axs[1].set_ylabel("Translation error, mm")
     for ax in axs:
         ax.set_xlabel("Timestep")
     plt.tight_layout()

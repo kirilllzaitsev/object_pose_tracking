@@ -54,7 +54,7 @@ from pose_tracking.utils.rotation_conversions import (
     quaternion_to_matrix,
     rotation_6d_to_matrix,
 )
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from trackformer.models import build_criterion
 from trackformer.models.matcher import build_matcher
 

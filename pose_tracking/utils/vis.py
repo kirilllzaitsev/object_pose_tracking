@@ -31,7 +31,7 @@ from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
 from torchvision.ops.boxes import clip_boxes_to_image
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_rgb=False):

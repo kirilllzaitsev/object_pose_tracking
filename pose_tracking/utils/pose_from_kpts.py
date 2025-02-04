@@ -20,7 +20,7 @@ def preprocess_point_cloud(pcd, voxel_size):
 
 
 def est_pose_ransac_feature_matching(pts_prev, pts_cur):
-    # https://www.open3d.org/docs/0.17.0/tutorial/pipelines/icp_registration.html
+    # https://www.open3d.org/docs/latest/tutorial/pipelines/global_registration.html
     pcd1 = o3d.geometry.PointCloud()
     pcd2 = o3d.geometry.PointCloud()
     pcd1.points = o3d.utility.Vector3dVector(pts_prev)

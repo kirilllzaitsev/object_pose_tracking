@@ -53,7 +53,7 @@ from pose_tracking.utils.rotation_conversions import (
     rotation_6d_to_matrix,
 )
 from scipy.spatial.transform import Rotation
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 
 class Trainer:
