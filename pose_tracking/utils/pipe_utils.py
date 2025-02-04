@@ -286,8 +286,8 @@ def get_trackformer_args(args):
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
 
-    # if args.tf_use_kpts_as_img:
-    #     tf_args.num_feature_levels = 2
+    if args.tf_use_kpts_as_img:
+        tf_args.num_feature_levels = 2
 
     return tf_args
 
