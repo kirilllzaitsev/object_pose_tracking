@@ -456,12 +456,7 @@ class Trainer:
                     if self.use_rot_mat_for_loss:
                         loss_rot = self.criterion_rot(rot_mat_pred, rot_gt_rel_mat)
                     else:
-                        if self.do_predict_3d_rot:
-                            rot_gt_rel = matrix_to_axis_angle(rot_gt_rel_mat)
-                        elif self.do_predict_6d_rot:
-                            rot_gt_rel = matrix_to_rotation_6d(rot_gt_rel_mat)
-                        else:
-                            rot_gt_rel = matrix_to_quaternion(rot_gt_rel_mat)
+                        rot_gt_rel = self.rot_mat_to_vector_converter_fn(rot_gt_rel_mat)
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_rel)
                 else:
                     if self.use_rot_mat_for_loss:
@@ -469,7 +464,7 @@ class Trainer:
                     else:
                         loss_rot = self.criterion_rot(rot_pred, rot_gt_abs)
 
-                if self.include_abs_pose_loss_for_rel:
+                if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
                     loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
                     loss_t += loss_t_abs
                     if self.use_rot_mat_for_loss:
@@ -513,7 +508,6 @@ class Trainer:
 
             # optim
             if do_opt_every_ts:
-                optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
                 if do_vis:
@@ -521,6 +515,8 @@ class Trainer:
                     vis_data["grad_norm"].append(grad_norm)
                     vis_data["grad_norms"].append(grad_norms)
                 optimizer.step()
+                optimizer.zero_grad()
+                state = [x if x is None else x.detach() for x in state]
             elif do_opt_in_the_end:
                 total_loss += loss
 
@@ -544,8 +540,6 @@ class Trainer:
                 )
                 for k, v in m_sample.items():
                     m_batch[k].append(v)
-                if any(np.isnan(v) for v in m_sample.values()):
-                    nan_count += 1
 
             m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
             for k, v in m_batch_avg.items():
@@ -553,21 +547,21 @@ class Trainer:
 
             # OTHER
 
-            seq_stats["loss"] += loss
-            seq_stats["loss_depth"] += loss_depth
+            seq_stats["loss"] += loss.item()
+            seq_stats["loss_depth"] += loss_depth.item()
             if self.use_pose_loss:
-                seq_stats["loss_pose"] += loss_pose
+                seq_stats["loss_pose"] += loss_pose.item()
             else:
-                seq_stats["loss_rot"] += loss_rot
-                seq_stats["loss_t"] += loss_t
-                if self.include_abs_pose_loss_for_rel:
-                    seq_stats["loss_t_abs"] += loss_t_abs
-                    seq_stats["loss_rot_abs"] += loss_rot_abs
+                seq_stats["loss_rot"] += loss_rot.item()
+                seq_stats["loss_t"] += loss_t.item()
+                if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
+                    seq_stats["loss_t_abs"] += loss_t_abs.item()
+                    seq_stats["loss_rot_abs"] += loss_rot_abs.item()
             if "priv_decoded" in out:
-                seq_stats["loss_priv"] += loss_priv
+                seq_stats["loss_priv"] += loss_priv.item()
             if self.do_predict_kpts:
-                seq_stats["loss_kpts"] += loss_kpts
-                seq_stats["loss_cr"] += loss_cr
+                seq_stats["loss_kpts"] += loss_kpts.item()
+                seq_stats["loss_cr"] += loss_cr.item()
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -675,6 +669,7 @@ class Trainer:
 
         self.model_without_ddp.set_state(state)
         self.model_without_ddp.detach_state()
+        del state
         torch.cuda.empty_cache()
 
         for stats in [seq_stats, seq_metrics]:
