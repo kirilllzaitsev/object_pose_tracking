@@ -350,9 +350,19 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
-                    prev_latent = torch.cat(
-                        [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)], dim=1
+                    out = self.model(
+                        rgb,
+                        depth,
+                        bbox=bbox_2d,
+                        state=None,
                     )
+                    state = out["state"]
+
+                    if self.use_prev_latent:
+                        prev_latent = torch.cat(
+                            [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)],
+                            dim=1,
+                        )
 
                     if save_preds:
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
