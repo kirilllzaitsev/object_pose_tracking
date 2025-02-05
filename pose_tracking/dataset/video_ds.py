@@ -289,6 +289,8 @@ class MultiVideoDataset(Dataset):
     def __init__(self, video_datasets: list[VideoDataset]):
         self.video_datasets = video_datasets
         self.lens = [len(ds) for ds in self.video_datasets]
+        self.vds = self.video_datasets[0]
+        self.ds = self.vds.ds
 
     def __len__(self):
         return sum(self.lens)
@@ -300,3 +302,6 @@ class MultiVideoDataset(Dataset):
             idx -= dataset_len
 
         raise IndexError(f"Index {idx} out of range for {len(self)=}")
+
+    def __repr__(self) -> str:
+        return print_cls(self, excluded_attrs=["video_datasets", "ds", "lens"])

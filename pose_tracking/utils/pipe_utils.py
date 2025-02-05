@@ -294,7 +294,7 @@ def get_trackformer_args(args):
 
 
 def get_trainer(
-    args, model, device, writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
+    args, model, device="cuda", writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
     from pose_tracking.trainer import Trainer
     from pose_tracking.trainer_detr import TrainerDeformableDETR, TrainerTrackformer

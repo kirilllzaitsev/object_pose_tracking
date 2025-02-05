@@ -67,7 +67,9 @@ def get_parser():
         help="Apply noise to init gt pose for relative pose estimation",
     )
     train_args.add_argument(
-        "--include_abs_pose_loss_for_rel", action="store_true", help="Include additional abs pose loss when training with relative pose"
+        "--include_abs_pose_loss_for_rel",
+        action="store_true",
+        help="Include additional abs pose loss when training with relative pose",
     )
     train_args.add_argument(
         "--do_chunkify_val", action="store_true", help="Chunkify validation into train's seq_length"
@@ -176,7 +178,9 @@ def get_parser():
     tf_args.add_argument("--tf_use_box_refine", action="store_true", help="Use box refinement")
     tf_args.add_argument("--tf_use_focal_loss", action="store_true", help="Use focal_loss")
     tf_args.add_argument("--tf_use_kpts", action="store_true", help="Use keypoints in tf")
-    tf_args.add_argument("--tf_use_kpts_as_ref_pt", action="store_true", help="Use keypoints as reference points for encoder")
+    tf_args.add_argument(
+        "--tf_use_kpts_as_ref_pt", action="store_true", help="Use keypoints as reference points for encoder"
+    )
     tf_args.add_argument("--tf_use_kpts_as_img", action="store_true", help="Use keypoints instead of images")
     tf_args.add_argument("--tf_bbox_loss_coef", type=float, default=5)
     tf_args.add_argument("--tf_giou_loss_coef", type=float, default=2)
@@ -201,10 +205,13 @@ def get_parser():
     model_args.add_argument("--use_mlp_for_prev_pose", action="store_true", help="Project previous rot/t with MLP")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
-    model_args.add_argument("--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture")
+    model_args.add_argument(
+        "--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture"
+    )
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
     )
+    model_args.add_argument("--use_belief_decoder", action="store_true")
     model_args.add_argument(
         "--model_name",
         type=str,
@@ -241,7 +248,9 @@ def get_parser():
         choices=["frozen_bn", "bn", "id"],
     )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
-    model_args.add_argument("--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim")
+    model_args.add_argument(
+        "--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim"
+    )
     model_args.add_argument(
         "--benc_belief_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief encoder"
     )
@@ -287,7 +296,11 @@ def get_parser():
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
     data_args.add_argument("--do_subtract_bg", action="store_true", help="Subtract background from RGBD")
-    data_args.add_argument("--use_entire_seq_in_train", action="store_true", help="Instead of seq_len, use seq_len_max_val for train sequences")
+    data_args.add_argument(
+        "--use_entire_seq_in_train",
+        action="store_true",
+        help="Instead of seq_len, use seq_len_max_val for train sequences",
+    )
     data_args.add_argument(
         "--do_split_train_for_val", action="store_true", help="Obtain train/val by splitting the train set"
     )
@@ -303,7 +316,11 @@ def get_parser():
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
     data_args.add_argument("--max_val_videos", type=int, default=100, help="Max number of videos for validation")
-    data_args.add_argument("--num_samples", type=int, help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step")
+    data_args.add_argument(
+        "--num_samples",
+        type=int,
+        help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step",
+    )
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--num_classes", type=int, help="Hard-coded number of classes")

@@ -140,7 +140,8 @@ class NestedTensor(object):
 
 
 def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
-    msg = f"self: {type(cls)}\n"
+    msg = "\n" + "-" * 30 + "\n"
+    msg += f"self: {type(cls)}\n"
     excluded_attrs = excluded_attrs or []
     attrs = cls.__dict__.items()
     attrs = sorted(attrs, key=lambda x: x[0])
@@ -152,6 +153,7 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
         msg += f"{k}: {v}\n"
     if extra_str:
         msg += f"\n{extra_str}"
+    msg += "\n" + "-" * 30
     return msg
 
 
