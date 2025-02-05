@@ -75,7 +75,7 @@ class Trainer:
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
         use_rnn=True,
-        use_obs_belief=True,
+        use_belief_decoder=True,
         world_size=1,
         do_log_every_ts=False,
         do_log_every_seq=True,
@@ -98,6 +98,7 @@ class Trainer:
         tf_t_loss_coef=1,
         tf_rot_loss_coef=1,
         use_entire_seq_in_train=False,
+        use_seq_len_curriculum=False,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -109,7 +110,7 @@ class Trainer:
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
         self.use_rnn = use_rnn
-        self.use_obs_belief = use_obs_belief
+        self.use_belief_decoder = use_belief_decoder
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
@@ -122,6 +123,7 @@ class Trainer:
         self.do_chunkify_val = do_chunkify_val
         self.do_perturb_init_gt_for_rel_pose = do_perturb_init_gt_for_rel_pose
         self.use_entire_seq_in_train = use_entire_seq_in_train
+        self.use_seq_len_curriculum = use_seq_len_curriculum
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -206,7 +208,9 @@ class Trainer:
                     self.do_reset_state = False
                 self.model_without_ddp.reset_state(batch_size, device=self.device)
 
-            if (stage != "train" and not self.do_chunkify_val) or (stage == "train" and not self.use_entire_seq_in_train):
+            if (stage != "train" and not self.do_chunkify_val) or (
+                stage == "train" and not self.use_entire_seq_in_train
+            ):
                 seq_stats = self.batched_seq_forward(
                     batched_seq=batched_seq,
                     optimizer=optimizer,
@@ -221,7 +225,9 @@ class Trainer:
                 num_chunks = len(batched_seq_chunks)
                 last_step_state = None
 
-                for cidx, chunk in tqdm(enumerate(batched_seq_chunks), desc="Subseq", leave=False, total=num_chunks):
+                for cidx, chunk in tqdm(
+                    enumerate(batched_seq_chunks), desc="Subseq", leave=False, total=num_chunks, disable=True
+                ):
                     seq_stats_chunk = self.batched_seq_forward(
                         batched_seq=chunk,
                         optimizer=optimizer,
@@ -238,6 +244,7 @@ class Trainer:
                 for k, v in seq_stats.items():
                     for kk, vv in v.items():
                         seq_stats[k][kk] /= len(batched_seq_chunks)
+            torch.cuda.empty_cache()
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
