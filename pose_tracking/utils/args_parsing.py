@@ -305,6 +305,9 @@ def get_parser():
         "--do_split_train_for_val", action="store_true", help="Obtain train/val by splitting the train set"
     )
     data_args.add_argument(
+        "--use_seq_len_curriculum", action="store_true", help="Gradually increase seq_len during training"
+    )
+    data_args.add_argument(
         "--val_split_share",
         type=float,
         default=0.1,
@@ -324,6 +327,7 @@ def get_parser():
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--num_classes", type=int, help="Hard-coded number of classes")
+    data_args.add_argument("--seq_len_max_train", type=int, default=100, help="Number of timesteps in the entire train seq (splitted into seq_len if use_entire_seq_in_train)")
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(
         "--obj_names_val",

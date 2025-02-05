@@ -377,6 +377,7 @@ def get_trainer(
         tf_rot_loss_coef=args.tf_rot_loss_coef,
         include_abs_pose_loss_for_rel=args.include_abs_pose_loss_for_rel,
         use_entire_seq_in_train=args.use_entire_seq_in_train,
+        use_seq_len_curriculum=args.use_seq_len_curriculum,
         **extra_kwargs,
     )
 

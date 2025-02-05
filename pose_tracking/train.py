@@ -171,6 +171,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         do_predict_rel_pose=args.do_predict_rel_pose,
         do_subtract_bg=args.do_subtract_bg,
         use_entire_seq_in_train=args.use_entire_seq_in_train,
+        seq_len_max_train=args.seq_len_max_train,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]

@@ -496,7 +496,7 @@ def plot_seq(
             img = fetcher_fn(key, sidx)
             dtype = np.uint8
             if key in ["depth"]:
-                grid_img = adjust_depth_for_plt(img)
+                grid_img = img
                 dtype = np.float32
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(img[None])
