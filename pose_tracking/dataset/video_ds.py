@@ -39,7 +39,6 @@ class VideoDataset(Dataset):
         do_preload=False,
         transforms_rgb=None,
         max_random_seq_step=8,
-        max_seq_len=None,
         do_predict_rel_pose=False,
     ):
         self.do_preload = do_preload
@@ -49,7 +48,6 @@ class VideoDataset(Dataset):
         self.seq_start = seq_start
         self.seq_step = seq_step
         self.max_random_seq_step = max_random_seq_step
-        self.max_seq_len = None if max_seq_len is None else min(len(self.ds), max_seq_len)
 
         self.seq_len = min(len(self.ds), seq_len) if seq_len is not None else len(self.ds)
         if seq_start is not None:
@@ -70,10 +68,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, idx):
         seq = []
-        if self.max_seq_len is None or self.max_seq_len // self.seq_len < 2:
-            timesteps = self.seq_len
-        else:
-            timesteps = self.seq_len * torch.randint(1, self.max_seq_len // self.seq_len, (1,)).item()
+        timesteps = self.seq_len
         seq_start = self.seq_start
         seq_step = self.seq_step
 
