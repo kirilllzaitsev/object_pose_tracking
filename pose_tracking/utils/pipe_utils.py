@@ -226,6 +226,7 @@ def get_model(args, num_classes=None):
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
+            use_belief_decoder=args.use_belief_decoder,
             use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
         )
 
@@ -351,7 +352,7 @@ def get_trainer(
         do_predict_6d_rot=args.do_predict_6d_rot,
         do_predict_3d_rot=args.do_predict_3d_rot,
         use_rnn=not args.no_rnn,
-        use_obs_belief=not args.no_obs_belief,
+        use_belief_decoder=args.use_belief_decoder,
         world_size=world_size,
         logger=logger,
         vis_epoch_freq=args.vis_epoch_freq,

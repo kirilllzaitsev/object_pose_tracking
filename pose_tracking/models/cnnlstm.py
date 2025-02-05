@@ -225,6 +225,7 @@ class RecurrentCNN(nn.Module):
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
         use_prev_latent=False,
+        use_belief_decoder=True,
         do_predict_kpts=False,
         do_predict_rot=True,
         r_num_layers_inc=0,
@@ -257,6 +258,7 @@ class RecurrentCNN(nn.Module):
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
         self.use_obs_belief = use_obs_belief
+        self.use_belief_decoder = use_belief_decoder
         self.use_priv_decoder = use_priv_decoder
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
@@ -301,19 +303,22 @@ class RecurrentCNN(nn.Module):
                 use_rnn=use_rnn,
                 dropout=dropout,
             )
-            self.belief_decoder = BeliefDecoder(
-                state_dim=hidden_dim,
-                priv_decoder_out_dim=bdec_priv_decoder_out_dim,
-                priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-                depth_decoder_out_dim=depth_dim,
-                depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-                hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
-                priv_decoder_num_layers=priv_decoder_num_layers,
-                depth_decoder_num_layers=depth_decoder_num_layers,
-                hidden_attn_num_layers=hidden_attn_num_layers,
-                use_priv_decoder=use_priv_decoder,
-                dropout=dropout,
-            )
+            if use_belief_decoder:
+                self.belief_decoder = BeliefDecoder(
+                    state_dim=hidden_dim,
+                    priv_decoder_out_dim=bdec_priv_decoder_out_dim,
+                    priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
+                    depth_decoder_out_dim=depth_dim,
+                    depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
+                    hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
+                    priv_decoder_num_layers=priv_decoder_num_layers,
+                    depth_decoder_num_layers=depth_decoder_num_layers,
+                    hidden_attn_num_layers=hidden_attn_num_layers,
+                    use_priv_decoder=use_priv_decoder,
+                    dropout=dropout,
+                )
+            else:
+                self.belief_decoder = None
         if do_predict_2d_t:
             self.t_mlp_out_dim = 2
             self.depth_mlp_in_dim = depth_dim + rgb_dim
@@ -448,20 +453,17 @@ class RecurrentCNN(nn.Module):
             cx = cx if cx is None else cx.expand(latent_rgb.size(0), -1)
             state_prev = (hx, cx)
             encoder_out = self.belief_encoder(latent_rgb, latent_depth, *state_prev)
+            res["encoder_out"] = encoder_out
             state_new = encoder_out["hx"], encoder_out["cx"]
-            decoder_out = self.belief_decoder(hx, latent_depth)
 
             belief_state = encoder_out["belief_state"]
             extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
 
-            res.update(
-                {
-                    "encoder_out": encoder_out,
-                    "decoder_out": decoder_out,
-                }
-            )
-            if self.use_priv_decoder:
-                res["priv_decoded"] = decoder_out["priv_decoded"]
+            if self.use_belief_decoder:
+                decoder_out = self.belief_decoder(hx, latent_depth)
+                res["decoder_out"] = decoder_out
+                if self.use_priv_decoder:
+                    res["priv_decoded"] = decoder_out["priv_decoded"]
         else:
             extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
 

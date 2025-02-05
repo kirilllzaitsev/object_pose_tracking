@@ -168,7 +168,7 @@ class TrackingDataset(Dataset):
                     mask = mask_morph(mask, kernel_size=11)
             bbox_2d = infer_bounding_box(mask)
             if bbox_2d is None:
-                logger.error(f"Could not infer bbox for {self.color_files[i]}")
+                print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
                 return None
             bbox_2d = bbox_2d.astype(np.float32)
             if self.do_normalize_bbox:
