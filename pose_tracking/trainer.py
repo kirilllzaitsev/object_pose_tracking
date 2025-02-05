@@ -656,11 +656,11 @@ class Trainer:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
             if self.do_predict_2d_t:
                 pose_prev_pred_abs["center_depth"] = center_depth_pred
-            pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
+            pose_prev_pred_abs = {k: v for k, v in pose_prev_pred_abs.items()}
 
             pose_mat_prev_gt_abs = pose_mat_gt_abs
             out_prev = {"t": out["t"], "rot": out["rot"]}
-            prev_latent = out["prev_latent"].detach() if self.use_prev_latent else None
+            prev_latent = out["prev_latent"] if self.use_prev_latent else None
 
         num_steps = seq_length
         if self.do_predict_rel_pose:
