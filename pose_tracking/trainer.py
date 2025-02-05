@@ -99,6 +99,8 @@ class Trainer:
         tf_rot_loss_coef=1,
         use_entire_seq_in_train=False,
         use_seq_len_curriculum=False,
+        seq_len_max=None,
+        seq_len_curriculum_step_epoch_freq=5,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -144,6 +146,17 @@ class Trainer:
         self.max_clip_grad_norm = max_clip_grad_norm
         self.tf_t_loss_coef = tf_t_loss_coef
         self.tf_rot_loss_coef = tf_rot_loss_coef
+        if use_seq_len_curriculum:
+            self.seq_len_init = 2 if do_predict_rel_pose else 1
+            self.seq_len_current = self.seq_len_init
+            if seq_len_max is None:
+                self.seq_len_max = seq_len
+            else:
+                self.seq_len_max = seq_len_max
+            self.seq_len_curriculum_step_epoch_freq = seq_len_curriculum_step_epoch_freq
+        else:
+            self.seq_len_max = None
+            self.seq_len_curriculum_step_epoch_freq = None
 
         if self.use_ddp:
             self.model_without_ddp = self.model.module
@@ -199,6 +212,13 @@ class Trainer:
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
 
+        if self.use_seq_len_curriculum:
+            if self.train_epoch_count % self.seq_len_curriculum_step_epoch_freq == 0:
+                self.seq_len_current = min(self.seq_len_current + 1, self.seq_len_max)
+            seq_len = self.seq_len_current
+        else:
+            seq_len = self.seq_len
+
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
             batch_size = len(batched_seq[0]["rgb"])
@@ -220,7 +240,7 @@ class Trainer:
                     do_vis=do_vis,
                 )
             else:
-                batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
+                batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // seq_len)
                 seq_stats = defaultdict(lambda: defaultdict(float))
                 num_chunks = len(batched_seq_chunks)
                 last_step_state = None
