@@ -219,6 +219,7 @@ class Trainer:
                 batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // self.seq_len)
                 seq_stats = defaultdict(lambda: defaultdict(float))
                 num_chunks = len(batched_seq_chunks)
+                last_step_state = None
 
                 for cidx, chunk in tqdm(enumerate(batched_seq_chunks), desc="Subseq", leave=False, total=num_chunks):
                     seq_stats_chunk = self.batched_seq_forward(
@@ -228,7 +229,9 @@ class Trainer:
                         preds_dir=preds_dir,
                         stage=stage,
                         do_vis=do_vis,
+                        last_step_state=last_step_state,
                     )
+                    last_step_state = seq_stats_chunk.pop("last_step_state")
                     for k, v in seq_stats_chunk.items():
                         for kk, vv in v.items():
                             seq_stats[k][kk] += vv
@@ -266,6 +269,7 @@ class Trainer:
         preds_dir=None,
         stage="train",
         do_vis=False,
+        last_step_state=None,
     ):
 
         is_train = stage == "train"
@@ -300,7 +304,6 @@ class Trainer:
         pose_mat_prev_gt_abs = None
         prev_latent = None
         state = None
-        nan_count = 0
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -316,7 +319,11 @@ class Trainer:
             rot_gt_abs = pose_gt_abs[:, 3:]
 
             if self.do_predict_rel_pose:
-                if t == 0:
+                if t == 0 and last_step_state is not None:
+                    pose_mat_prev_gt_abs = last_step_state["pose_mat_prev_gt_abs"]
+                    pose_prev_pred_abs = last_step_state["pose_prev_pred_abs"]
+                    prev_latent = last_step_state.get("prev_latent")
+                elif t == 0:
                     if self.do_perturb_init_gt_for_rel_pose:
                         noise_t = (
                             torch.rand_like(t_gt_abs)
@@ -495,7 +502,7 @@ class Trainer:
                         loss += loss_t * self.tf_t_loss_coef
 
             # depth loss
-            if self.use_obs_belief:
+            if self.use_belief_decoder:
                 loss_depth = F.mse_loss(out["decoder_out"]["depth_final"], out["latent_depth"])
             else:
                 loss_depth = torch.tensor(0.0).to(self.device)
@@ -677,11 +684,19 @@ class Trainer:
             optimizer.step()
             optimizer.zero_grad()
 
-        self.model_without_ddp.set_state(state)
-        self.model_without_ddp.detach_state()
-        del state
-        torch.cuda.empty_cache()
+        if self.use_rnn:
+            self.model_without_ddp.set_state(state)
+            self.model_without_ddp.detach_state()
+            last_step_state = {
+                "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
+                "pose_prev_pred_abs": {k: v.detach() for k, v in pose_prev_pred_abs.items()},
+                "pose_mat_prev_gt_abs": pose_mat_prev_gt_abs,
+            }
+        else:
+            last_step_state = None
 
+        seq_stats_per_seq = {f"{k}_per_seq": v for k, v in seq_stats.items()}
+        seq_metrics_per_seq = {f"{k}_per_seq": v for k, v in seq_metrics.items()}
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
                 stats[k] = v / num_steps
@@ -696,8 +711,9 @@ class Trainer:
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
         return {
-            "losses": seq_stats,
-            "metrics": seq_metrics,
+            "losses": {**seq_stats, **seq_stats_per_seq},
+            "metrics": {**seq_metrics, **seq_metrics_per_seq},
+            "last_step_state": last_step_state,
         }
 
     def get_grad_info(self):
