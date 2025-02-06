@@ -103,14 +103,14 @@ def get_parser():
         type=str,
         default="mse",
         help="Translation loss name",
-        choices=["mse", "mae", "huber", "huber_norm", "angle", "mixed"],
+        choices=["mse", "rmse", "mae", "huber", "huber_norm", "angle", "mixed"],
     )
     train_args.add_argument(
         "--rot_loss_name",
         type=str,
         default="mse",
         help="Rotation loss name",
-        choices=["geodesic", "mse", "mae", "huber", "videopose", "displacement", "geodesic_mat"],
+        choices=["geodesic", "mse", "rmse", "mae", "huber", "videopose", "displacement", "geodesic_mat"],
     )
     train_args.add_argument(
         "--opt_only",
@@ -198,6 +198,7 @@ def get_parser():
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
+    model_args.add_argument("--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose")
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")

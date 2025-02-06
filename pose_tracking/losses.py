@@ -7,7 +7,6 @@ from torch import nn
 from torch.nn import functional as F
 
 
-
 def normalize_quaternion(quat, eps=1e-8):
     return F.normalize(quat, p=2, dim=-1, eps=eps)
 
@@ -196,9 +195,20 @@ class AngleTranslationLoss(nn.Module):
         return self.huber(angle, torch.zeros_like(angle))
 
 
+class RMSELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+
+    def forward(self, yhat, y):
+        return torch.sqrt(self.mse(yhat, y))
+
+
 def get_t_loss(t_loss_name):
     if t_loss_name == "mse":
         criterion_trans = nn.MSELoss()
+    elif t_loss_name == "rmse":
+        criterion_trans = RMSELoss()
     elif t_loss_name == "mae":
         criterion_trans = nn.L1Loss()
     elif t_loss_name == "huber":
@@ -223,6 +233,8 @@ def get_rot_loss(rot_loss_name):
         criterion_rot = geodesic_mat_loss
     elif rot_loss_name == "mse":
         criterion_rot = nn.MSELoss()
+    elif rot_loss_name == "rmse":
+        criterion_rot = RMSELoss()
     elif rot_loss_name == "mae":
         criterion_rot = nn.L1Loss()
     elif rot_loss_name == "huber":
