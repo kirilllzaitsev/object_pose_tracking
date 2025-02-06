@@ -228,6 +228,7 @@ class RecurrentCNN(nn.Module):
         use_belief_decoder=True,
         do_predict_kpts=False,
         do_predict_rot=True,
+        do_predict_abs_pose=False,
         r_num_layers_inc=0,
         rt_hidden_dim=None,
     ):
@@ -260,6 +261,7 @@ class RecurrentCNN(nn.Module):
         self.use_obs_belief = use_obs_belief
         self.use_belief_decoder = use_belief_decoder
         self.use_priv_decoder = use_priv_decoder
+        self.do_predict_abs_pose = do_predict_abs_pose
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
         self.use_prev_pose_condition = use_prev_pose_condition
@@ -375,6 +377,22 @@ class RecurrentCNN(nn.Module):
         )
         if do_predict_rot:
             self.rot_mlp = MLP(
+                in_dim=self.rot_mlp_in_dim,
+                out_dim=self.rot_mlp_out_dim,
+                hidden_dim=self.rt_hidden_dim,
+                num_layers=rt_mlps_num_layers + r_num_layers_inc,
+                dropout=dropout_heads,
+            )
+        if do_predict_abs_pose:
+            self.t_mlp_abs_pose = MLP(
+                in_dim=self.t_mlp_in_dim,
+                out_dim=self.t_mlp_out_dim,
+                hidden_dim=self.rt_hidden_dim,
+                num_layers=rt_mlps_num_layers,
+                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                dropout=dropout_heads,
+            )
+            self.rot_mlp_abs_pose = MLP(
                 in_dim=self.rot_mlp_in_dim,
                 out_dim=self.rot_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
@@ -512,6 +530,16 @@ class RecurrentCNN(nn.Module):
         if self.do_predict_rot:
             rot = self.rot_mlp(rot_in)
             res["rot"] = rot
+
+        if self.do_predict_abs_pose:
+            t_abs_pose = self.t_mlp_abs_pose(t_in)
+            rot_abs_pose = self.rot_mlp_abs_pose(rot_in)
+            res.update(
+                {
+                    "t_abs_pose": t_abs_pose,
+                    "rot_abs_pose": rot_abs_pose,
+                }
+            )
 
         if self.do_predict_2d_t:
             depth_in = extracted_obs
