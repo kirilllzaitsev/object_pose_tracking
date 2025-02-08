@@ -331,6 +331,7 @@ class Trainer:
         pose_mat_prev_gt_abs = None
         prev_latent = None
         state = None
+        do_skip_first_step = False
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -350,7 +351,9 @@ class Trainer:
                     pose_mat_prev_gt_abs = last_step_state["pose_mat_prev_gt_abs"]
                     pose_prev_pred_abs = last_step_state["pose_prev_pred_abs"]
                     prev_latent = last_step_state.get("prev_latent")
+                    state = last_step_state.get("state")
                 elif t == 0:
+                    do_skip_first_step = True
                     if self.do_perturb_init_gt_for_rel_pose:
                         noise_t = (
                             torch.rand_like(t_gt_abs)
@@ -380,8 +383,6 @@ class Trainer:
                     else:
                         noise_t = 0
 
-                    pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
-
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
                     out = self.model(
@@ -393,10 +394,13 @@ class Trainer:
                     state = out["state"]
 
                     if self.use_prev_latent:
-                        prev_latent = torch.cat(
-                            [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)],
-                            dim=1,
-                        )
+                        if self.model_name == "cnnlstm_vanilla":
+                            prev_latent = state
+                        else:
+                            prev_latent = torch.cat(
+                                [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)],
+                                dim=1,
+                            )
 
                     if self.do_predict_abs_pose:
                         t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
@@ -659,8 +663,7 @@ class Trainer:
                     vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
                 vis_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
                 vis_data["pts"].append(detach_and_cpu(pts))
-                vis_data["bbox_3d"].append(detach_and_cpu(bbox_3d))
-                vis_data["m_batch"].append(detach_and_cpu(m_batch))
+                vis_data["bbox_3d"].append(detach_and_cpu(batch_t["mesh_bbox"]))
                 vis_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
@@ -709,7 +712,7 @@ class Trainer:
             prev_latent = out["prev_latent"] if self.use_prev_latent else None
 
         num_steps = seq_length
-        if self.do_predict_rel_pose:
+        if do_skip_first_step:
             num_steps -= 1
 
         if do_opt_in_the_end:
@@ -730,6 +733,7 @@ class Trainer:
                 "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
                 "pose_prev_pred_abs": {k: v.detach() for k, v in pose_prev_pred_abs.items()},
                 "pose_mat_prev_gt_abs": pose_mat_prev_gt_abs,
+                "state": [x if x is None else x.detach() for x in state],
             }
         else:
             last_step_state = None
