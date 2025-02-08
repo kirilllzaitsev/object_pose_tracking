@@ -398,6 +398,18 @@ class Trainer:
                             dim=1,
                         )
 
+                    if self.do_predict_abs_pose:
+                        t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+                        losses_abs_pose = self.calc_abs_pose_loss_for_rel(pose_gt_abs, out)
+                        total_loss += losses_abs_pose["loss_abs_pose"]
+
+                        pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
+
+                        for k, v in losses_abs_pose.items():
+                            seq_stats[k] += v.item()
+                    else:
+                        pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
+
                     if save_preds:
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                         save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
@@ -550,6 +562,12 @@ class Trainer:
                 loss += loss_kpts
                 loss += loss_cr * 0.01
 
+            if self.do_predict_rel_pose and self.do_predict_abs_pose:
+                losses_abs_pose = self.calc_abs_pose_loss_for_rel(pose_gt_abs, out)
+                loss += losses_abs_pose["loss_abs_pose"]
+                for k, v in losses_abs_pose.items():
+                    seq_stats[k] += v.item()
+
             # optim
             if do_opt_every_ts:
                 loss.backward()
@@ -684,8 +702,12 @@ class Trainer:
             # UPDATE VARS
 
             if self.do_predict_rel_pose:
-                rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
-                pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
+                if self.do_predict_abs_pose:
+                    t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+                    pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
+                else:
+                    rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
+                    pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
             else:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
             if self.do_predict_2d_t:
