@@ -759,6 +759,42 @@ class Trainer:
             "last_step_state": last_step_state,
         }
 
+    def calc_metrics_batch(self, batch_t, pose_mat_pred_metrics, pose_mat_gt_metrics):
+        bbox_3d = batch_t["mesh_bbox"]
+        diameter = batch_t["mesh_diameter"]
+        pts = batch_t["mesh_pts"]
+        m_batch = defaultdict(list)
+        for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_metrics, pose_mat_gt_metrics)):
+            m_sample = calc_metrics(
+                pred_rt=pred_rt,
+                gt_rt=gt_rt,
+                pts=pts[sample_idx],
+                class_name=None,
+                use_miou=True,
+                bbox_3d=bbox_3d[sample_idx],
+                diameter=diameter[sample_idx],
+                is_meters=True,
+                log_fn=print if self.logger is None else self.logger.warning,
+            )
+            for k, v in m_sample.items():
+                m_batch[k].append(v)
+
+        m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+        return m_batch_avg
+
+    def calc_abs_pose_loss_for_rel(self, pose_gt_abs, out):
+        t_pred_abs_pose, rot_pred_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+        t_gt_abs = pose_gt_abs[:, :3]
+        rot_gt_abs = pose_gt_abs[:, 3:]
+        loss_rot_abs_pose = self.criterion_rot(rot_pred_abs_pose, rot_gt_abs)
+        loss_t_abs_pose = self.criterion_trans(t_pred_abs_pose, t_gt_abs)
+        loss = loss_rot_abs_pose + loss_t_abs_pose
+        return {
+            "loss_rot_abs_pose": loss_rot_abs_pose,
+            "loss_t_abs_pose": loss_t_abs_pose,
+            "loss_abs_pose": loss,
+        }
+
     def get_grad_info(self):
         grad_norms = [cast_to_numpy(p.grad.norm()) for n, p in self.model.named_parameters() if p.grad is not None]
         grad_norm = sum(grad_norms) / len(grad_norms)
