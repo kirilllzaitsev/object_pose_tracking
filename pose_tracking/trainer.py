@@ -584,26 +584,16 @@ class Trainer:
 
             # METRICS
 
-            bbox_3d = batch_t["mesh_bbox"]
-            diameter = batch_t["mesh_diameter"]
-            m_batch = defaultdict(list)
+            if self.do_predict_rel_pose:
+                pose_mat_pred_metrics = pose_mat_pred
+                pose_mat_gt_metrics = convert_r_t_to_rt(rot_gt_rel_mat, t_gt_rel)
+            else:
+                pose_mat_pred_metrics = pose_mat_pred_abs
+                pose_mat_gt_metrics = pose_mat_gt_abs
 
-            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
-                m_sample = calc_metrics(
-                    pred_rt=pred_rt,
-                    gt_rt=gt_rt,
-                    pts=pts[sample_idx],
-                    class_name=None,
-                    use_miou=True,
-                    bbox_3d=bbox_3d[sample_idx],
-                    diameter=diameter[sample_idx],
-                    is_meters=True,
-                    log_fn=print if self.logger is None else self.logger.warning,
-                )
-                for k, v in m_sample.items():
-                    m_batch[k].append(v)
-
-            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            m_batch_avg = self.calc_metrics_batch(
+                batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
+            )
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
 
