@@ -99,6 +99,7 @@ class Trainer:
         tf_rot_loss_coef=1,
         use_entire_seq_in_train=False,
         use_seq_len_curriculum=False,
+        do_predict_abs_pose=False,
         seq_len_max=None,
         seq_len_curriculum_step_epoch_freq=5,
         **kwargs,
@@ -126,6 +127,7 @@ class Trainer:
         self.do_perturb_init_gt_for_rel_pose = do_perturb_init_gt_for_rel_pose
         self.use_entire_seq_in_train = use_entire_seq_in_train
         self.use_seq_len_curriculum = use_seq_len_curriculum
+        self.do_predict_abs_pose = do_predict_abs_pose
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -526,13 +528,13 @@ class Trainer:
 
                 if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
                     loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
-                    loss_t += loss_t_abs
+                    loss_t += 0.01 * loss_t_abs
                     if self.use_rot_mat_for_loss:
                         loss_rot_abs = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
                     else:
                         rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                         loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
-                    loss_rot += loss_rot_abs
+                    loss_rot += 0.5 * loss_rot_abs
 
                 if self.opt_only is None:
                     loss = self.tf_t_loss_coef * loss_t + self.tf_rot_loss_coef * loss_rot
@@ -697,6 +699,7 @@ class Trainer:
             if self.do_predict_rel_pose:
                 if self.do_predict_abs_pose:
                     t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+                    # TODO: pose_prev_pred_abs should correspond to gt at t-1
                     pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
                 else:
                     rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
@@ -727,8 +730,6 @@ class Trainer:
             optimizer.zero_grad()
 
         if self.use_rnn:
-            self.model_without_ddp.set_state(state)
-            self.model_without_ddp.detach_state()
             last_step_state = {
                 "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
                 "pose_prev_pred_abs": {k: v.detach() for k, v in pose_prev_pred_abs.items()},

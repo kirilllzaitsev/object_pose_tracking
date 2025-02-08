@@ -221,6 +221,7 @@ def get_parser():
         choices=[
             "cnnlstm",
             "cnnlstm_sep",
+            "cnnlstm_vanilla",
             "videopose",
             "detr",
             "detr_basic",
@@ -408,6 +409,9 @@ def postprocess_args(args, use_if_provided=True):
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
+
+    if args.do_predict_abs_pose:
+        assert args.do_predict_rel_pose, "do_predict_abs_pose is used in conjunction with do_predict_abs_pose"
 
     if args.ds_name not in ["ycbi", "cube"]:
         if args.do_overfit:

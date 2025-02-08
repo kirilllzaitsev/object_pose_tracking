@@ -32,7 +32,7 @@ from pose_tracking.dataset.video_ds import (
 )
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
-from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated
+from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated, RecurrentCNNVanilla
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
@@ -185,6 +185,8 @@ def get_model(args, num_classes=None):
         rgb_dim = latent_dim
         if args.model_name == "cnnlstm":
             model_cls = RecurrentCNN
+        elif args.model_name == "cnnlstm_vanilla":
+            model_cls = RecurrentCNNVanilla
         elif args.model_name == "cnnlstm_sep":
             model_cls = RecurrentCNNSeparated
         else:
@@ -228,6 +230,7 @@ def get_model(args, num_classes=None):
             rt_hidden_dim=args.rt_hidden_dim,
             use_belief_decoder=args.use_belief_decoder,
             use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
+            do_predict_abs_pose=args.do_predict_abs_pose,
         )
 
     return model
@@ -378,6 +381,7 @@ def get_trainer(
         include_abs_pose_loss_for_rel=args.include_abs_pose_loss_for_rel,
         use_entire_seq_in_train=args.use_entire_seq_in_train,
         use_seq_len_curriculum=args.use_seq_len_curriculum,
+        do_predict_abs_pose=args.do_predict_abs_pose,
         **extra_kwargs,
     )
 
