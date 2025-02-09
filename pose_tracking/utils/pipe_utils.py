@@ -32,8 +32,13 @@ from pose_tracking.dataset.video_ds import (
 )
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
-from pose_tracking.models.cnnlstm import RecurrentCNN, RecurrentCNNSeparated, RecurrentCNNVanilla
+from pose_tracking.models.cnnlstm import (
+    RecurrentCNN,
+    RecurrentCNNSeparated,
+    RecurrentCNNVanilla,
+)
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
+from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
 from torch import nn
@@ -169,7 +174,7 @@ def get_model(args, num_classes=None):
                 use_pretrained_backbone=args.encoder_img_weights is not None,
                 **detr_args,
             )
-        elif args.model_name == "detr_kpt":
+        else:
             from pose_tracking.models.detr import KeypointDETR
 
             model = KeypointDETR(
@@ -191,33 +196,39 @@ def get_model(args, num_classes=None):
             model_cls = RecurrentCNNSeparated
         else:
             raise ValueError(f"Unknown model name {args.model_name}")
+        if args.model_name == "cnnlstm_vanilla":
+            extra_kwargs = {}
+        else:
+            extra_kwargs = dict(
+                use_obs_belief=not args.no_obs_belief,
+                use_priv_decoder=args.use_priv_decoder,
+                use_belief_decoder=args.use_belief_decoder,
+                bdec_priv_decoder_out_dim=priv_dim,
+                bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
+                bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
+                benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
+                benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
+                bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
+                benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
+                benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
+                priv_decoder_num_layers=args.priv_decoder_num_layers,
+                depth_decoder_num_layers=args.depth_decoder_num_layers,
+                hidden_attn_num_layers=args.hidden_attn_num_layers,
+            )
         model = model_cls(
             depth_dim=depth_dim,
             rgb_dim=rgb_dim,
             hidden_dim=args.hidden_dim,
             rnn_type=args.rnn_type,
             rnn_state_init_type=args.rnn_state_init_type,
-            bdec_priv_decoder_out_dim=priv_dim,
-            bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
-            bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
-            benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
-            benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
-            bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
             encoder_name=args.encoder_name,
             do_predict_2d_t=args.do_predict_2d_t,
             do_predict_6d_rot=args.do_predict_6d_rot,
             do_predict_3d_rot=args.do_predict_3d_rot,
-            benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
-            benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
-            priv_decoder_num_layers=args.priv_decoder_num_layers,
-            depth_decoder_num_layers=args.depth_decoder_num_layers,
-            hidden_attn_num_layers=args.hidden_attn_num_layers,
             rt_mlps_num_layers=args.rt_mlps_num_layers,
             dropout=args.dropout,
             dropout_heads=args.dropout_heads,
             use_rnn=not args.no_rnn,
-            use_obs_belief=not args.no_obs_belief,
-            use_priv_decoder=args.use_priv_decoder,
             do_freeze_encoders=args.do_freeze_encoders,
             use_prev_pose_condition=args.use_prev_pose_condition,
             use_prev_latent=args.use_prev_latent,
@@ -228,10 +239,15 @@ def get_model(args, num_classes=None):
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
-            use_belief_decoder=args.use_belief_decoder,
             use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
             do_predict_abs_pose=args.do_predict_abs_pose,
+            **extra_kwargs,
         )
+
+    if args.ckpt_path:
+        model = load_from_ckpt(args.ckpt_path, model)["model"]
+    if args.ckpt_exp_name:
+        model = load_model_from_exp(model, args.ckpt_exp_name, model_artifact_name="model_best")
 
     return model
 
