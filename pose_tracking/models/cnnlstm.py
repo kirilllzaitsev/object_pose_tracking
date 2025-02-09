@@ -428,16 +428,12 @@ class RecurrentCNNVanilla(RecurrentNet):
         rot_in = extracted_obs
         if self.use_prev_pose_condition:
             if prev_pose is None:
-                prev_t_dim = self.hidden_dim if self.use_mlp_for_prev_pose else self.t_mlp_out_dim
-                prev_rot_dim = self.hidden_dim if self.use_mlp_for_prev_pose else self.rot_mlp_out_dim
                 prev_pose = {
-                    "t": torch.zeros(latent_rgb.size(0), prev_t_dim, device=latent_rgb.device),
-                    "rot": torch.zeros(latent_rgb.size(0), prev_rot_dim, device=latent_rgb.device),
+                    "t": torch.zeros(bs, self.t_mlp_out_dim, device=latent_rgb.device),
+                    "rot": torch.zeros(bs, self.rot_mlp_out_dim, device=latent_rgb.device),
                 }
             if self.do_predict_2d_t:
-                prev_pose["center_depth"] = torch.zeros(
-                    latent_rgb.size(0), self.depth_mlp_out_dim, device=latent_rgb.device
-                )
+                prev_pose["center_depth"] = torch.zeros(bs, self.depth_mlp_out_dim, device=latent_rgb.device)
             if self.do_predict_2d_t:
                 t_prev = prev_pose["t"][:, :2]
             else:
@@ -677,9 +673,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
                     "rot": torch.zeros(bs, self.rot_mlp_out_dim, device=latent_rgb.device),
                 }
             if self.do_predict_2d_t:
-                prev_pose["center_depth"] = torch.zeros(
-                    bs, self.depth_mlp_out_dim, device=latent_rgb.device
-                )
+                prev_pose["center_depth"] = torch.zeros(bs, self.depth_mlp_out_dim, device=latent_rgb.device)
             if self.do_predict_2d_t:
                 t_prev = prev_pose["t"][:, :2]
             else:
