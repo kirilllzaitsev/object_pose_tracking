@@ -395,18 +395,13 @@ class Trainer:
                     )
                     state = out["state"]
 
-                    if self.use_prev_latent:
-                        if self.model_name == "cnnlstm_vanilla":
-                            prev_latent = state
-                        else:
-                            prev_latent = torch.cat(
-                                [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)],
-                                dim=1,
-                            )
+                    prev_latent = out["latent"] if self.use_prev_latent else None
 
                     if self.do_predict_abs_pose:
                         t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
-                        losses_abs_pose = self.calc_abs_pose_loss_for_rel(pose_gt_abs, out)
+                        losses_abs_pose = self.calc_abs_pose_loss_for_rel(
+                            pose_gt_abs, t_pred_abs_pose=t_abs_pose, rot_pred_abs_pose=rot_abs_pose
+                        )
                         total_loss += losses_abs_pose["loss_abs_pose"]
 
                         pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
@@ -569,7 +564,10 @@ class Trainer:
                 loss += loss_cr * 0.01
 
             if self.do_predict_rel_pose and self.do_predict_abs_pose:
-                losses_abs_pose = self.calc_abs_pose_loss_for_rel(pose_gt_abs, out)
+                t_pred_abs_pose, rot_pred_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+                losses_abs_pose = self.calc_abs_pose_loss_for_rel(
+                    pose_gt_abs, t_pred_abs_pose=t_pred_abs_pose, rot_pred_abs_pose=rot_pred_abs_pose
+                )
                 loss += losses_abs_pose["loss_abs_pose"]
                 for k, v in losses_abs_pose.items():
                     seq_stats[k] += v.item()
@@ -698,9 +696,7 @@ class Trainer:
 
             if self.do_predict_rel_pose:
                 if self.do_predict_abs_pose:
-                    t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
-                    # TODO: pose_prev_pred_abs should correspond to gt at t-1
-                    pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
+                    pose_prev_pred_abs = {"t": t_pred_abs_pose, "rot": rot_pred_abs_pose}
                 else:
                     rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                     pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
@@ -712,7 +708,7 @@ class Trainer:
 
             pose_mat_prev_gt_abs = pose_mat_gt_abs
             out_prev = {"t": out["t"], "rot": out["rot"]}
-            prev_latent = out["prev_latent"] if self.use_prev_latent else None
+            prev_latent = out["latent"] if self.use_prev_latent else None
 
         num_steps = seq_length
         if do_skip_first_step:
@@ -739,11 +735,15 @@ class Trainer:
         else:
             last_step_state = None
 
+        for stats in [seq_stats, seq_metrics]:
+            for k, v in stats.items():
+                stats[k] = v / num_steps
+
         if self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
             metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
             for k, v in metrics_abs.items():
-                seq_metrics[k] += v
+                seq_metrics[f"{k}_abs"] += v
             if not self.include_abs_pose_loss_for_rel:
                 with torch.no_grad():
                     loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
@@ -755,10 +755,6 @@ class Trainer:
                     seq_stats["loss_t_abs"] = loss_t_abs.item()
                     seq_stats["loss_rot_abs"] = loss_rot_abs.item()
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = v / num_steps
-
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
             save_vis_path = (
@@ -769,8 +765,8 @@ class Trainer:
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
         return {
-            "losses": {**seq_stats, **seq_stats_per_seq},
-            "metrics": {**seq_metrics, **seq_metrics_per_seq},
+            "losses": seq_stats,
+            "metrics": seq_metrics,
             "last_step_state": last_step_state,
         }
 
@@ -797,8 +793,7 @@ class Trainer:
         m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
         return m_batch_avg
 
-    def calc_abs_pose_loss_for_rel(self, pose_gt_abs, out):
-        t_pred_abs_pose, rot_pred_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
+    def calc_abs_pose_loss_for_rel(self, pose_gt_abs, t_pred_abs_pose, rot_pred_abs_pose):
         t_gt_abs = pose_gt_abs[:, :3]
         rot_gt_abs = pose_gt_abs[:, 3:]
         loss_rot_abs_pose = self.criterion_rot(rot_pred_abs_pose, rot_gt_abs)
