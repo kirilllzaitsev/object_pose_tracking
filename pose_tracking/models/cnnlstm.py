@@ -450,7 +450,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             rot_in = torch.cat([rot_in, rot_prev], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
-                prev_latent = torch.zeros(latent_rgb.size(0), extracted_obs.shape[-1], device=latent_rgb.device)
+                prev_latent = torch.zeros_like(latent)
             t_in = torch.cat([t_in, prev_latent], dim=1)
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
@@ -464,7 +464,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         )
 
         if self.use_prev_latent:
-            res["prev_latent"] = extracted_obs
+            res["latent"] = latent
 
         if self.do_predict_rot:
             rot = self.rot_mlp(rot_in)
