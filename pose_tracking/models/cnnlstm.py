@@ -231,17 +231,6 @@ class RecurrentCNNVanilla(RecurrentNet):
         depth_dim,
         rgb_dim,
         hidden_dim,
-        benc_belief_enc_hidden_dim,
-        benc_belief_depth_enc_hidden_dim,
-        bdec_priv_decoder_out_dim,
-        bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_hidden_dim,
-        bdec_hidden_attn_hidden_dim,
-        benc_belief_enc_num_layers=2,
-        benc_belief_depth_enc_num_layers=2,
-        priv_decoder_num_layers=1,
-        depth_decoder_num_layers=1,
-        hidden_attn_num_layers=1,
         rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
@@ -256,48 +245,33 @@ class RecurrentCNNVanilla(RecurrentNet):
         do_predict_6d_rot=False,
         do_predict_3d_rot=False,
         use_rnn=True,
-        use_obs_belief=False,
-        use_priv_decoder=False,
         use_mlp_for_prev_pose=False,
         do_freeze_encoders=False,
         use_prev_pose_condition=False,
         use_prev_latent=False,
-        use_belief_decoder=True,
         do_predict_kpts=False,
         do_predict_rot=True,
         do_predict_abs_pose=False,
         r_num_layers_inc=0,
         rt_hidden_dim=None,
+        state_cell_out_dim=None,
+        mlp_in_dim=None,
     ):
-        super().__init__()
+        super().__init__(rnn_type=rnn_type, rnn_state_init_type=rnn_state_init_type, hidden_dim=hidden_dim)
+
         self.depth_dim = depth_dim
         self.rgb_dim = rgb_dim
         self.hidden_dim = hidden_dim
-        self.benc_belief_enc_hidden_dim = benc_belief_enc_hidden_dim
-        self.benc_belief_depth_enc_hidden_dim = benc_belief_depth_enc_hidden_dim
-        self.bdec_priv_decoder_out_dim = bdec_priv_decoder_out_dim
-        self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
-        self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
-        self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
         self.encoder_out_dim = encoder_out_dim
-        self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
-        self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
-        self.dropout = dropout
         self.dropout_heads = dropout_heads
         self.rt_mlps_num_layers = rt_mlps_num_layers
-        self.priv_decoder_num_layers = priv_decoder_num_layers
-        self.depth_decoder_num_layers = depth_decoder_num_layers
-        self.hidden_attn_num_layers = hidden_attn_num_layers
         self.rnn_state_init_type = rnn_state_init_type
 
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
-        self.use_obs_belief = use_obs_belief
-        self.use_belief_decoder = use_belief_decoder
-        self.use_priv_decoder = use_priv_decoder
         self.do_predict_abs_pose = do_predict_abs_pose
         self.use_rnn = use_rnn
         self.do_freeze_encoders = do_freeze_encoders
@@ -309,6 +283,8 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         self.input_dim = depth_dim + rgb_dim
         self.rt_hidden_dim = hidden_dim // 2 if rt_hidden_dim is None else rt_hidden_dim
+        self.state_cell_out_dim = hidden_dim if state_cell_out_dim is None else state_cell_out_dim
+        self.mlp_in_dim = hidden_dim if mlp_in_dim is None else mlp_in_dim
 
         if use_rnn:
             if rnn_type == "lstm":
@@ -324,7 +300,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         else:
             self.state_cell = MLP(
                 in_dim=self.input_dim,
-                out_dim=hidden_dim,
+                out_dim=self.state_cell_out_dim,
                 hidden_dim=hidden_dim,
                 num_layers=1,
                 dropout=dropout,
@@ -347,7 +323,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         else:
             self.t_mlp_out_dim = 3
 
-        self.t_mlp_in_dim = self.rot_mlp_in_dim = hidden_dim
+        self.t_mlp_in_dim = self.rot_mlp_in_dim = self.mlp_in_dim
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
@@ -372,8 +348,8 @@ class RecurrentCNNVanilla(RecurrentNet):
                 self.t_mlp_in_dim += self.t_mlp_out_dim
                 self.rot_mlp_in_dim += self.rot_mlp_out_dim
         if use_prev_latent:
-            self.t_mlp_in_dim += hidden_dim
-            self.rot_mlp_in_dim += hidden_dim
+            self.t_mlp_in_dim += rgb_dim + depth_dim
+            self.rot_mlp_in_dim += rgb_dim + depth_dim
 
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
@@ -431,31 +407,6 @@ class RecurrentCNNVanilla(RecurrentNet):
                 norm_layer_type=norm_layer_type,
                 out_dim=encoder_out_dim,
             )
-
-        self.hx = None
-        self.cx = None
-
-    def __repr__(self):
-        return print_cls(self, extra_str=super().__repr__())
-
-    def reset_state(self, batch_size, device):
-        if self.rnn_state_init_type == "learned":
-            self.hx = nn.Parameter(torch.randn(1, self.hidden_dim, device=device))
-            self.cx = None if "gru" in self.rnn_type else nn.Parameter(torch.randn(1, self.hidden_dim, device=device))
-        elif self.rnn_state_init_type == "zeros":
-            self.hx = torch.zeros(1, self.hidden_dim, device=device)
-            self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.hidden_dim, device=device)
-        elif self.rnn_state_init_type == "rand":
-            self.hx = torch.randn(1, self.hidden_dim, device=device)
-            self.cx = None if "gru" in self.rnn_type else torch.randn(1, self.hidden_dim, device=device)
-        else:
-            raise ValueError(f"Unknown rnn_state_init_type: {self.rnn_state_init_type}")
-
-    def detach_state(self):
-        if self.training:
-            self.hx = self.hx.detach()
-            if self.cx is not None:
-                self.cx = self.cx.detach()
 
     def forward(
         self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
