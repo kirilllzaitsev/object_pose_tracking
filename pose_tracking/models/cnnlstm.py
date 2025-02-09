@@ -660,7 +660,9 @@ class RecurrentCNN(RecurrentCNNVanilla):
                 if self.use_priv_decoder:
                     res["priv_decoded"] = decoder_out["priv_decoded"]
         else:
-            extracted_obs = torch.cat([latent_rgb, latent_depth], dim=1)
+            state_new = self.state_cell(torch.cat([latent_rgb, latent_depth], dim=1), state_prev)
+            state_new_postp = self.postp_state(state_new)
+            extracted_obs = torch.cat([latent_rgb, state_new_postp], dim=1)
 
         t_in = extracted_obs
         rot_in = extracted_obs
