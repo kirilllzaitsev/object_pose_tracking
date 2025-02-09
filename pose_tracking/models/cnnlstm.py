@@ -188,7 +188,44 @@ class MLP(nn.Module):
         return print_cls(self, extra_str=super().__repr__())
 
 
-class RecurrentCNNVanilla(nn.Module):
+class RecurrentNet(nn.Module):
+    def __init__(self, rnn_type="gru", rnn_state_init_type="zeros", hidden_dim=256):
+        super().__init__()
+
+        self.rnn_state_init_type = rnn_state_init_type
+        self.hidden_dim = hidden_dim
+        self.rnn_type = rnn_type
+
+        if self.rnn_state_init_type == "learned":
+            self.hx = nn.Parameter(torch.randn(1, self.hidden_dim, device="cpu"))
+            self.cx = None if "gru" in self.rnn_type else nn.Parameter(torch.randn(1, self.hidden_dim, device="cpu"))
+        else:
+            self.hx = None
+            self.cx = None
+
+    def __repr__(self):
+        return print_cls(self, extra_str=super().__repr__())
+
+    def reset_state(self, batch_size, device):
+        if self.rnn_state_init_type == "learned":
+            return
+        elif self.rnn_state_init_type == "zeros":
+            self.hx = torch.zeros(1, self.hidden_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.hidden_dim, device=device)
+        elif self.rnn_state_init_type == "rand":
+            self.hx = torch.randn(1, self.hidden_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.randn(1, self.hidden_dim, device=device)
+        else:
+            raise ValueError(f"Unknown rnn_state_init_type: {self.rnn_state_init_type}")
+
+    def detach_state(self):
+        if self.training:
+            self.hx = self.hx.detach()
+            if self.cx is not None:
+                self.cx = self.cx.detach()
+
+
+class RecurrentCNNVanilla(RecurrentNet):
     def __init__(
         self,
         depth_dim,
