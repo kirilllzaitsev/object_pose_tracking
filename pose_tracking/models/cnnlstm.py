@@ -416,21 +416,13 @@ class RecurrentCNNVanilla(RecurrentNet):
         latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
         res = {}
-        state_new = None
-        if state is None:
-            hx, cx = (self.hx, self.cx)
-        else:
-            if self.rnn_type == "lstm":
-                hx, cx = state
-            else:
-                hx = state[0] if type(state) in (tuple, list) else state
-                cx = None
-        hx = hx if hx is None else hx.expand(latent_rgb.size(0), -1)
-        cx = cx if cx is None else cx.expand(latent_rgb.size(0), -1)
-        state_prev = (hx, cx) if self.rnn_type == "lstm" else hx
-        state_new = self.state_cell(torch.cat([latent_rgb, latent_depth], dim=1), state_prev)
 
-        extracted_obs = state_new[0] if self.rnn_type == "lstm" else state_new
+        bs = latent_rgb.size(0)
+        state_prev = self.prep_state(state, bs)
+        latent = torch.cat([latent_rgb, latent_depth], dim=1)
+        state_new = self.state_cell(latent, state_prev)
+
+        extracted_obs = self.postp_state(state_new)
 
         t_in = extracted_obs
         rot_in = extracted_obs
@@ -504,8 +496,25 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         return res
 
+    def postp_state(self, state_new):
+        return state_new[0] if self.rnn_type == "lstm" else state_new
 
-class RecurrentCNN(nn.Module):
+    def prep_state(self, state, bs):
+        if state is None:
+            hx, cx = (self.hx, self.cx)
+        else:
+            if self.rnn_type == "lstm":
+                hx, cx = state
+            else:
+                hx = state[0] if type(state) in (tuple, list) else state
+                cx = None
+        hx = hx if hx is None else hx.expand(bs, -1)
+        cx = cx if cx is None else cx.expand(bs, -1)
+        state_prev = (hx, cx) if self.rnn_type == "lstm" else hx
+        return state_prev
+
+
+class RecurrentCNN(RecurrentCNNVanilla):
     def __init__(
         self,
         depth_dim,
