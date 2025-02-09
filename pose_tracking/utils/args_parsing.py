@@ -37,6 +37,8 @@ def get_parser():
     pipe_args.add_argument("--exp_name", type=str, default="test", help="Name of the experiment.")
     pipe_args.add_argument("--device", type=str, default="cuda", help="Device to use")
     pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
+    pipe_args.add_argument("--ckpt_path", type=str, help="Path to model checkpoint to load")
+    pipe_args.add_argument("--ckpt_exp_name", type=str, help="Name of the experiment to load ckpt from")
     pipe_args.add_argument("--args_from_exp_name", type=str, help="Exp name to load args from")
     pipe_args.add_argument(
         "--ignored_file_args",

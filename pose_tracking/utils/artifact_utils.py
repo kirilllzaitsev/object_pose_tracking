@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pose_tracking.utils.comet_utils import (
+    load_artifacts_from_comet,
     log_args,
     log_ckpt_to_exp,
     log_params_to_exp,
@@ -17,7 +18,6 @@ from pose_tracking.utils.comet_utils import (
 )
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy
 from pose_tracking.utils.misc import DeviceType
-from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 
 
 def save_results(batch_t, pose_pred, preds_dir, gt_pose):
@@ -90,23 +90,23 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         np.savetxt(intrinsics_path, intrinsics)
 
 
-def load_model_from_ckpt(model, ckpt_path):
-    state_dict = torch.load(ckpt_path)
-    if "model" in state_dict:
-        state_dict = state_dict["model"]
-    # rename all occurences of lstm_cell and rnn_cell to state_cell
-    for key in list(state_dict.keys()):
-        if "lstm_cell" in key or "rnn_cell" in key:
-            new_key = key.replace("lstm_cell", "state_cell").replace("rnn_cell", "state_cell")
-            state_dict[new_key] = state_dict.pop(key)
-    model.load_state_dict(state_dict)
+def load_model_from_exp(model, exp_name, model_artifact_name="model_best"):
+
+    download_res = load_artifacts_from_comet(exp_name, api=None, model_artifact_name=model_artifact_name)
+    ckpt_path = download_res["checkpoint_path"]
+    assert os.path.exists(ckpt_path)
+    model = load_model_from_ckpt(model, ckpt_path)
     return model
+
+
+def load_model_from_ckpt(model, ckpt_path):
+    return load_from_ckpt(ckpt_path, model)["model"]
 
 
 def load_from_ckpt(
     checkpoint_path: str,
-    device: DeviceType,
-    trep_net: nn.Module,
+    model: nn.Module,
+    device: DeviceType = "cpu",
     optimizer: t.Any = None,
     scheduler: t.Any = None,
 ) -> dict:
@@ -114,7 +114,18 @@ def load_from_ckpt(
         checkpoint_path,
         map_location=device,
     )
-    trep_net.load_state_dict(state_dicts["model"])
+    if "model" in state_dicts:
+        state_dict_model = state_dicts["model"]
+    else:
+        state_dict_model = state_dicts
+    # rename all occurences of lstm_cell and rnn_cell to state_cell
+    for key in list(state_dict_model.keys()):
+        if "lstm_cell" in key or "rnn_cell" in key:
+            new_key = key.replace("lstm_cell", "state_cell").replace("rnn_cell", "state_cell")
+            state_dict_model[new_key] = state_dict_model.pop(key)
+
+    model.load_state_dict(state_dicts["model"])
+
     if optimizer is not None:
         optimizer.load_state_dict(state_dicts["optimizer"])
         for g in optimizer.param_groups:
@@ -123,13 +134,15 @@ def load_from_ckpt(
         scheduler.load_state_dict(state_dicts["scheduler"])
 
     return {
-        "model": trep_net,
+        "model": model,
         "optimizer": optimizer,
         "scheduler": scheduler,
     }
 
 
-def log_artifacts(artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int, suffix=None, do_log_session=False) -> str:
+def log_artifacts(
+    artifacts: dict, exp: comet_ml.Experiment, log_dir: str, epoch: int, suffix=None, do_log_session=False
+) -> str:
     """Logs the training artifacts to the experiment and saves the model and session to the log directory."""
 
     suffix = epoch if suffix is None else suffix
