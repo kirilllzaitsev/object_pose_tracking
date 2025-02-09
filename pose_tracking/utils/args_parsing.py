@@ -209,7 +209,7 @@ def get_parser():
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument(
-        "--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture"
+        "--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer"
     )
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
