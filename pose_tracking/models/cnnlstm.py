@@ -649,18 +649,22 @@ class RecurrentCNN(RecurrentCNNVanilla):
         if self.use_obs_belief:
             encoder_out = self.belief_encoder(latent_rgb, latent_depth, *state_prev)
             res["encoder_out"] = encoder_out
-            state_new = encoder_out["hx"], encoder_out["cx"]
-
+            hx = encoder_out["hx"]
+            state_new = hx, encoder_out["cx"]
+            latent_depth_post = encoder_out["latent_depth_gated"]
             belief_state = encoder_out["belief_state"]
             extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
 
             if self.use_belief_decoder:
                 decoder_out = self.belief_decoder(hx, latent_depth)
+                latent_depth_post = decoder_out["depth_final"]
                 res["decoder_out"] = decoder_out
                 if self.use_priv_decoder:
                     res["priv_decoded"] = decoder_out["priv_decoded"]
+            latent = torch.cat([latent_rgb, latent_depth_post], dim=1)
         else:
-            state_new = self.state_cell(torch.cat([latent_rgb, latent_depth], dim=1), state_prev)
+            latent = torch.cat([latent_rgb, latent_depth], dim=1)
+            state_new = self.state_cell(latent, state_prev)
             state_new_postp = self.postp_state(state_new)
             extracted_obs = torch.cat([latent_rgb, state_new_postp], dim=1)
 
@@ -690,7 +694,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
             rot_in = torch.cat([rot_in, rot_prev], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
-                prev_latent = torch.zeros(latent_rgb.size(0), self.depth_dim + self.rgb_dim, device=latent_rgb.device)
+                prev_latent = torch.zeros_like(latent)
             t_in = torch.cat([t_in, prev_latent], dim=1)
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
@@ -704,7 +708,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
         )
 
         if self.use_prev_latent:
-            res["prev_latent"] = extracted_obs
+            res["latent"] = latent
 
         if self.do_predict_rot:
             rot = self.rot_mlp(rot_in)
@@ -784,7 +788,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
             out_dim=self.rot_mlp_out_dim,
             hidden_dim=self.hidden_dim,
             num_layers=self.rt_mlps_num_layers,  # rot head should capture rot info
-            dropout=self.dropout,
+            dropout=self.dropout_heads,
         )
         self.t_mlp = None
 
@@ -883,13 +887,13 @@ class RecurrentCNNSeparated(RecurrentCNN):
         )
 
         if self.use_prev_latent:
-            res["prev_latent"] = t_net_out["prev_latent"]
+            res["latent"] = t_net_out["latent"]
 
         if self.do_predict_2d_t:
             res["center_depth"] = t_net_out["center_depth"]
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(t_net_out["prev_latent"])
+            kpts = self.kpts_mlp(t_net_out["latent"])
             kpts = kpts.view(-1, 8 + 24, 2)
             res["kpts"] = kpts
 
