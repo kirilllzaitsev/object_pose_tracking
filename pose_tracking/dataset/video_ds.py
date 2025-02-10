@@ -80,6 +80,8 @@ class VideoDataset(Dataset):
                 max_random_seq_step -= 1
             if max_random_seq_step == 0:
                 raise ValueError(f"{self.ds=}\nCould not find a valid seq_step given {timesteps=} and {len(self.ds)=}")
+        else:
+            timesteps = min(timesteps, (len(self.ds) - seq_start) // seq_step)
 
         if seq_start is None:
             seq_start = torch.randint(
