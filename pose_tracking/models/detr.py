@@ -297,6 +297,13 @@ class DETR(DETRBase):
                 self.backbone_weights = torchvision.models.ResNet101_Weights.DEFAULT
         else:
             raise ValueError(f"Unknown backbone {backbone_name}")
+
+        super().__init__(
+            *args,
+            **kwargs,
+            final_feature_dim=self.final_feature_dim,
+        )
+
         self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
         self.backbone.fc = nn.Identity()
 
@@ -312,9 +319,15 @@ class DETR(DETRBase):
     def extract_tokens(self, x):
         _ = self.backbone(x)
         tokens = self.backbone_feats["layer4"]
+
+        res = {}
+        if self.use_roi:
+            res["img_features"] = tokens
+
         tokens = self.conv1x1(tokens)
         tokens = rearrange(tokens, "b c h w -> b c (h w)")
-        return {"tokens": tokens}
+        res["tokens"] = tokens
+        return res
 
 
 class DETRPretrained(nn.Module):
