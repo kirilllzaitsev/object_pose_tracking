@@ -40,13 +40,10 @@ class BeliefEncoder(nn.Module):
             dropout=dropout,
         )
 
-    def forward(self, latent_rgb, latent_depth, hx, cx=None):
+    def forward(self, latent_rgb, latent_depth, state):
         latent_obs = torch.cat([latent_rgb, latent_depth], dim=-1)
         if self.use_rnn:
-            if cx is None:
-                cell_out = self.state_cell(latent_obs, hx)
-            else:
-                cell_out = self.state_cell(latent_obs, (hx, cx))
+            cell_out = self.state_cell(latent_obs, state)
         else:
             cell_out = self.state_cell(latent_obs)
 
@@ -643,7 +640,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
         res = {}
 
         if self.use_obs_belief:
-            encoder_out = self.belief_encoder(latent_rgb, latent_depth, *state_prev)
+            encoder_out = self.belief_encoder(latent_rgb, latent_depth, state_prev)
             res["encoder_out"] = encoder_out
             hx = encoder_out["hx"]
             state_new = hx, encoder_out["cx"]
@@ -834,7 +831,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
         if isinstance(bbox, torch.Tensor):
             ind = torch.arange(bbox.shape[0]).unsqueeze(1)
             ind = ind.type_as(bbox)
-            bbox_roi = torch.cat((ind, bbox.reshape(-1, 4).float()), dim=1).float()
+            bbox_roi = torch.cat((ind, bbox.reshape(-1, 4)), dim=1).float()
         else:
             bbox_roi = bbox
 
