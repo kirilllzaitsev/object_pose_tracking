@@ -124,6 +124,7 @@ def get_parser():
 
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
+    poseformer_args.add_argument("--mt_use_roi", action="store_true", help="Apply RoI for rot mlp in DETR basic")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
@@ -200,7 +201,9 @@ def get_parser():
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
-    model_args.add_argument("--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose")
+    model_args.add_argument(
+        "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
+    )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
@@ -209,7 +212,9 @@ def get_parser():
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument(
-        "--use_pretrained_model", action="store_true", help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer"
+        "--use_pretrained_model",
+        action="store_true",
+        help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer",
     )
     model_args.add_argument(
         "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
@@ -331,7 +336,12 @@ def get_parser():
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--num_classes", type=int, help="Hard-coded number of classes")
-    data_args.add_argument("--seq_len_max_train", type=int, default=100, help="Number of timesteps in the entire train seq (splitted into seq_len if use_entire_seq_in_train)")
+    data_args.add_argument(
+        "--seq_len_max_train",
+        type=int,
+        default=100,
+        help="Number of timesteps in the entire train seq (splitted into seq_len if use_entire_seq_in_train)",
+    )
     data_args.add_argument("--obj_names", nargs="*", default=[], help="Object names to use in the dataset")
     data_args.add_argument(
         "--obj_names_val",
@@ -411,6 +421,9 @@ def postprocess_args(args, use_if_provided=True):
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
+
+    if args.mt_use_roi:
+        assert args.model_name in ["detr_basic"]
 
     if args.do_predict_abs_pose:
         assert args.do_predict_rel_pose, "do_predict_abs_pose is used in conjunction with do_predict_abs_pose"
