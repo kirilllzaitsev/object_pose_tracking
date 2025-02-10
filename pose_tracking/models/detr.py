@@ -9,6 +9,7 @@ import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.encoders import FrozenBatchNorm2d
+from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
     PosEncodingCoord,
@@ -28,6 +29,7 @@ from pose_tracking.utils.kpt_utils import (
 from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from torchvision.models import resnet18, resnet50, resnet101
+from torchvision.ops import roi_align
 
 
 def get_hook(outs, name):
@@ -56,11 +58,14 @@ class DETRBase(nn.Module):
         rot_out_dim=4,
         t_out_dim=3,
         use_pose_tokens=False,
+        use_roi=False,
+        final_feature_dim=None,
         pose_token_time_encoding="sin",
     ):
         super().__init__()
 
         self.use_pose_tokens = use_pose_tokens
+        self.use_roi = use_roi
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -77,6 +82,7 @@ class DETRBase(nn.Module):
         self.head_hidden_dim = head_hidden_dim
         self.head_num_layers = head_num_layers
         self.pose_token_time_encoding = pose_token_time_encoding
+        self.final_feature_dim = final_feature_dim
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
@@ -117,8 +123,11 @@ class DETRBase(nn.Module):
         if self.use_t:
             self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers)
         if self.use_rot:
+            rot_mlp_in_dim = d_model
+            if use_roi:
+                rot_mlp_in_dim += d_model
             self.rot_mlps = get_clones(
-                MLP(d_model, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
+                MLP(rot_mlp_in_dim, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
             )
         if self.do_predict_2d_t:
             self.depth_embed = get_clones(
@@ -149,6 +158,18 @@ class DETRBase(nn.Module):
             name = f"layer_{i}"
             layer.register_forward_hook(get_hook(self.decoder_outs, name))
 
+        if use_roi:
+            assert final_feature_dim is not None
+            self.rgb_roi_cnn = nn.Sequential(
+                nn.Conv2d(final_feature_dim, head_hidden_dim, kernel_size=3, padding=1, stride=1),
+                FrozenBatchNorm2d(head_hidden_dim),
+                nn.ReLU(),
+                nn.Conv2d(head_hidden_dim, head_hidden_dim, kernel_size=3, padding=1, stride=1),
+                FrozenBatchNorm2d(head_hidden_dim),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d((1, 1)),
+            )
+
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
             assert n_tokens is not None
@@ -173,9 +194,17 @@ class DETRBase(nn.Module):
         else:
             raise ValueError(f"Unknown encoding type {self.encoding_type}")
 
-        return self.forward_tokens(tokens, pos_enc, prev_pose_tokens=pose_tokens, prev_tokens=prev_tokens)
+        return self.forward_tokens(
+            tokens,
+            pos_enc,
+            prev_pose_tokens=pose_tokens,
+            prev_tokens=prev_tokens,
+            img_features=extract_res.get("img_features"),
+        )
 
-    def forward_tokens(self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None, prev_tokens=None):
+    def forward_tokens(
+        self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None, prev_tokens=None, img_features=None
+    ):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
         tokens_enc = self.t_encoder(tokens + pos_enc, src_key_padding_mask=memory_key_padding_mask)
@@ -216,12 +245,31 @@ class DETRBase(nn.Module):
                     pose_token = pose_tokens_enc[:, -self.n_queries :]
             else:
                 pose_token = o
-            if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](pose_token)
-                out["rot"] = pred_rot
-            if self.use_t:
-                pred_t = self.t_mlps[layer_idx](pose_token)
-                out["t"] = pred_t
+
+            if self.use_roi:
+                assert img_features is not None
+                pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
+                ind = torch.arange(pred_boxes_xyxy.shape[0]).unsqueeze(1)
+                ind = ind.type_as(pred_boxes_xyxy)
+                pred_boxes_xyxy_roi = (
+                    torch.cat((ind.unsqueeze(1).repeat(1, self.n_queries, 1), pred_boxes_xyxy), dim=-1)
+                    .float()
+                    .view(-1, 5)
+                )
+                roi_features = roi_align(img_features, pred_boxes_xyxy_roi, output_size=(7, 7), spatial_scale=1.0)
+                roi_features_cnn = self.rgb_roi_cnn(roi_features)
+                bs = ind.shape[0]
+                roi_features_cnn = roi_features_cnn.view(bs, self.n_queries, -1)
+                rot_mlp_in = torch.cat([pose_token, roi_features_cnn], dim=-1)
+                out["rot"] = self.rot_mlps[layer_idx](rot_mlp_in)
+                out["t"] = self.t_mlps[layer_idx](pose_token)
+            else:
+                if self.use_rot:
+                    pred_rot = self.rot_mlps[layer_idx](pose_token)
+                    out["rot"] = pred_rot
+                if self.use_t:
+                    pred_t = self.t_mlps[layer_idx](pose_token)
+                    out["t"] = pred_t
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
@@ -268,11 +316,6 @@ class DETR(DETRBase):
         use_pretrained_backbone=True,
         **kwargs,
     ):
-        super().__init__(
-            *args,
-            **kwargs,
-        )
-
         self.backbone_name = backbone_name
         self.use_pretrained_backbone = use_pretrained_backbone
 
@@ -468,6 +511,7 @@ class KeypointDETR(DETRBase):
             memory_key_padding_mask=memory_key_padding_mask,
             prev_pose_tokens=pose_tokens,
             prev_tokens=prev_tokens,
+            img_features=extract_res.get("img_features"),
         )
 
         for k in ["kpts", "descriptors"]:
