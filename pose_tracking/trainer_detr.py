@@ -324,32 +324,30 @@ class TrainerDeformableDETR(Trainer):
                 t_pred_abs = pose_mat_pred_abs[:, :3, 3]
                 rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
 
-                for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
-                    m_sample = calc_metrics(
-                        pred_rt=pred_rt,
-                        gt_rt=gt_rt,
-                        pts=pts[sample_idx],
-                        class_name=None,
-                        use_miou=True,
-                        bbox_3d=bbox_3d[sample_idx],
-                        diameter=diameter[sample_idx],
-                        is_meters=True,
-                        log_fn=print if self.logger is None else self.logger.warning,
+                # since only pair seq for now
+                if self.do_predict_rel_pose:
+                    pose_mat_pred_metrics = pose_mat_pred
+                    # TODO: multi-object case
+                    pose_mat_gt_rel = torch.stack(
+                        [
+                            self.pose_to_mat_converter_fn(target["pose_rel"][0])
+                            for target in targets
+                        ]
                     )
-                    for k, v in m_sample.items():
-                        m_batch[k].append(v)
+                    rot_mat_gt_rel = pose_mat_gt_rel[:, :3, :3]
+                    t_gt_rel = pose_mat_gt_rel[:, :3, 3]
+                    pose_mat_gt_metrics = convert_r_t_to_rt(rot_mat_gt_rel, t_gt_rel)
+                else:
+                    pose_mat_pred_metrics = pose_mat_pred_abs
+                    pose_mat_gt_metrics = pose_mat_gt_abs
 
-            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
-            target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
-
-            for k, v in loss_dict_reduced.items():
-                if "cardinality" in k:
-                    seq_stats[k] += v
-
-            for k, v in m_batch_avg.items():
-                if "classes" in k:
-                    continue
-                seq_metrics[k] += v
+                m_batch_avg = self.calc_metrics_batch(
+                    batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
+                )
+                for k, v in m_batch_avg.items():
+                    if "classes" in k:
+                        continue
+                    seq_metrics[k] += v
 
             # UPDATE VARS
 
@@ -378,7 +376,7 @@ class TrainerDeformableDETR(Trainer):
                 if "indices" in k:
                     continue
                 seq_stats[k] += v
-            for k in ["class_error"]:
+            for k in ["class_error", "cardinality_error"]:
                 if k in loss_dict_reduced:
                     seq_stats[k] += loss_dict_reduced[k]
 
@@ -403,6 +401,7 @@ class TrainerDeformableDETR(Trainer):
             if save_preds:
                 assert self.use_pose
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
                 out_formatted = postprocess_detr_outputs(
                     out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
                 )
