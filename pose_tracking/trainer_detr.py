@@ -469,8 +469,25 @@ class TrainerDeformableDETR(Trainer):
             for k, v in stats.items():
                 stats[k] = v / num_steps
 
-        if nan_count > 0:
-            seq_metrics["nan_count"] = nan_count
+        if self.use_pose and self.do_predict_rel_pose:
+            # calc loss/metrics btw accumulated abs poses
+            metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
+            for k, v in metrics_abs.items():
+                seq_metrics[f"{k}_abs"] += v
+            if not self.include_abs_pose_loss_for_rel:
+                with torch.no_grad():
+
+                    t_gt_abs = pose_mat_gt_abs[:, :3, 3]
+                    loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
+                    rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
+                    if self.use_rot_mat_for_loss:
+                        loss_rot_abs = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
+                    else:
+                        rot_gt_abs = self.rot_mat_to_vector_converter_fn(rot_mat_gt_abs)
+                        rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
+                        loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
+                    seq_stats["loss_t_abs"] = loss_t_abs.item()
+                    seq_stats["loss_rot_abs"] = loss_rot_abs.item()
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
