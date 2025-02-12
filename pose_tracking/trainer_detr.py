@@ -208,8 +208,8 @@ class TrainerDeformableDETR(Trainer):
         pose_mat_prev_gt_abs = None
         pose_tokens_per_layer = None
         prev_tokens = None
-        prev_features = None
         nan_count = 0
+        do_skip_first_step = False
 
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
@@ -224,6 +224,16 @@ class TrainerDeformableDETR(Trainer):
             if self.do_predict_rel_pose and t == 0:
                 pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
                 pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
+
+                if "detr" in self.model_name:
+                    # trackformer concats t-1, t in forward, while std detr could use t-1,t tokens from the outer scope
+                    model_forward_res = self.model_forward(
+                        batch_t,
+                        pose_tokens=pose_tokens_per_layer,
+                        prev_tokens=prev_tokens,
+                        use_prev_image=True,
+                    )
+                    prev_tokens = model_forward_res["out"]["tokens"]
             if self.use_pose_tokens and t == 0:
                 model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
 
