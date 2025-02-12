@@ -224,20 +224,19 @@ class TrainerDeformableDETR(Trainer):
             if self.do_predict_rel_pose and t == 0:
                 pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
                 pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
-            if stage == "train" and self.do_predict_rel_pose and t == 0:
-                with torch.no_grad():
-                    model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
+            if self.use_pose_tokens and t == 0:
+                model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
 
                 out = model_forward_res["out"]
                 pose_tokens_per_layer = [o.unsqueeze(0).detach() for o in out["pose_tokens"]]
-                prev_tokens = out["prev_tokens"]
+                prev_tokens = out["tokens"]
+                do_skip_first_step = True
                 continue
 
             model_forward_res = self.model_forward(
                 batch_t,
                 pose_tokens=pose_tokens_per_layer,
                 prev_tokens=prev_tokens,
-                prev_features=prev_features,
             )
             out = model_forward_res["out"]
 
@@ -254,7 +253,6 @@ class TrainerDeformableDETR(Trainer):
                         for i in range(self.num_dec_layers)
                     ]
                 )
-            prev_features = model_forward_res.get("features")
 
             # LOSSES
 
@@ -283,10 +281,6 @@ class TrainerDeformableDETR(Trainer):
                 total_loss += loss
 
             # METRICS
-
-            bbox_3d = batch_t["mesh_bbox"]
-            diameter = batch_t["mesh_diameter"]
-            m_batch = defaultdict(list)
 
             if self.use_pose:
                 idx = self.criterion._get_src_permutation_idx(indices)
@@ -329,10 +323,7 @@ class TrainerDeformableDETR(Trainer):
                     pose_mat_pred_metrics = pose_mat_pred
                     # TODO: multi-object case
                     pose_mat_gt_rel = torch.stack(
-                        [
-                            self.pose_to_mat_converter_fn(target["pose_rel"][0])
-                            for target in targets
-                        ]
+                        [self.pose_to_mat_converter_fn(target["pose_rel"][0]) for target in targets]
                     )
                     rot_mat_gt_rel = pose_mat_gt_rel[:, :3, :3]
                     t_gt_rel = pose_mat_gt_rel[:, :3, 3]
@@ -448,10 +439,11 @@ class TrainerDeformableDETR(Trainer):
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
         num_steps = seq_length
+        if do_skip_first_step:
+            num_steps -= 1
 
         if do_opt_in_the_end:
             total_loss /= num_steps
-            optimizer.zero_grad()
             total_loss.backward()
             unused_params = []
             if len(unused_params):
@@ -464,6 +456,7 @@ class TrainerDeformableDETR(Trainer):
                     vis_data["grad_norm"].append(grad_norm)
                     vis_data["grad_norms"].append(grad_norms)
             optimizer.step()
+            optimizer.zero_grad()
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
