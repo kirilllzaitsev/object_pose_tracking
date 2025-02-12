@@ -23,7 +23,7 @@ class PIZZA(nn.Module):
     ):
         super(PIZZA, self).__init__()
         # RGB image encoder
-        self.backbone = get_encoders(
+        self.encoder = get_encoders(
             model_name=backbone, out_dim=img_feature_dim, weights_rgb="imagenet", norm_layer_type="id"
         )[0]
         # MLP for rotation
@@ -78,7 +78,7 @@ class PIZZA(nn.Module):
         # Image is of dimension BxLx3x224x224
         [batch_size, len_sequences, img_channel, image_height, image_width] = images.shape
         images = images.view(batch_size * len_sequences, img_channel, image_height, image_width)
-        img_embedding = self.backbone(images).view(batch_size, len_sequences, self.img_feature_dim)
+        img_embedding = self.encoder(images).view(batch_size, len_sequences, self.img_feature_dim)
         if self.multi_frame:
             img_embedding = self.transformer_encoder(img_embedding)
         img_embedding_previous = img_embedding[:, :-1, :]
