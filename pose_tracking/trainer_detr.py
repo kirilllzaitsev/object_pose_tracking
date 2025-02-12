@@ -501,25 +501,48 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
-    def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, **kwargs):
-        targets = batch_t["target"]
+    def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, use_prev_image=False, **kwargs):
+        def get_prev_data(key):
+            if key not in batch_t["target"][0]:
+                return []
+            return [batch_t["target"][i][key] for i in range(len(batch_t["target"]))]
+
+        if use_prev_image:
+            targets = get_prev_data("prev_target")
+            image = torch.stack(get_prev_data("prev_image"))
+            depth = get_prev_data("depth")
+            if len(depth) > 0:
+                depth = torch.stack(depth)
+            mask = get_prev_data("mask")
+            if len(mask) > 0:
+                mask = torch.stack(mask)
+        else:
+            targets = batch_t["target"]
+            image = batch_t["image"]
+            depth = batch_t["depth"]
+            mask = batch_t["mask"]
+        intrinsics = torch.stack([x["intrinsics"] for x in targets])
+
         if self.model_name == "detr_kpt":
             extra_kwargs = {}
             if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
-                extra_kwargs["intrinsics"] = torch.stack([x["intrinsics"] for x in targets]).to(self.device)
+                extra_kwargs["intrinsics"] = intrinsics.to(self.device)
             if self.kpt_spatial_dim > 2:
-                extra_kwargs["depth"] = batch_t["depth"]
+                extra_kwargs["depth"] = depth
             out = self.model(
-                batch_t["image"],
-                mask=batch_t["mask"],
+                image,
+                mask=mask,
                 pose_tokens=pose_tokens,
                 prev_tokens=prev_tokens,
                 **extra_kwargs,
             )
         else:
-            out = self.model(batch_t["image"], pose_tokens=pose_tokens, prev_tokens=prev_tokens)
+            out = self.model(image, pose_tokens=pose_tokens, prev_tokens=prev_tokens)
 
-        loss_dict = self.criterion(out, targets)
+        if use_prev_image:
+            loss_dict = {}
+        else:
+            loss_dict = self.criterion(out, targets)
 
         return {"out": out, "loss_dict": loss_dict}
 
