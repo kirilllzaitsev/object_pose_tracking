@@ -13,6 +13,7 @@ from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
     PosEncodingCoord,
+    PositionEmbeddingLearned,
     SpatialPosEncoding,
     sinusoidal_embedding,
 )
@@ -173,7 +174,7 @@ class DETRBase(nn.Module):
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
             assert n_tokens is not None
-            pe_encoder = nn.Parameter(torch.rand((1, n_tokens, self.d_model)), requires_grad=True)
+            pe_encoder = PositionEmbeddingLearned(num_pos_feats=self.d_model // 2)
         elif encoding_type == "sin":
             # tweak sin_max_len=1024 for img-based pe
             pe_encoder = PosEncoding(self.d_model, max_len=sin_max_len)
@@ -188,7 +189,8 @@ class DETRBase(nn.Module):
         tokens = extract_res["tokens"]
 
         if self.encoding_type == "learned":
-            pos_enc = self.pe_encoder
+            pos_enc = self.pe_encoder(extract_res["img_features"])
+            pos_enc = rearrange(pos_enc, "b c h w -> b (h w) c")
         elif self.encoding_type == "sin":
             pos_enc = self.pe_encoder(tokens)
         else:
@@ -290,7 +292,7 @@ class DETRBase(nn.Module):
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
-        res["prev_tokens"] = prev_tokens
+        res["tokens"] = tokens_enc
 
         return res
 
@@ -366,6 +368,7 @@ class DETR(DETRBase):
         res = {}
         if self.use_roi:
             res["img_features"] = tokens
+        res["img_features"] = tokens
 
         tokens = self.conv1x1(tokens)
         tokens = rearrange(tokens, "b c h w -> b c (h w)")
