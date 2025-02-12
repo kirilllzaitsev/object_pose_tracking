@@ -252,6 +252,7 @@ class TrainerPizza(Trainer):
         prev_latent = None
         state = None
         nan_count = 0
+        do_skip_first_step = False
 
         out_ts_raw = self.model(
             batched_seq["rgb"],
@@ -324,6 +325,7 @@ class TrainerPizza(Trainer):
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                         save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
 
+                    do_skip_first_step = True
                     continue
 
             if self.use_prev_pose_condition:
@@ -451,42 +453,30 @@ class TrainerPizza(Trainer):
 
             # METRICS
 
-            bbox_3d = batch_t["mesh_bbox"]
-            diameter = batch_t["mesh_diameter"]
-            m_batch = defaultdict(list)
+            if self.do_predict_rel_pose:
+                pose_mat_pred_metrics = pose_mat_pred
+                pose_mat_gt_metrics = convert_r_t_to_rt(rot_gt_rel_mat, t_gt_rel)
+            else:
+                pose_mat_pred_metrics = pose_mat_pred_abs
+                pose_mat_gt_metrics = pose_mat_gt_abs
 
-            for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_abs, pose_mat_gt_abs)):
-                m_sample = calc_metrics(
-                    pred_rt=pred_rt,
-                    gt_rt=gt_rt,
-                    pts=pts[sample_idx],
-                    class_name=None,
-                    use_miou=True,
-                    bbox_3d=bbox_3d[sample_idx],
-                    diameter=diameter[sample_idx],
-                    is_meters=True,
-                    log_fn=print if self.logger is None else self.logger.warning,
-                )
-                for k, v in m_sample.items():
-                    m_batch[k].append(v)
-                if any(np.isnan(v) for v in m_sample.values()):
-                    nan_count += 1
-
-            m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+            m_batch_avg = self.calc_metrics_batch(
+                batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
+            )
             for k, v in m_batch_avg.items():
                 seq_metrics[k] += v
 
             # OTHER
 
-            seq_stats["loss"] += loss
+            seq_stats["loss"] += loss.item()
             if self.use_pose_loss:
-                seq_stats["loss_pose"] += loss_pose
+                seq_stats["loss_pose"] += loss_pose.item()
             else:
-                seq_stats["loss_rot"] += loss_rot
-                seq_stats["loss_t"] += loss_t
-                if self.include_abs_pose_loss_for_rel:
-                    seq_stats["loss_t_abs"] += loss_t_abs
-                    seq_stats["loss_rot_abs"] += loss_rot_abs
+                seq_stats["loss_rot"] += loss_rot.item()
+                seq_stats["loss_t"] += loss_t.item()
+                if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
+                    seq_stats["loss_t_abs"] += loss_t_abs.item()
+                    seq_stats["loss_rot_abs"] += loss_rot_abs.item()
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -496,6 +486,10 @@ class TrainerPizza(Trainer):
                     self.seq_stats_all_seq[self.seq_counts_per_stage[stage]][k].append(v)
 
             self.ts_counts_per_stage[stage] += 1
+
+            if save_preds:
+                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                save_results(batch_t, pose_mat_pred_abs, preds_dir, gt_pose=pose_mat_gt_abs)
 
             if do_vis:
                 # save inputs to the exp dir
@@ -528,8 +522,7 @@ class TrainerPizza(Trainer):
                     vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
                 vis_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
                 vis_data["pts"].append(detach_and_cpu(pts))
-                vis_data["bbox_3d"].append(detach_and_cpu(bbox_3d))
-                vis_data["m_batch"].append(detach_and_cpu(m_batch))
+                vis_data["bbox_3d"].append(detach_and_cpu(batch_t["mesh_bbox"]))
                 vis_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
@@ -542,52 +535,42 @@ class TrainerPizza(Trainer):
                         vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
 
-            if save_preds:
-                assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                save_results(batch_t, pose_mat_pred_abs, preds_dir, gt_pose=pose_mat_gt_abs)
-
-            if torch.isnan(loss):
-                if t > 0:
-                    self.logger.error(f"{batched_seq[t-1]=}")
-                self.logger.error(f"{batched_seq[t]=}")
-                self.logger.error(f"{loss_t=}")
-                self.logger.error(f"{loss_rot=}")
-                self.logger.error(f"rot_pred: {rot_pred}")
-                self.logger.error(f"rot_mat_pred: {rot_mat_pred}")
-                self.logger.error(f"rot_gt_abs: {rot_gt_abs}")
-                self.logger.error(f"rot_mat_gt_abs: {rot_mat_gt_abs}")
-                self.logger.error(f"seq_metrics: {seq_metrics}")
-                self.logger.error(f"seq_stats: {seq_stats}")
-                if self.do_predict_rel_pose:
-                    self.logger.error(f"rot_gt_rel: {rot_gt_rel_mat}")
-                sys.exit(1)
+                if torch.isnan(loss):
+                    if t > 0:
+                        self.logger.error(f"{batched_seq[t-1]=}")
+                    self.logger.error(f"{batched_seq[t]=}")
+                    self.logger.error(f"{loss_t=}")
+                    self.logger.error(f"{loss_rot=}")
+                    self.logger.error(f"rot_pred: {rot_pred}")
+                    self.logger.error(f"rot_mat_pred: {rot_mat_pred}")
+                    self.logger.error(f"rot_gt_abs: {rot_gt_abs}")
+                    self.logger.error(f"rot_mat_gt_abs: {rot_mat_gt_abs}")
+                    self.logger.error(f"seq_metrics: {seq_metrics}")
+                    self.logger.error(f"seq_stats: {seq_stats}")
+                    if self.do_predict_rel_pose:
+                        self.logger.error(f"rot_gt_rel: {rot_gt_rel_mat}")
+                    sys.exit(1)
 
             # UPDATE VARS
 
             if self.do_predict_rel_pose:
-                if self.do_predict_3d_rot:
-                    rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
-                elif self.do_predict_6d_rot:
-                    rot_prev_pred_abs = matrix_to_rotation_6d(rot_mat_pred_abs)
-                else:
-                    rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
+                rot_prev_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                 pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
             else:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
             if self.do_predict_2d_t:
                 pose_prev_pred_abs["center_depth"] = center_depth_pred
-            pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
+            pose_prev_pred_abs = {k: v for k, v in pose_prev_pred_abs.items()}
 
             pose_mat_prev_gt_abs = pose_mat_gt_abs
             out_prev = {"t": out["t"], "rot": out["rot"]}
 
         num_steps = seq_length
-        if self.do_predict_rel_pose:
+        if do_skip_first_step:
             num_steps -= 1
 
         if do_opt_in_the_end:
             total_loss /= num_steps
-            optimizer.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if do_vis:
@@ -595,13 +578,27 @@ class TrainerPizza(Trainer):
                 vis_data["grad_norm"].append(grad_norm)
                 vis_data["grad_norms"].append(grad_norms)
             optimizer.step()
+            optimizer.zero_grad()
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
                 stats[k] = v / num_steps
 
-        if nan_count > 0:
-            seq_metrics["nan_count"] = nan_count
+        if self.do_predict_rel_pose:
+            # calc loss/metrics btw accumulated abs poses
+            metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
+            for k, v in metrics_abs.items():
+                seq_metrics[f"{k}_abs"] += v
+            if not self.include_abs_pose_loss_for_rel:
+                with torch.no_grad():
+                    loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
+                    if self.use_rot_mat_for_loss:
+                        loss_rot_abs = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
+                    else:
+                        rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
+                        loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
+                    seq_stats["loss_t_abs"] = loss_t_abs.item()
+                    seq_stats["loss_rot_abs"] = loss_rot_abs.item()
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)

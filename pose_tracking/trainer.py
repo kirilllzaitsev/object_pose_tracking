@@ -92,7 +92,7 @@ class Trainer:
         vis_epoch_freq=None,
         do_vis=False,
         exp_dir=None,
-        model_name=None,
+        model_name="",
         opt_only=None,
         max_clip_grad_norm=0.1,
         tf_t_loss_coef=1,
