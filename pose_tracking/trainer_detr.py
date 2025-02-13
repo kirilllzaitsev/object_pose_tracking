@@ -235,13 +235,11 @@ class TrainerDeformableDETR(Trainer):
                     )
                     prev_tokens = model_forward_res["out"]["tokens"]
             if self.use_pose_tokens and t == 0:
-                model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer)
+                model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer, use_prev_image=True)
 
                 out = model_forward_res["out"]
-                pose_tokens_per_layer = [o.unsqueeze(0).detach() for o in out["pose_tokens"]]
+                pose_tokens_per_layer = [o.unsqueeze(0) for o in out["pose_tokens"]]
                 prev_tokens = out["tokens"]
-                do_skip_first_step = True
-                continue
 
             model_forward_res = self.model_forward(
                 batch_t,

@@ -542,7 +542,7 @@ class KeypointDETR(DETRBase):
 
         if depth is not None or intrinsics is not None:
             assert intrinsics is not None
-            K_norm = intrinsics.clone()
+            K_norm = intrinsics.clone().float()
             K_norm[..., 0] /= w
             K_norm[..., 1] /= h
             K_norm[..., 0, 2] /= w

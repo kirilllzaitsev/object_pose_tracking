@@ -105,7 +105,13 @@ def extract_idxs(arr, idxs, do_extract_dict_contents=False):
         if do_extract_dict_contents and len(arr) > 0 and isinstance(arr[0], dict):
             return [extract_idxs(a, idxs, do_extract_dict_contents=do_extract_dict_contents) for a in arr]
         else:
-            return [arr[idx] for idx in idxs]
+            res = []
+            for idx in idxs:
+                if idx >= len(arr):
+                    print(f"WARNING: {idx=} is out of bounds for {len(arr)=}")
+                    break
+                res.append(arr[idx])
+            return res
     elif isinstance(arr, dict):
         return {k: extract_idxs(v, idxs, do_extract_dict_contents=do_extract_dict_contents) for k, v in arr.items()}
     return arr[idxs]
