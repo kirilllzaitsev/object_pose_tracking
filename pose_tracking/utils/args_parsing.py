@@ -250,6 +250,9 @@ def get_parser():
         choices=["frozen_bn", "bn", "id"],
     )
     model_args.add_argument("--hidden_dim", type=int, default=256, help="Hidden dimension across the model")
+    model_args.add_argument("--state_dim", type=int, default=512, help="Dim of the recurrent cell state")
+    model_args.add_argument("--belief_hidden_dim", type=int, default=256, help="Dim of the belief-related net parts")
+    model_args.add_argument("--belief_num_layers", type=int, default=2, help="Number of layers for belief-related nets")
     model_args.add_argument(
         "--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim"
     )
@@ -344,13 +347,7 @@ def postprocess_args(args, use_if_provided=True):
 
             print(f"Overriding with args from exp {args.args_from_exp_name}")
             loaded_args = load_artifacts_from_comet(args.args_from_exp_name, do_load_model=False)["args"]
-            if "lstm" in loaded_args.model_name:
-                if not hasattr(loaded_args, "use_rnn"):
-                    loaded_args.use_rnn = not loaded_args.no_rnn
-                if not hasattr(loaded_args, "use_depth"):
-                    loaded_args.use_depth = True
-                if not hasattr(loaded_args, "use_obs_belief"):
-                    loaded_args.use_obs_belief = not loaded_args.no_obs_belief
+            loaded_args = fix_outdated_args(loaded_args)
             loaded_args = vars(loaded_args)
         else:
             import yaml
@@ -372,7 +369,7 @@ def postprocess_args(args, use_if_provided=True):
             provided_ignored_args = []
         ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
         for k, v in loaded_args.items():
-            if k in ignored_file_args:
+            if k in ignored_file_args or not hasattr(args, k):
                 print(f"Ignoring overriding {k}")
                 continue
             setattr(args, k, v)
@@ -429,6 +426,14 @@ def fix_outdated_args(args):
 
     if hasattr(args, "t_mlp_num_layers"):
         args.rt_mlps_num_layers = args.t_mlp_num_layers
+
+    if "lstm" in args.model_name:
+        if not hasattr(args, "use_rnn"):
+            args.use_rnn = not args.no_rnn
+        if not hasattr(args, "use_depth"):
+            args.use_depth = True
+        if not hasattr(args, "use_obs_belief"):
+            args.use_obs_belief = not args.no_obs_belief
 
     # for all args present in parser but not in args, set them to their default values
     for group in parser._action_groups:
