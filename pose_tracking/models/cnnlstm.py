@@ -633,7 +633,8 @@ class RecurrentCNN(RecurrentCNNVanilla):
     ):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
-        latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
+        if self.use_depth:
+            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
         bs = latent_rgb.size(0)
         state_prev = self.prep_state(state, bs)
@@ -656,10 +657,16 @@ class RecurrentCNN(RecurrentCNNVanilla):
                     res["priv_decoded"] = decoder_out["priv_decoded"]
             latent = torch.cat([latent_rgb, latent_depth_post], dim=1)
         else:
-            latent = torch.cat([latent_rgb, latent_depth], dim=1)
+            if self.use_depth:
+                latent = torch.cat([latent_rgb, latent_depth], dim=1)
+            else:
+                latent = latent_rgb
             state_new = self.state_cell(latent, state_prev)
             state_new_postp = self.postp_state(state_new)
-            extracted_obs = torch.cat([latent_rgb, state_new_postp], dim=1)
+            if self.use_depth:
+                extracted_obs = torch.cat([latent_rgb, state_new_postp], dim=1)
+            else:
+                extracted_obs = state_new_postp
 
         t_in = extracted_obs
         rot_in = extracted_obs
