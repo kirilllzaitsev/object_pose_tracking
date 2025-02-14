@@ -46,12 +46,6 @@ def get_parser():
         default=[],
         help="List of args to ignore when loading from file.",
     )
-    pipe_args.add_argument(
-        "--provided_ignored_args",
-        nargs="*",
-        default=[],
-        help="Filled in by the code.",
-    )
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
@@ -201,12 +195,13 @@ def get_parser():
     model_args.add_argument("--do_predict_6d_rot", action="store_true", help="Predict object rotation as 6D")
     model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
+    model_args.add_argument("--use_depth", action="store_true", help="Use RGBD")
     model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
-    model_args.add_argument("--no_rnn", action="store_true", help="Use a simple MLP instead of RNN")
+    model_args.add_argument("--use_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
     model_args.add_argument("--use_mlp_for_prev_pose", action="store_true", help="Project previous rot/t with MLP")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
@@ -216,9 +211,7 @@ def get_parser():
         action="store_true",
         help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer",
     )
-    model_args.add_argument(
-        "--no_obs_belief", action="store_true", help="Do not use observation belief encoder-decoder"
-    )
+    model_args.add_argument("--use_obs_belief", action="store_true", help="Use observation belief encoder-decoder")
     model_args.add_argument("--use_belief_decoder", action="store_true")
     model_args.add_argument(
         "--model_name",
@@ -261,37 +254,7 @@ def get_parser():
         "--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim"
     )
     model_args.add_argument(
-        "--benc_belief_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief encoder"
-    )
-    model_args.add_argument(
-        "--benc_belief_depth_enc_hidden_dim", type=int, default=256, help="Hidden dimension for belief depth encoder"
-    )
-    model_args.add_argument(
-        "--benc_belief_enc_num_layers", type=int, default=2, help="Number of layers for belief encoder"
-    )
-    model_args.add_argument(
-        "--benc_belief_depth_enc_num_layers", type=int, default=2, help="Number of layers for belief depth encoder"
-    )
-    model_args.add_argument(
-        "--bdec_priv_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for privileged info decoder"
-    )
-    model_args.add_argument(
-        "--bdec_depth_decoder_hidden_dim", type=int, default=256, help="Hidden dimension for depth decoder"
-    )
-    model_args.add_argument(
-        "--bdec_hidden_attn_hidden_dim", type=int, default=256, help="Hidden dimension for hidden attention"
-    )
-    model_args.add_argument(
         "--encoder_out_dim", type=int, default=512, help="Output dimension of the img/depth encoder"
-    )
-    model_args.add_argument(
-        "--priv_decoder_num_layers", type=int, default=2, help="Number of layers for privileged info decoder"
-    )
-    model_args.add_argument(
-        "--depth_decoder_num_layers", type=int, default=2, help="Number of layers for depth decoder from hidden state"
-    )
-    model_args.add_argument(
-        "--hidden_attn_num_layers", type=int, default=2, help="Number of layers for hidden attention in decoder"
     )
     model_args.add_argument(
         "--rt_mlps_num_layers", type=int, default=2, help="Number of layers for rotation and translation MLPs"
@@ -323,7 +286,6 @@ def get_parser():
         help="Share of the train set to use for validation. Applies only if do_split_train_for_val is set",
     )
     data_args.add_argument("--seq_len", type=int, default=5, help="Number of frames to take for train/val")
-    data_args.add_argument("--seq_len_test", type=int, default=600, help="Number of frames to take for test")
     data_args.add_argument("--seq_start", type=int, help="Start frame index in a sequence")
     data_args.add_argument("--seq_step", type=int, default=1, help="Step between frames in a sequence")
     data_args.add_argument("--max_train_videos", type=int, default=1000, help="Max number of videos for training")
@@ -382,6 +344,13 @@ def postprocess_args(args, use_if_provided=True):
 
             print(f"Overriding with args from exp {args.args_from_exp_name}")
             loaded_args = load_artifacts_from_comet(args.args_from_exp_name, do_load_model=False)["args"]
+            if "lstm" in loaded_args.model_name:
+                if not hasattr(loaded_args, "use_rnn"):
+                    loaded_args.use_rnn = not loaded_args.no_rnn
+                if not hasattr(loaded_args, "use_depth"):
+                    loaded_args.use_depth = True
+                if not hasattr(loaded_args, "use_obs_belief"):
+                    loaded_args.use_obs_belief = not loaded_args.no_obs_belief
             loaded_args = vars(loaded_args)
         else:
             import yaml
@@ -395,15 +364,13 @@ def postprocess_args(args, use_if_provided=True):
             "use_ddp",
             "exp_disabled",
             "batch_size",
+            "ignored_file_args",
         ]
         if args.do_ignore_file_args_with_provided:
             provided_ignored_args = re.findall("--(\w+)", " ".join(sys.argv[1:]))
         else:
             provided_ignored_args = []
-        args.provided_ignored_args += provided_ignored_args
-        ignored_file_args = (
-            set(args.provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
-        )
+        ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
         for k, v in loaded_args.items():
             if k in ignored_file_args:
                 print(f"Ignoring overriding {k}")
@@ -434,6 +401,9 @@ def postprocess_args(args, use_if_provided=True):
         else:
             assert args.ds_folder_name_val, "Validation dataset folder name is required for training"
 
+    if args.use_obs_belief:
+        assert args.use_depth
+
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")
 
@@ -457,12 +427,6 @@ def fix_outdated_args(args):
     def is_none(x):
         return getattr(args, x) is None
 
-    if noattr("obj_names"):
-        args.obj_names = [args.obj_name]
-    if noattr("args_path"):
-        args.args_path = None
-    if noattr("do_predict_2d_t"):
-        args.do_predict_2d_t = args.do_predict_2d
     if hasattr(args, "t_mlp_num_layers"):
         args.rt_mlps_num_layers = args.t_mlp_num_layers
 
