@@ -137,8 +137,8 @@ def get_model(args, num_classes=None):
         assert args.mt_n_layers == 6, args.mt_n_layers
 
         model = DETRPretrained(
-            num_classes=num_classes,
             use_pretrained_backbone=True,
+            num_classes=num_classes,
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
             opt_only=args.opt_only,
@@ -149,6 +149,8 @@ def get_model(args, num_classes=None):
         )
     elif args.model_name in ["detr_basic", "detr_kpt"]:
         detr_args = dict(
+            use_pose_tokens=args.mt_use_pose_tokens,
+            use_roi=args.mt_use_roi,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -156,14 +158,12 @@ def get_model(args, num_classes=None):
             n_layers=args.mt_n_layers,
             n_heads=args.mt_n_heads,
             encoding_type=args.mt_encoding_type,
-            use_pose_tokens=args.mt_use_pose_tokens,
             opt_only=args.opt_only,
             dropout=args.dropout,
             dropout_heads=args.dropout_heads,
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
             head_num_layers=args.rt_mlps_num_layers,
-            use_roi=args.mt_use_roi,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -201,47 +201,41 @@ def get_model(args, num_classes=None):
             extra_kwargs = {}
         else:
             extra_kwargs = dict(
-                use_obs_belief=not args.no_obs_belief,
+                use_obs_belief=args.use_obs_belief,
                 use_priv_decoder=args.use_priv_decoder,
                 use_belief_decoder=args.use_belief_decoder,
                 bdec_priv_decoder_out_dim=priv_dim,
-                bdec_priv_decoder_hidden_dim=args.bdec_priv_decoder_hidden_dim,
-                bdec_depth_decoder_hidden_dim=args.bdec_depth_decoder_hidden_dim,
-                benc_belief_enc_hidden_dim=args.benc_belief_enc_hidden_dim,
-                benc_belief_depth_enc_hidden_dim=args.benc_belief_depth_enc_hidden_dim,
-                bdec_hidden_attn_hidden_dim=args.bdec_hidden_attn_hidden_dim,
-                benc_belief_enc_num_layers=args.benc_belief_enc_num_layers,
-                benc_belief_depth_enc_num_layers=args.benc_belief_depth_enc_num_layers,
-                priv_decoder_num_layers=args.priv_decoder_num_layers,
-                depth_decoder_num_layers=args.depth_decoder_num_layers,
-                hidden_attn_num_layers=args.hidden_attn_num_layers,
+                belief_hidden_dim=args.belief_hidden_dim,
+                belief_num_layers=args.belief_num_layers,
             )
         model = model_cls(
-            depth_dim=depth_dim,
-            rgb_dim=rgb_dim,
-            hidden_dim=args.hidden_dim,
-            rnn_type=args.rnn_type,
-            rnn_state_init_type=args.rnn_state_init_type,
-            encoder_name=args.encoder_name,
             do_predict_2d_t=args.do_predict_2d_t,
             do_predict_6d_rot=args.do_predict_6d_rot,
             do_predict_3d_rot=args.do_predict_3d_rot,
-            rt_mlps_num_layers=args.rt_mlps_num_layers,
-            dropout=args.dropout,
-            dropout_heads=args.dropout_heads,
-            use_rnn=not args.no_rnn,
+            use_rnn=args.use_rnn,
             do_freeze_encoders=args.do_freeze_encoders,
             use_prev_pose_condition=args.use_prev_pose_condition,
             use_prev_latent=args.use_prev_latent,
             do_predict_kpts=args.do_predict_kpts,
+            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
+            do_predict_abs_pose=args.do_predict_abs_pose,
+            use_depth=args.use_depth,
+            depth_dim=depth_dim,
+            rgb_dim=rgb_dim,
+            state_dim=args.state_dim,
+            hidden_dim=args.hidden_dim,
+            rnn_type=args.rnn_type,
+            rnn_state_init_type=args.rnn_state_init_type,
+            encoder_name=args.encoder_name,
+            rt_mlps_num_layers=args.rt_mlps_num_layers,
+            dropout=args.dropout,
+            dropout_heads=args.dropout_heads,
             encoder_depth_weights=args.encoder_depth_weights,
             encoder_img_weights=args.encoder_img_weights,
             norm_layer_type=args.norm_layer_type,
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
-            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
-            do_predict_abs_pose=args.do_predict_abs_pose,
             **extra_kwargs,
         )
 
@@ -371,7 +365,7 @@ def get_trainer(
         do_predict_2d_t=args.do_predict_2d_t,
         do_predict_6d_rot=args.do_predict_6d_rot,
         do_predict_3d_rot=args.do_predict_3d_rot,
-        use_rnn=not args.no_rnn,
+        use_rnn=args.use_rnn,
         use_belief_decoder=args.use_belief_decoder,
         world_size=world_size,
         logger=logger,
