@@ -186,16 +186,16 @@ class MLP(nn.Module):
 
 
 class RecurrentNet(nn.Module):
-    def __init__(self, rnn_type="gru", rnn_state_init_type="zeros", hidden_dim=256):
+    def __init__(self, rnn_type="gru", rnn_state_init_type="zeros", state_dim=256):
         super().__init__()
 
         self.rnn_state_init_type = rnn_state_init_type
-        self.hidden_dim = hidden_dim
+        self.state_dim = state_dim
         self.rnn_type = rnn_type
 
         if self.rnn_state_init_type == "learned":
-            self.hx = nn.Parameter(torch.randn(1, self.hidden_dim, device="cpu"))
-            self.cx = None if "gru" in self.rnn_type else nn.Parameter(torch.randn(1, self.hidden_dim, device="cpu"))
+            self.hx = nn.Parameter(torch.randn(1, self.state_dim, device="cpu"))
+            self.cx = None if "gru" in self.rnn_type else nn.Parameter(torch.randn(1, self.state_dim, device="cpu"))
         else:
             self.hx = None
             self.cx = None
@@ -207,11 +207,11 @@ class RecurrentNet(nn.Module):
         if self.rnn_state_init_type == "learned":
             return
         elif self.rnn_state_init_type == "zeros":
-            self.hx = torch.zeros(1, self.hidden_dim, device=device)
-            self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.hidden_dim, device=device)
+            self.hx = torch.zeros(1, self.state_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.state_dim, device=device)
         elif self.rnn_state_init_type == "rand":
-            self.hx = torch.randn(1, self.hidden_dim, device=device)
-            self.cx = None if "gru" in self.rnn_type else torch.randn(1, self.hidden_dim, device=device)
+            self.hx = torch.randn(1, self.state_dim, device=device)
+            self.cx = None if "gru" in self.rnn_type else torch.randn(1, self.state_dim, device=device)
         else:
             raise ValueError(f"Unknown rnn_state_init_type: {self.rnn_state_init_type}")
 
@@ -227,7 +227,8 @@ class RecurrentCNNVanilla(RecurrentNet):
         self,
         depth_dim,
         rgb_dim,
-        hidden_dim,
+        hidden_dim=256,
+        state_dim=512,
         rt_mlps_num_layers=1,
         encoder_out_dim=256,
         dropout=0.0,
@@ -249,12 +250,12 @@ class RecurrentCNNVanilla(RecurrentNet):
         do_predict_kpts=False,
         do_predict_rot=True,
         do_predict_abs_pose=False,
+        use_depth=True,
         r_num_layers_inc=0,
         rt_hidden_dim=None,
-        state_cell_out_dim=None,
         mlp_in_dim=None,
     ):
-        super().__init__(rnn_type=rnn_type, rnn_state_init_type=rnn_state_init_type, hidden_dim=hidden_dim)
+        super().__init__(rnn_type=rnn_type, rnn_state_init_type=rnn_state_init_type, state_dim=state_dim)
 
         self.depth_dim = depth_dim
         self.rgb_dim = rgb_dim
@@ -262,10 +263,12 @@ class RecurrentCNNVanilla(RecurrentNet):
         self.encoder_out_dim = encoder_out_dim
         self.rnn_type = rnn_type
         self.encoder_name = encoder_name
+        self.dropout = dropout
         self.dropout_heads = dropout_heads
         self.rt_mlps_num_layers = rt_mlps_num_layers
         self.rnn_state_init_type = rnn_state_init_type
 
+        self.use_depth = use_depth
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
@@ -278,16 +281,15 @@ class RecurrentCNNVanilla(RecurrentNet):
         self.do_predict_rot = do_predict_rot
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
 
-        self.input_dim = depth_dim + rgb_dim
+        self.input_dim = depth_dim + rgb_dim if use_depth else rgb_dim
         self.rt_hidden_dim = hidden_dim // 2 if rt_hidden_dim is None else rt_hidden_dim
-        self.state_cell_out_dim = hidden_dim if state_cell_out_dim is None else state_cell_out_dim
         self.mlp_in_dim = hidden_dim if mlp_in_dim is None else mlp_in_dim
 
         if use_rnn:
             if rnn_type == "lstm":
-                self.state_cell = nn.LSTMCell(self.input_dim, hidden_dim)
+                self.state_cell = nn.LSTMCell(self.input_dim, state_dim)
             else:
-                self.state_cell = nn.GRUCell(self.input_dim, hidden_dim)
+                self.state_cell = nn.GRUCell(self.input_dim, state_dim)
 
             for name, param in self.state_cell.named_parameters():
                 if "weight" in name:
@@ -297,19 +299,19 @@ class RecurrentCNNVanilla(RecurrentNet):
         else:
             self.state_cell = MLP(
                 in_dim=self.input_dim,
-                out_dim=self.state_cell_out_dim,
+                out_dim=self.state_dim,
                 hidden_dim=hidden_dim,
                 num_layers=1,
                 dropout=dropout,
             )
         if do_predict_2d_t:
             self.t_mlp_out_dim = 2
-            self.depth_mlp_in_dim = depth_dim + rgb_dim
+            self.depth_mlp_in_dim = depth_dim + rgb_dim if use_depth else rgb_dim
             self.depth_mlp_out_dim = 1
             if use_prev_pose_condition:
                 self.depth_mlp_in_dim += self.depth_mlp_out_dim
             if use_prev_latent:
-                self.depth_mlp_in_dim += self.encoder_out_dim * 2
+                self.depth_mlp_in_dim += self.encoder_out_dim * 2 if use_depth else self.encoder_out_dim
             self.depth_mlp = MLP(
                 in_dim=self.depth_mlp_in_dim,
                 out_dim=self.depth_mlp_out_dim,
@@ -327,26 +329,26 @@ class RecurrentCNNVanilla(RecurrentNet):
             if use_mlp_for_prev_pose:
                 self.prev_t_mlp = MLP(
                     in_dim=self.t_mlp_out_dim,
-                    out_dim=hidden_dim,
+                    out_dim=self.rt_hidden_dim,
                     hidden_dim=self.rt_hidden_dim,
                     num_layers=rt_mlps_num_layers,
                     dropout=dropout,
                 )
                 self.prev_rot_mlp = MLP(
                     in_dim=self.rot_mlp_out_dim,
-                    out_dim=hidden_dim,
+                    out_dim=self.rt_hidden_dim,
                     hidden_dim=self.rt_hidden_dim,
                     num_layers=rt_mlps_num_layers,
                     dropout=dropout,
                 )
-                self.t_mlp_in_dim += hidden_dim
-                self.rot_mlp_in_dim += hidden_dim
+                self.t_mlp_in_dim += self.rt_hidden_dim
+                self.rot_mlp_in_dim += self.rt_hidden_dim
             else:
                 self.t_mlp_in_dim += self.t_mlp_out_dim
                 self.rot_mlp_in_dim += self.rot_mlp_out_dim
         if use_prev_latent:
-            self.t_mlp_in_dim += rgb_dim + depth_dim
-            self.rot_mlp_in_dim += rgb_dim + depth_dim
+            self.t_mlp_in_dim += self.input_dim
+            self.rot_mlp_in_dim += self.input_dim
 
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
@@ -382,7 +384,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             )
 
         if self.do_predict_kpts:
-            self.kpts_mlp_in_dim = depth_dim + rgb_dim
+            self.kpts_mlp_in_dim = self.input_dim
             self.kpts_mlp_out_dim = (8 + 24) * 2
             self.kpts_mlp = MLP(
                 in_dim=self.kpts_mlp_in_dim,
@@ -404,19 +406,25 @@ class RecurrentCNNVanilla(RecurrentNet):
                 norm_layer_type=norm_layer_type,
                 out_dim=encoder_out_dim,
             )
+            if not use_depth:
+                self.encoder_depth = None
 
     def forward(
         self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
     ):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
-        latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
         res = {}
 
         bs = latent_rgb.size(0)
         state_prev = self.prep_state(state, bs)
-        latent = torch.cat([latent_rgb, latent_depth], dim=1)
+        if self.use_depth:
+            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
+            latent = torch.cat([latent_rgb, latent_depth], dim=1)
+            res["latent_depth"] = (latent_depth,)
+        else:
+            latent = latent_rgb
         state_new = self.state_cell(latent, state_prev)
 
         extracted_obs = self.postp_state(state_new)
@@ -450,7 +458,6 @@ class RecurrentCNNVanilla(RecurrentNet):
         t = self.t_mlp(t_in)
         res.update(
             {
-                "latent_depth": latent_depth,
                 "state": state_new,
                 "t": t,
             }
@@ -510,120 +517,65 @@ class RecurrentCNNVanilla(RecurrentNet):
 class RecurrentCNN(RecurrentCNNVanilla):
     def __init__(
         self,
-        depth_dim,
-        rgb_dim,
-        hidden_dim,
-        benc_belief_enc_hidden_dim,
-        benc_belief_depth_enc_hidden_dim,
-        bdec_priv_decoder_out_dim,
-        bdec_priv_decoder_hidden_dim,
-        bdec_depth_decoder_hidden_dim,
-        bdec_hidden_attn_hidden_dim,
-        benc_belief_enc_num_layers=2,
-        benc_belief_depth_enc_num_layers=2,
-        priv_decoder_num_layers=1,
-        depth_decoder_num_layers=1,
-        hidden_attn_num_layers=1,
-        rt_mlps_num_layers=1,
-        encoder_out_dim=256,
-        dropout=0.0,
-        dropout_heads=0.0,
-        rnn_type="gru",
-        encoder_name="resnet18",
-        encoder_img_weights="imagenet",
-        encoder_depth_weights=None,
-        norm_layer_type="frozen_bn",
-        rnn_state_init_type="zeros",
-        do_predict_2d_t=False,
-        do_predict_6d_rot=False,
-        do_predict_3d_rot=False,
-        use_rnn=True,
+        *args,
+        bdec_priv_decoder_out_dim=None,
+        belief_hidden_dim=256,
+        belief_num_layers=2,
         use_obs_belief=False,
         use_priv_decoder=False,
-        use_mlp_for_prev_pose=False,
-        do_freeze_encoders=False,
-        use_prev_pose_condition=False,
-        use_prev_latent=False,
         use_belief_decoder=True,
-        do_predict_kpts=False,
-        do_predict_rot=True,
-        do_predict_abs_pose=False,
-        r_num_layers_inc=0,
-        rt_hidden_dim=None,
+        **kwargs,
     ):
-
-        self.benc_belief_enc_hidden_dim = benc_belief_enc_hidden_dim
-        self.benc_belief_depth_enc_hidden_dim = benc_belief_depth_enc_hidden_dim
-        self.bdec_priv_decoder_out_dim = bdec_priv_decoder_out_dim
-        self.bdec_priv_decoder_hidden_dim = bdec_priv_decoder_hidden_dim
-        self.bdec_depth_decoder_hidden_dim = bdec_depth_decoder_hidden_dim
-        self.bdec_hidden_attn_hidden_dim = bdec_hidden_attn_hidden_dim
-        self.benc_belief_enc_num_layers = benc_belief_enc_num_layers
-        self.benc_belief_depth_enc_num_layers = benc_belief_depth_enc_num_layers
-        self.priv_decoder_num_layers = priv_decoder_num_layers
-        self.depth_decoder_num_layers = depth_decoder_num_layers
-        self.hidden_attn_num_layers = hidden_attn_num_layers
 
         self.use_obs_belief = use_obs_belief
         self.use_belief_decoder = use_belief_decoder
         self.use_priv_decoder = use_priv_decoder
+        self.use_depth = kwargs["use_depth"]
 
+        self.belief_hidden_dim = belief_hidden_dim
+        self.rgb_dim = kwargs["rgb_dim"]
+        self.depth_dim = kwargs["depth_dim"]
+        self.hidden_dim = kwargs["hidden_dim"]
+
+        if use_obs_belief:
+            mlp_in_dim = self.rgb_dim + self.depth_dim
+        else:
+            mlp_in_dim = self.rgb_dim + self.hidden_dim if self.use_depth else self.hidden_dim
+
+        super_kwargs = copy.deepcopy(kwargs)
+        super_kwargs["state_dim"] = super_kwargs["depth_dim"]
         super().__init__(
-            depth_dim=depth_dim,
-            rgb_dim=rgb_dim,
-            hidden_dim=hidden_dim,
-            rt_mlps_num_layers=rt_mlps_num_layers,
-            encoder_out_dim=encoder_out_dim,
-            dropout=dropout,
-            dropout_heads=dropout_heads,
-            rnn_type=rnn_type,
-            encoder_name=encoder_name,
-            encoder_img_weights=encoder_img_weights,
-            encoder_depth_weights=encoder_depth_weights,
-            norm_layer_type=norm_layer_type,
-            rnn_state_init_type=rnn_state_init_type,
-            do_predict_2d_t=do_predict_2d_t,
-            do_predict_6d_rot=do_predict_6d_rot,
-            do_predict_3d_rot=do_predict_3d_rot,
-            use_rnn=use_rnn,
-            use_mlp_for_prev_pose=use_mlp_for_prev_pose,
-            do_freeze_encoders=do_freeze_encoders,
-            use_prev_pose_condition=use_prev_pose_condition,
-            use_prev_latent=use_prev_latent,
-            do_predict_kpts=do_predict_kpts,
-            do_predict_rot=do_predict_rot,
-            do_predict_abs_pose=do_predict_abs_pose,
-            r_num_layers_inc=r_num_layers_inc,
-            rt_hidden_dim=rt_hidden_dim,
-            state_cell_out_dim=depth_dim,
-            mlp_in_dim=depth_dim + rgb_dim,
+            *args,
+            **super_kwargs,
+            mlp_in_dim=mlp_in_dim,
         )
 
         if self.use_obs_belief:
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
-                state_cell_out_dim=hidden_dim,
-                depth_latent_dim=depth_dim,
-                belief_enc_hidden_dim=benc_belief_enc_hidden_dim,
-                belief_depth_enc_hidden_dim=benc_belief_depth_enc_hidden_dim,
-                belief_enc_num_layers=benc_belief_enc_num_layers,
-                belief_depth_enc_num_layers=benc_belief_depth_enc_num_layers,
-                use_rnn=use_rnn,
-                dropout=dropout,
+                state_cell_out_dim=self.depth_dim,
+                depth_latent_dim=self.depth_dim,
+                belief_enc_hidden_dim=belief_hidden_dim,
+                belief_depth_enc_hidden_dim=belief_hidden_dim,
+                belief_enc_num_layers=belief_num_layers,
+                belief_depth_enc_num_layers=belief_num_layers,
+                use_rnn=self.use_rnn,
+                dropout=self.dropout,
             )
             if use_belief_decoder:
+                assert bdec_priv_decoder_out_dim
                 self.belief_decoder = BeliefDecoder(
-                    state_dim=hidden_dim,
+                    state_dim=self.state_dim,
                     priv_decoder_out_dim=bdec_priv_decoder_out_dim,
-                    priv_decoder_hidden_dim=bdec_priv_decoder_hidden_dim,
-                    depth_decoder_out_dim=depth_dim,
-                    depth_decoder_hidden_dim=bdec_depth_decoder_hidden_dim,
-                    hidden_attn_hidden_dim=bdec_hidden_attn_hidden_dim,
-                    priv_decoder_num_layers=priv_decoder_num_layers,
-                    depth_decoder_num_layers=depth_decoder_num_layers,
-                    hidden_attn_num_layers=hidden_attn_num_layers,
+                    priv_decoder_hidden_dim=belief_hidden_dim,
+                    depth_decoder_out_dim=self.depth_dim,
+                    depth_decoder_hidden_dim=belief_hidden_dim,
+                    hidden_attn_hidden_dim=belief_hidden_dim,
+                    priv_decoder_num_layers=belief_num_layers,
+                    depth_decoder_num_layers=belief_num_layers,
+                    hidden_attn_num_layers=belief_num_layers,
                     use_priv_decoder=use_priv_decoder,
-                    dropout=dropout,
+                    dropout=self.dropout,
                 )
             else:
                 self.belief_decoder = None
