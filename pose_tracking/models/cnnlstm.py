@@ -614,10 +614,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
                 latent = latent_rgb
             state_new = self.state_cell(latent, state_prev)
             state_new_postp = self.postp_state(state_new)
-            if self.use_depth:
-                extracted_obs = torch.cat([latent_rgb, state_new_postp], dim=1)
-            else:
-                extracted_obs = state_new_postp
+            extracted_obs = state_new_postp
 
         t_in = extracted_obs
         rot_in = extracted_obs
