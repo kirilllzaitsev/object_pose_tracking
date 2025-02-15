@@ -620,11 +620,13 @@ class RecurrentCNN(RecurrentCNNVanilla):
         if self.use_prev_pose_condition:
             if prev_pose is None:
                 prev_pose = {
-                    "t": torch.zeros(bs, self.t_mlp_out_dim, device=latent_rgb.device),
+                    "t": torch.zeros(
+                        bs,
+                        self.t_mlp_out_dim + 1 if self.do_predict_2d_t else self.t_mlp_out_dim,
+                        device=latent_rgb.device,
+                    ),
                     "rot": torch.zeros(bs, self.rot_mlp_out_dim, device=latent_rgb.device),
                 }
-            if self.do_predict_2d_t:
-                prev_pose["center_depth"] = torch.zeros(bs, self.depth_mlp_out_dim, device=latent_rgb.device)
             if self.do_predict_2d_t:
                 t_prev = prev_pose["t"][:, :2]
             else:
@@ -670,7 +672,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
         if self.do_predict_2d_t:
             depth_in = extracted_obs
             if self.use_prev_pose_condition:
-                depth_in = torch.cat([depth_in, prev_pose["center_depth"]], dim=1)
+                depth_in = torch.cat([depth_in, prev_pose["t"][:, :2]], dim=1)
             if self.use_prev_latent:
                 depth_in = torch.cat([depth_in, prev_latent], dim=1)
             center_depth = self.depth_mlp(depth_in)
