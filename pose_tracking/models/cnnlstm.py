@@ -11,7 +11,7 @@ class BeliefEncoder(nn.Module):
     def __init__(
         self,
         state_cell,
-        state_cell_out_dim,
+        state_dim,
         depth_latent_dim,
         belief_enc_hidden_dim,
         belief_depth_enc_hidden_dim,
@@ -26,14 +26,14 @@ class BeliefEncoder(nn.Module):
         self.use_rnn = use_rnn
 
         self.belief_prior_mlp = MLP(
-            in_dim=state_cell_out_dim,
+            in_dim=state_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_enc_hidden_dim,
             num_layers=belief_enc_num_layers,
             dropout=dropout,
         )
         self.belief_depth_mlp = MLP(
-            in_dim=state_cell_out_dim,
+            in_dim=state_dim,
             out_dim=depth_latent_dim,
             hidden_dim=belief_depth_enc_hidden_dim,
             num_layers=belief_depth_enc_num_layers,
@@ -252,7 +252,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         use_depth=True,
         r_num_layers_inc=0,
         rt_hidden_dim=None,
-        mlp_in_dim=None,
+        extracted_obs_dim=None,
     ):
         super().__init__(rnn_type=rnn_type, rnn_state_init_type=rnn_state_init_type, state_dim=state_dim)
 
@@ -282,7 +282,7 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         self.input_dim = depth_dim + rgb_dim if use_depth else rgb_dim
         self.rt_hidden_dim = hidden_dim // 2 if rt_hidden_dim is None else rt_hidden_dim
-        self.mlp_in_dim = hidden_dim if mlp_in_dim is None else mlp_in_dim
+        self.extracted_obs_dim = hidden_dim if extracted_obs_dim is None else extracted_obs_dim
 
         if use_rnn:
             if rnn_type == "lstm":
@@ -321,7 +321,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         else:
             self.t_mlp_out_dim = 3
 
-        self.t_mlp_in_dim = self.rot_mlp_in_dim = self.mlp_in_dim
+        self.t_mlp_in_dim = self.rot_mlp_in_dim = self.extracted_obs_dim
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
 
         if use_prev_pose_condition:
@@ -522,7 +522,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
         belief_num_layers=2,
         use_obs_belief=False,
         use_priv_decoder=False,
-        use_belief_decoder=True,
+        use_belief_decoder=False,
         **kwargs,
     ):
 
@@ -535,24 +535,23 @@ class RecurrentCNN(RecurrentCNNVanilla):
         self.rgb_dim = kwargs["rgb_dim"]
         self.depth_dim = kwargs["depth_dim"]
         self.hidden_dim = kwargs["hidden_dim"]
+        self.state_dim = kwargs["state_dim"]
 
         if use_obs_belief:
-            mlp_in_dim = self.rgb_dim + self.depth_dim
+            extracted_obs_dim = self.rgb_dim + self.depth_dim
         else:
-            mlp_in_dim = self.rgb_dim + self.hidden_dim if self.use_depth else self.hidden_dim
+            extracted_obs_dim = self.state_dim
 
-        super_kwargs = copy.deepcopy(kwargs)
-        super_kwargs["state_dim"] = super_kwargs["depth_dim"]
         super().__init__(
             *args,
-            **super_kwargs,
-            mlp_in_dim=mlp_in_dim,
+            **kwargs,
+            extracted_obs_dim=extracted_obs_dim,
         )
 
         if self.use_obs_belief:
             self.belief_encoder = BeliefEncoder(
                 state_cell=self.state_cell,
-                state_cell_out_dim=self.depth_dim,
+                state_dim=self.state_dim,
                 depth_latent_dim=self.depth_dim,
                 belief_enc_hidden_dim=belief_hidden_dim,
                 belief_depth_enc_hidden_dim=belief_hidden_dim,
