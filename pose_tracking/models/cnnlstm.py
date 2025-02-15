@@ -249,6 +249,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         do_predict_kpts=False,
         do_predict_rot=True,
         do_predict_abs_pose=False,
+        use_kpts_for_rot=False,
         use_depth=True,
         r_num_layers_inc=0,
         rt_hidden_dim=None,
@@ -279,6 +280,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         self.do_predict_kpts = do_predict_kpts
         self.do_predict_rot = do_predict_rot
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
+        self.use_kpts_for_rot = use_kpts_for_rot
 
         self.input_dim = depth_dim + rgb_dim if use_depth else rgb_dim
         self.rt_hidden_dim = hidden_dim // 2 if rt_hidden_dim is None else rt_hidden_dim
@@ -393,6 +395,16 @@ class RecurrentCNNVanilla(RecurrentNet):
                 dropout=dropout_heads,
             )
 
+        if use_kpts_for_rot:
+            self.rot_mlp_in_dim = self.extracted_obs_dim + self.kpts_mlp_out_dim
+            self.rot_mlp = MLP(
+                in_dim=self.rot_mlp_in_dim,
+                out_dim=self.rot_mlp_out_dim,
+                hidden_dim=self.rt_hidden_dim,
+                num_layers=rt_mlps_num_layers + r_num_layers_inc,
+                dropout=dropout_heads,
+            )
+
         self.encoder_name = encoder_name
         if encoder_name is None:
             self.encoder_img = self.encoder_depth = None
@@ -465,8 +477,16 @@ class RecurrentCNNVanilla(RecurrentNet):
         if self.use_prev_latent:
             res["latent"] = latent
 
+        if self.do_predict_kpts:
+            kpts = self.kpts_mlp(extracted_obs)
+            kpts = kpts.view(bs, 8 + 24, 2)
+            res["kpts"] = kpts
+
         if self.do_predict_rot:
-            rot = self.rot_mlp(rot_in)
+            if self.use_kpts_for_rot:
+                rot = self.rot_mlp(torch.cat([extracted_obs, kpts.view(bs, -1)], dim=1))
+            else:
+                rot = self.rot_mlp(rot_in)
             res["rot"] = rot
 
         if self.do_predict_abs_pose:
@@ -487,11 +507,6 @@ class RecurrentCNNVanilla(RecurrentNet):
                 depth_in = torch.cat([depth_in, prev_latent], dim=1)
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
-
-        if self.do_predict_kpts:
-            kpts = self.kpts_mlp(extracted_obs)
-            kpts = kpts.view(-1, 8 + 24, 2)
-            res["kpts"] = kpts
 
         return res
 
@@ -680,7 +695,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(extracted_obs)
-            kpts = kpts.view(-1, 8 + 24, 2)
+            kpts = kpts.view(bs, 8 + 24, 2)
             res["kpts"] = kpts
 
         return res
@@ -777,7 +792,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
     ):
 
         bbox = kwargs["bbox"]
-        B, C, H, W = rgb.size()
+        bs, C, H, W = rgb.size()
 
         latent_rgb = self.encoder_img(rgb)
         latent_depth = self.encoder_depth(depth)
@@ -793,8 +808,8 @@ class RecurrentCNNSeparated(RecurrentCNN):
 
         latent_rgb_roi = roi_align(mid_layer_output_rgb, bbox_roi, self.roi_size)
         latent_depth_roi = roi_align(mid_layer_output_depth, bbox_roi, self.roi_size)
-        latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi).view(B, -1)
-        latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(B, -1)
+        latent_rgb_roi = self.rgb_roi_cnn(latent_rgb_roi).view(bs, -1)
+        latent_depth_roi = self.depth_roi_cnn(latent_depth_roi).view(bs, -1)
 
         t_net_out = self.t_rnn(
             rgb,
@@ -817,7 +832,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
         else:
             rot_in = extracted_obs_rot
 
-        rot = self.rot_mlp(rot_in.view(B, -1))
+        rot = self.rot_mlp(rot_in.view(bs, -1))
 
         res = {}
         res.update(
@@ -839,7 +854,7 @@ class RecurrentCNNSeparated(RecurrentCNN):
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(t_net_out["latent"])
-            kpts = kpts.view(-1, 8 + 24, 2)
+            kpts = kpts.view(bs, 8 + 24, 2)
             res["kpts"] = kpts
 
         return res

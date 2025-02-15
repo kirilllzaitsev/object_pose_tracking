@@ -574,8 +574,8 @@ def plot_bbox_2d(img, bbox, format="xyxy", is_normalized=False, **kwargs):
 
 
 @plot
-def plot_kpts(img_PIL, points_2d, color="blue", img_rgb=False):
-    return vis_kpts(img_PIL, points_2d, color, img_rgb)
+def plot_kpts(img_PIL, points_2d, color="blue", **kwargs):
+    return vis_kpts(img_PIL, points_2d, color, **kwargs)
 
 
 @plot

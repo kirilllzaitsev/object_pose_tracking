@@ -218,6 +218,7 @@ def get_model(args, num_classes=None):
             use_prev_latent=args.use_prev_latent,
             do_predict_kpts=args.do_predict_kpts,
             use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
+            use_kpts_for_rot=args.use_kpts_for_rot,
             do_predict_abs_pose=args.do_predict_abs_pose,
             use_depth=args.use_depth,
             depth_dim=depth_dim,

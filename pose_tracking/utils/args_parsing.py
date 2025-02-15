@@ -205,6 +205,7 @@ def get_parser():
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
+    model_args.add_argument("--use_kpts_for_rot", action="store_true", help="Use keypoints for rot estimation")
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--use_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
@@ -400,6 +401,8 @@ def postprocess_args(args, use_if_provided=True):
 
     if args.use_obs_belief:
         assert args.use_depth
+    if args.use_kpts_for_rot:
+        assert args.do_predict_kpts
 
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")
