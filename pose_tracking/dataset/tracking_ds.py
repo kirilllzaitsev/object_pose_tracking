@@ -249,6 +249,7 @@ class TrackingDataset(Dataset):
                 "meta_file",
                 "color_file_id_strs",
                 "meta_paths",
+                "metadata",
             ],
         )
 

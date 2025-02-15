@@ -170,9 +170,6 @@ class CustomSimDatasetIkea(CustomSimDataset):
             **kwargs,
         )
 
-        if obj_id is not None:
-            self.objs_metadata = json.load(open(f"{self.video_dir}/metadata.json"))
-
         metadata_path = f"{self.video_dir}/metadata.json"
         assert os.path.exists(metadata_path)
         self.metadata = json.load(open(metadata_path))

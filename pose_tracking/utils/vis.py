@@ -24,7 +24,11 @@ from pose_tracking.utils.common import (
     cast_to_numpy,
     cast_to_torch,
 )
-from pose_tracking.utils.geom import to_homo, world_to_2d_pt_homo
+from pose_tracking.utils.geom import (
+    egocentric_delta_pose_to_pose,
+    to_homo,
+    world_to_2d_pt_homo,
+)
 from pose_tracking.utils.kpt_utils import is_torch
 from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 from pose_tracking.utils.video_utils import show_video
@@ -468,14 +472,19 @@ def plot_seq(
                 return val[batch_idx].get(k, []) != []
         return False
 
+    if isinstance(seq, list) and isinstance(seq[0], list):
+        seq = seq[batch_idx]
+        print(f"taking {batch_idx=} of {len(seq)}")
     img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
     first_key = img_key
     if len(keys_to_plot) == 0:
         keys_to_plot.append(img_key)
+
     if first_key in seq:
         batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox", target_key])
         seq = batch_seq[batch_idx]
         print(f"taking {batch_idx=} of {len(batch_seq)}")
+
     if len(seq) > 20:
         print(f"Taking first 20 frames of {len(seq)=}")
         seq = seq[:20]
@@ -512,10 +521,15 @@ def plot_seq(
                     is_normalized=bbox_is_normalized,
                     label=label,
                 )
-            elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs"]:
+            elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs", "pose_mat_prev_gt_abs"]:
                 pose = img
                 if pose.shape[-2:] != (4, 4):
                     pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
+
+                if key in ["pose_mat_prev_gt_abs"]:
+                    t_gt_rel, rot_gt_rel_mat = fetcher_fn("t_gt_rel", sidx), fetcher_fn("rot_gt_rel_mat", sidx)
+                    pose = egocentric_delta_pose_to_pose(pose, t_gt_rel, rot_gt_rel_mat)
+
                 grid_img = draw_pose_on_img(
                     fetcher_fn(img_key, sidx),
                     fetcher_fn("intrinsics", sidx),
