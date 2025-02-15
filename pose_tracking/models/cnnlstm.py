@@ -425,31 +425,27 @@ class RecurrentCNNVanilla(RecurrentNet):
     ):
 
         latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
-
-        res = {}
+        if self.use_depth:
+            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
         bs = latent_rgb.size(0)
         state_prev = self.prep_state(state, bs)
-        if self.use_depth:
-            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
-            latent = torch.cat([latent_rgb, latent_depth], dim=1)
-            res["latent_depth"] = latent_depth
-        else:
-            latent = latent_rgb
-        state_new = self.state_cell(latent, state_prev)
-
-        extracted_obs = self.postp_state(state_new)
+        res = self.extract_img_info(latent_rgb, latent_depth, state_prev)
+        extracted_obs = res["extracted_obs"]
+        latent = res["latent"]
 
         t_in = extracted_obs
         rot_in = extracted_obs
         if self.use_prev_pose_condition:
             if prev_pose is None:
                 prev_pose = {
-                    "t": torch.zeros(bs, self.t_mlp_out_dim, device=latent_rgb.device),
+                    "t": torch.zeros(
+                        bs,
+                        self.t_mlp_out_dim + 1 if self.do_predict_2d_t else self.t_mlp_out_dim,
+                        device=latent_rgb.device,
+                    ),
                     "rot": torch.zeros(bs, self.rot_mlp_out_dim, device=latent_rgb.device),
                 }
-            if self.do_predict_2d_t:
-                prev_pose["center_depth"] = torch.zeros(bs, self.depth_mlp_out_dim, device=latent_rgb.device)
             if self.do_predict_2d_t:
                 t_prev = prev_pose["t"][:, :2]
             else:
@@ -469,13 +465,10 @@ class RecurrentCNNVanilla(RecurrentNet):
         t = self.t_mlp(t_in)
         res.update(
             {
-                "state": state_new,
+                "latent_depth": latent_depth,
                 "t": t,
             }
         )
-
-        if self.use_prev_latent:
-            res["latent"] = latent
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(extracted_obs)
@@ -502,11 +495,28 @@ class RecurrentCNNVanilla(RecurrentNet):
         if self.do_predict_2d_t:
             depth_in = extracted_obs
             if self.use_prev_pose_condition:
-                depth_in = torch.cat([depth_in, prev_pose["center_depth"]], dim=1)
+                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2]], dim=1)
             if self.use_prev_latent:
                 depth_in = torch.cat([depth_in, prev_latent], dim=1)
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
+
+        return res
+
+    def extract_img_info(self, latent_rgb, latent_depth, state_prev):
+
+        if self.use_depth:
+            latent = torch.cat([latent_rgb, latent_depth], dim=1)
+        else:
+            latent = latent_rgb
+        state_new = self.state_cell(latent, state_prev)
+
+        extracted_obs = self.postp_state(state_new)
+
+        res = {}
+        res["state"] = state_new
+        res["extracted_obs"] = extracted_obs
+        res["latent"] = latent
 
         return res
 
@@ -593,16 +603,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
             else:
                 self.belief_decoder = None
 
-    def forward(
-        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
-    ):
-
-        latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
-        if self.use_depth:
-            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
-
-        bs = latent_rgb.size(0)
-        state_prev = self.prep_state(state, bs)
+    def extract_img_info(self, latent_rgb, latent_depth, state_prev):
         res = {}
 
         if self.use_obs_belief:
@@ -630,74 +631,9 @@ class RecurrentCNN(RecurrentCNNVanilla):
             state_new_postp = self.postp_state(state_new)
             extracted_obs = state_new_postp
 
-        t_in = extracted_obs
-        rot_in = extracted_obs
-        if self.use_prev_pose_condition:
-            if prev_pose is None:
-                prev_pose = {
-                    "t": torch.zeros(
-                        bs,
-                        self.t_mlp_out_dim + 1 if self.do_predict_2d_t else self.t_mlp_out_dim,
-                        device=latent_rgb.device,
-                    ),
-                    "rot": torch.zeros(bs, self.rot_mlp_out_dim, device=latent_rgb.device),
-                }
-            if self.do_predict_2d_t:
-                t_prev = prev_pose["t"][:, :2]
-            else:
-                t_prev = prev_pose["t"]
-            rot_prev = prev_pose["rot"]
-            if self.use_mlp_for_prev_pose:
-                t_prev = self.prev_t_mlp(t_prev)
-                rot_prev = self.prev_rot_mlp(prev_pose["rot"])
-            t_in = torch.cat([t_in, t_prev], dim=1)
-            rot_in = torch.cat([rot_in, rot_prev], dim=1)
-        if self.use_prev_latent:
-            if prev_latent is None:
-                prev_latent = torch.zeros_like(latent)
-            t_in = torch.cat([t_in, prev_latent], dim=1)
-            rot_in = torch.cat([rot_in, prev_latent], dim=1)
-
-        t = self.t_mlp(t_in)
-        res.update(
-            {
-                "latent_depth": latent_depth,
-                "state": state_new,
-                "t": t,
-            }
-        )
-
-        if self.use_prev_latent:
-            res["latent"] = latent
-
-        if self.do_predict_rot:
-            rot = self.rot_mlp(rot_in)
-            res["rot"] = rot
-
-        if self.do_predict_abs_pose:
-            t_abs_pose = self.t_mlp_abs_pose(t_in)
-            rot_abs_pose = self.rot_mlp_abs_pose(rot_in)
-            res.update(
-                {
-                    "t_abs_pose": t_abs_pose,
-                    "rot_abs_pose": rot_abs_pose,
-                }
-            )
-
-        if self.do_predict_2d_t:
-            depth_in = extracted_obs
-            if self.use_prev_pose_condition:
-                depth_in = torch.cat([depth_in, prev_pose["t"][:, :2]], dim=1)
-            if self.use_prev_latent:
-                depth_in = torch.cat([depth_in, prev_latent], dim=1)
-            center_depth = self.depth_mlp(depth_in)
-            res["center_depth"] = center_depth
-
-        if self.do_predict_kpts:
-            kpts = self.kpts_mlp(extracted_obs)
-            kpts = kpts.view(bs, 8 + 24, 2)
-            res["kpts"] = kpts
-
+        res["state"] = state_new
+        res["latent"] = latent
+        res["extracted_obs"] = extracted_obs
         return res
 
 
