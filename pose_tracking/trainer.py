@@ -434,7 +434,7 @@ class Trainer:
 
             if self.do_predict_2d_t:
                 center_depth_pred = out["center_depth"]
-                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics, hw=hw)
+                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics.float(), hw=hw)
                 t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
@@ -484,7 +484,7 @@ class Trainer:
                     if self.do_predict_rel_pose:
                         loss_uv = self.criterion_trans(t_pred_2d[:, :2], t_gt_rel[:, :2])
                         # trickier for depth (should be change in scale)
-                        loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2])
+                        loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2:3])
                     else:
                         t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
                         loss_uv = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
@@ -703,12 +703,8 @@ class Trainer:
             out_prev = {"t": out["t"], "rot": out["rot"]}
             prev_latent = out["latent"] if self.use_prev_latent else None
 
-        num_steps = seq_length
-        if do_skip_first_step:
-            num_steps -= 1
-
         if do_opt_in_the_end:
-            total_loss /= num_steps
+            total_loss /= seq_length
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if do_vis:
@@ -727,6 +723,10 @@ class Trainer:
             }
         else:
             last_step_state = None
+
+        num_steps = seq_length
+        if do_skip_first_step:
+            num_steps -= 1
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
