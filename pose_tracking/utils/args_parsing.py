@@ -179,6 +179,11 @@ def get_parser():
         "--tf_use_kpts_as_ref_pt", action="store_true", help="Use keypoints as reference points for encoder"
     )
     tf_args.add_argument("--tf_use_kpts_as_img", action="store_true", help="Use keypoints instead of images")
+    tf_args.add_argument(
+        "--tf_use_pretrained_model",
+        action="store_true",
+        help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer",
+    )
     tf_args.add_argument("--tf_bbox_loss_coef", type=float, default=5)
     tf_args.add_argument("--tf_giou_loss_coef", type=float, default=2)
     tf_args.add_argument("--tf_ce_loss_coef", type=float, default=2)
@@ -206,11 +211,6 @@ def get_parser():
     model_args.add_argument("--use_mlp_for_prev_pose", action="store_true", help="Project previous rot/t with MLP")
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
-    model_args.add_argument(
-        "--use_pretrained_model",
-        action="store_true",
-        help="Use a pretrained model of the same architecture. Applies to DETR/Trackformer",
-    )
     model_args.add_argument("--use_obs_belief", action="store_true", help="Use observation belief encoder-decoder")
     model_args.add_argument("--use_belief_decoder", action="store_true")
     model_args.add_argument(

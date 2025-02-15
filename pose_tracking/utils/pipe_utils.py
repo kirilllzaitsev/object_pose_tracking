@@ -110,7 +110,7 @@ def get_model(args, num_classes=None):
         args.detr_args = detr_args
         model, *_ = build_model(detr_args, num_classes=num_classes + 1)
 
-        if args.use_pretrained_model:
+        if args.tf_use_pretrained_model:
             # mind bbox embed. should have 3 layers
             assert args.hidden_dim == 288, args.hidden_dim
             obj_detect_checkpoint = torch.load(
@@ -366,7 +366,7 @@ def get_trainer(
         do_predict_6d_rot=args.do_predict_6d_rot,
         do_predict_3d_rot=args.do_predict_3d_rot,
         use_rnn=args.use_rnn,
-        use_belief_decoder=args.use_belief_decoder,
+        use_belief_decoder=args.use_depth and args.use_obs_belief and args.use_belief_decoder,
         world_size=world_size,
         logger=logger,
         vis_epoch_freq=args.vis_epoch_freq,

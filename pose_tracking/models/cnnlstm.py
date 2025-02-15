@@ -65,7 +65,6 @@ class BeliefEncoder(nn.Module):
         return {
             "posterior_belief": posterior_belief,
             "prior_belief": prior_belief,
-            "belief_state": posterior_belief,
             "prior_belief_encoded": prior_belief_encoded,
             "prior_belief_depth_encoded": prior_belief_depth_encoded,
             "latent_depth_gated": latent_depth_gated,
@@ -205,7 +204,7 @@ class RecurrentNet(nn.Module):
 
     def reset_state(self, batch_size, device):
         if self.rnn_state_init_type == "learned":
-            return
+            self.detach_state()
         elif self.rnn_state_init_type == "zeros":
             self.hx = torch.zeros(1, self.state_dim, device=device)
             self.cx = None if "gru" in self.rnn_type else torch.zeros(1, self.state_dim, device=device)
@@ -217,9 +216,9 @@ class RecurrentNet(nn.Module):
 
     def detach_state(self):
         if self.training:
-            self.hx = self.hx.detach()
+            self.hx.detach_()
             if self.cx is not None:
-                self.cx = self.cx.detach()
+                self.cx.detach_()
 
 
 class RecurrentCNNVanilla(RecurrentNet):
@@ -422,7 +421,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         if self.use_depth:
             latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
             latent = torch.cat([latent_rgb, latent_depth], dim=1)
-            res["latent_depth"] = (latent_depth,)
+            res["latent_depth"] = latent_depth
         else:
             latent = latent_rgb
         state_new = self.state_cell(latent, state_prev)
@@ -598,8 +597,8 @@ class RecurrentCNN(RecurrentCNNVanilla):
             hx = encoder_out["hx"]
             state_new = hx, encoder_out["cx"]
             latent_depth_post = encoder_out["latent_depth_gated"]
-            belief_state = encoder_out["belief_state"]
-            extracted_obs = torch.cat([latent_rgb, belief_state], dim=1)
+            posterior_belief = encoder_out["posterior_belief"]
+            extracted_obs = torch.cat([latent_rgb, posterior_belief], dim=1)
 
             if self.use_belief_decoder:
                 decoder_out = self.belief_decoder(hx, latent_depth)
