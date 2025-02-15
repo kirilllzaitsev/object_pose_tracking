@@ -225,10 +225,7 @@ class Trainer:
 
             batch_size = len(batched_seq[0]["rgb"])
 
-            if self.do_reset_state:
-                if self.model_without_ddp.rnn_state_init_type in ["learned"]:
-                    self.do_reset_state = False
-                self.model_without_ddp.reset_state(batch_size, device=self.device)
+            self.model_without_ddp.reset_state(batch_size, device=self.device)
 
             if (stage != "train" and not self.do_chunkify_val) or (
                 stage == "train" and not self.use_entire_seq_in_train
@@ -328,10 +325,11 @@ class Trainer:
             vis_batch_idxs = list(range(min(batch_size, 8)))
             vis_data = defaultdict(list)
 
-        pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
-        out_prev = None  # raw ouput of the model
+        pose_prev_pred_abs = None
+        out_prev = None  # raw ouput of the model at prev step
         pose_mat_prev_gt_abs = None
         prev_latent = None
+        prev_pose = None
         state = None
         do_skip_first_step = False
 
@@ -356,7 +354,7 @@ class Trainer:
                     state = last_step_state.get("state")
                 elif t == 0:
                     do_skip_first_step = True
-                    if self.do_perturb_init_gt_for_rel_pose:
+                    if self.do_perturb_init_gt_for_rel_pose and is_train:
                         noise_t = (
                             torch.rand_like(t_gt_abs)
                             * 0.02
@@ -417,10 +415,8 @@ class Trainer:
 
                     continue
 
-            if self.use_prev_pose_condition:
-                prev_pose = pose_prev_pred_abs if self.do_predict_rel_pose else out_prev
-            else:
-                prev_pose = None
+            if self.use_prev_pose_condition and self.do_predict_rel_pose:
+                prev_pose = pose_prev_pred_abs
 
             out = self.model(
                 rgb,
@@ -489,14 +485,11 @@ class Trainer:
                         loss_uv = self.criterion_trans(t_pred_2d[:, :2], t_gt_rel[:, :2])
                         # trickier for depth (should be change in scale)
                         loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2])
-                        loss_t = loss_uv + loss_z
                     else:
-
                         t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
-
-                        loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
-                        loss_center_depth = self.criterion_trans(center_depth_pred, depth_gt)
-                        loss_t = loss_t_2d + loss_center_depth
+                        loss_uv = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
+                        loss_z = self.criterion_trans(center_depth_pred, depth_gt)
+                    loss_t = loss_uv + loss_z
                 else:
                     if self.do_predict_rel_pose:
                         rel_t_scaler = 1
@@ -523,13 +516,13 @@ class Trainer:
 
                 if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
                     loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
-                    loss_t += 0.01 * loss_t_abs
+                    loss_t += loss_t_abs / seq_length
                     if self.use_rot_mat_for_loss:
                         loss_rot_abs = self.criterion_rot(rot_mat_pred_abs, rot_mat_gt_abs)
                     else:
                         rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                         loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
-                    loss_rot += 0.5 * loss_rot_abs
+                    loss_rot += loss_rot_abs / seq_length
 
                 if self.opt_only is None:
                     loss = self.tf_t_loss_coef * loss_t + self.tf_rot_loss_coef * loss_rot
@@ -618,6 +611,9 @@ class Trainer:
             if self.do_predict_kpts:
                 seq_stats["loss_kpts"] += loss_kpts.item()
                 seq_stats["loss_cr"] += loss_cr.item()
+            if self.do_predict_2d_t:
+                seq_stats["loss_uv"] += loss_uv.item()
+                seq_stats["loss_z"] += loss_z.item()
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -702,9 +698,6 @@ class Trainer:
                     pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
             else:
                 pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
-            if self.do_predict_2d_t:
-                pose_prev_pred_abs["center_depth"] = center_depth_pred
-            pose_prev_pred_abs = {k: v for k, v in pose_prev_pred_abs.items()}
 
             pose_mat_prev_gt_abs = pose_mat_gt_abs
             out_prev = {"t": out["t"], "rot": out["rot"]}
