@@ -505,6 +505,7 @@ class KeypointDETR(DETRBase):
         self.token_dim = descriptor_dim
         if use_mask_as_obj_indicator:
             self.token_dim += 1
+        if self.use_depth:
             self.token_dim += 1
         self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
@@ -575,6 +576,8 @@ class KeypointDETR(DETRBase):
         if self.use_mask_as_obj_indicator:
             obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask)
             tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
+        if self.use_depth:
+            tokens = torch.cat([tokens, depth_1d.unsqueeze(-1)], dim=-1)
 
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
