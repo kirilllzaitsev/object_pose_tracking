@@ -485,12 +485,17 @@ class KeypointDETR(DETRBase):
         descriptor_dim=256,
         use_mask_on_input=False,
         use_mask_as_obj_indicator=False,
+        do_calibrate_kpt=False,
         **kwargs,
     ):
+        self.do_calibrate_kpt = do_calibrate_kpt
+
         self.use_mask_on_input = use_mask_on_input
         self.use_mask_as_obj_indicator = use_mask_as_obj_indicator
         self.kpt_spatial_dim = kpt_spatial_dim
         self.descriptor_dim = descriptor_dim
+
+        self.do_backproj_kpts_to_3d = self.kpt_spatial_dim == 3
 
         super().__init__(
             *args,
@@ -499,6 +504,7 @@ class KeypointDETR(DETRBase):
 
         self.token_dim = descriptor_dim
         if use_mask_as_obj_indicator:
+            self.token_dim += 1
             self.token_dim += 1
         self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
@@ -533,12 +539,12 @@ class KeypointDETR(DETRBase):
 
         return out
 
-    def extract_tokens(self, x, intrinsics=None, depth=None, mask=None):
+    def extract_tokens(self, rgb, intrinsics=None, depth=None, mask=None):
         if self.use_mask_on_input:
             mask = torch.stack([mask_morph(m, op_name="dilate") for m in mask]).unsqueeze(1)
-            x = x * mask
-        bs, c, h, w = x.shape
-        extracted_kpts = extract_kpts(x, extractor=self.extractor)
+            rgb = rgb * mask
+        bs, c, h, w = rgb.shape
+        extracted_kpts = extract_kpts(rgb, extractor=self.extractor)
         memory_key_padding_mask = extracted_kpts.get("memory_key_padding_mask")
 
         descriptors = extracted_kpts["descriptors"]
@@ -551,16 +557,17 @@ class KeypointDETR(DETRBase):
             depth_1d = torch.stack(depth_1d, dim=0).to(kpts.device)
         kpts = kpts / torch.tensor([w, h], dtype=kpts.dtype).to(kpts.device)
 
-        if depth is not None or intrinsics is not None:
+        if self.do_backproj_kpts_to_3d or self.do_calibrate_kpt:
             assert intrinsics is not None
+            assert depth is not None
             K_norm = intrinsics.clone().float()
             K_norm[..., 0] /= w
             K_norm[..., 1] /= h
             K_norm[..., 0, 2] /= w
             K_norm[..., 1, 2] /= h
-            if depth is not None:
+            if self.do_backproj_kpts_to_3d:
                 kpts = backproj_2d_to_3d_batch(kpts, depth=depth_1d, K=K_norm)
-            else:
+            elif self.do_calibrate_kpt:
                 kpts = calibrate_2d_pts_batch(kpts, K=K_norm)
 
         tokens = descriptors  # B x N x D
