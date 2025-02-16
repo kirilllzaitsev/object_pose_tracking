@@ -197,6 +197,9 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_labels"] = new_sample.pop("prev_class_id")
             new_sample["prev_rgb_path"] = sample_prev["rgb_path"]
 
+            new_sample["prev_depth"] = sample_prev.get("depth", [])
+            new_sample["prev_mask"] = sample_prev.get("mask", [])
+
             if self.do_predict_rel_pose:
                 pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(prev_pose)
                 pose_mat_gt_abs = self.pose_to_mat_converter_fn(pose)
@@ -242,7 +245,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_target"] = {
                 k.replace("prev_", ""): v
                 for k, v in new_sample.items()
-                if k.startswith("prev_") and k not in ["prev_image", "prev_rgb_path"]
+                if k.startswith("prev_") and k not in ["prev_image", "prev_rgb_path", "prev_depth", "prev_mask"]
             }
             for k in new_sample["prev_target"]:
                 new_sample.pop(f"prev_{k}")
@@ -258,6 +261,8 @@ class VideoDatasetTracking(VideoDataset):
                     "pose",
                     "size",
                     "prev_image",
+                    "prev_depth",
+                    "prev_mask",
                     "rot",
                     "t",
                     "xy",
