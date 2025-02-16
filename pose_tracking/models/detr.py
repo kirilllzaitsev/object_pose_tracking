@@ -274,8 +274,8 @@ class DETRBase(nn.Module):
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
 
-    def forward(self, x, pose_tokens=None, prev_tokens=None, **kwargs):
-        extract_res = self.extract_tokens(x, **kwargs)
+    def forward(self, x, pose_tokens=None, prev_tokens=None, depth=None, **kwargs):
+        extract_res = self.extract_tokens(x, depth=depth, **kwargs)
         tokens = extract_res["tokens"]
 
         if self.encoding_type == "learned":
@@ -386,7 +386,7 @@ class DETRBase(nn.Module):
 
         return res
 
-    def extract_tokens(self, x, *args, **kwargs):
+    def extract_tokens(self, rgb, *args, **kwargs):
         raise NotImplementedError
 
     def __repr__(self):
@@ -405,31 +405,20 @@ class DETR(DETRBase):
         self,
         *args,
         backbone_name="resnet18",
-        use_pretrained_backbone=True,
         **kwargs,
     ):
         self.backbone_name = backbone_name
-        self.use_pretrained_backbone = use_pretrained_backbone
 
         self.backbone_weights = None
         if backbone_name == "resnet50":
             self.final_layer_name = "layer4"
             self.final_feature_dim = 2048
-            self.backbone_cls = resnet50
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet50_Weights.DEFAULT
         elif backbone_name == "resnet18":
             self.final_feature_dim = 512
             self.final_layer_name = "layer4"
-            self.backbone_cls = resnet18
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet18_Weights.DEFAULT
         elif backbone_name == "resnet101":
             self.final_feature_dim = 2048
             self.final_layer_name = "layer4"
-            self.backbone_cls = resnet101
-            if use_pretrained_backbone:
-                self.backbone_weights = torchvision.models.ResNet101_Weights.DEFAULT
         else:
             raise ValueError(f"Unknown backbone {backbone_name}")
 
@@ -439,8 +428,10 @@ class DETR(DETRBase):
             final_feature_dim=self.final_feature_dim,
         )
 
-        self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
+        self.backbone, self.backbone_depth = get_encoders(model_name=backbone_name, norm_layer_type="frozen_bn")
         self.backbone.fc = nn.Identity()
+        self.backbone_depth.fc = nn.Identity()
+        conv_1_in_dim = self.final_feature_dim
 
         if self.use_depth:
             conv_1_in_dim += self.final_feature_dim
