@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP
-from pose_tracking.models.encoders import FrozenBatchNorm2d
+from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
@@ -40,6 +40,94 @@ def get_hook(outs, name):
     return hook
 
 
+class DETRPretrained(nn.Module):
+
+    def __init__(
+        self,
+        num_classes,
+        use_pretrained_backbone=True,
+        rot_out_dim=4,
+        t_out_dim=3,
+        opt_only=[],
+        d_model=256,
+        n_layers=6,
+        dropout=0.0,
+        dropout_heads=0.0,
+        head_num_layers=2,
+    ):
+        super().__init__()
+
+        self.use_pretrained_backbone = use_pretrained_backbone
+        self.rot_out_dim = rot_out_dim
+        self.t_out_dim = t_out_dim
+        self.opt_only = opt_only
+        self.d_model = d_model
+        self.n_layers = n_layers
+        self.num_classes = num_classes
+        self.dropout = dropout
+        self.dropout_heads = dropout_heads
+        self.head_num_layers = head_num_layers
+
+        self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
+        self.use_t = not opt_only or (opt_only and "t" in opt_only)
+
+        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
+
+        self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
+        self.bbox_embed = get_clones(
+            MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+        )
+        self.model.class_embed = nn.Identity()
+        self.model.bbox_embed = nn.Identity()
+        self.model.transformer.decoder.norm = nn.Identity()
+
+        for m in self.model.modules():
+            if isinstance(m, nn.Dropout):
+                m.p = dropout
+
+        if self.use_t:
+            self.t_mlps = get_clones(
+                MLP(d_model, t_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+            )
+        if self.use_rot:
+            self.rot_mlps = get_clones(
+                MLP(d_model, rot_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
+            )
+
+        self.decoder_outs = {}
+        for i, layer in enumerate(self.model.transformer.decoder.layers):
+            name = f"layer_{i}"
+            layer.register_forward_hook(get_hook(self.decoder_outs, name))
+
+    def forward(self, x):
+        main_out = self.model(x)
+        outs = []
+        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
+            out = {}
+            out["pred_logits"] = self.class_embed[layer_idx](o).transpose(0, 1)
+            out["pred_boxes"] = self.bbox_embed[layer_idx](o).sigmoid().transpose(0, 1)
+            if self.use_rot:
+                pred_rot = self.rot_mlps[layer_idx](o)
+                out["rot"] = pred_rot.transpose(0, 1)
+            if self.use_t:
+                pred_t = self.t_mlps[layer_idx](o)
+                out["t"] = pred_t.transpose(0, 1)
+
+            outs.append(out)
+        last_out = outs.pop()
+        res = {
+            "pred_logits": last_out["pred_logits"],
+            "pred_boxes": last_out["pred_boxes"],
+            "aux_outputs": outs,
+        }
+        if self.use_rot:
+            res["rot"] = last_out["rot"]
+        if self.use_t:
+            res["t"] = last_out["t"]
+
+        return res
+
+
 class DETRBase(nn.Module):
 
     def __init__(
@@ -60,6 +148,7 @@ class DETRBase(nn.Module):
         t_out_dim=3,
         use_pose_tokens=False,
         use_roi=False,
+        use_depth=False,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
     ):
@@ -67,6 +156,7 @@ class DETRBase(nn.Module):
 
         self.use_pose_tokens = use_pose_tokens
         self.use_roi = use_roi
+        self.use_depth = use_depth
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -352,18 +442,36 @@ class DETR(DETRBase):
         self.backbone = self.backbone_cls(norm_layer=FrozenBatchNorm2d, weights=self.backbone_weights)
         self.backbone.fc = nn.Identity()
 
-        self.conv1x1 = nn.Conv2d(self.final_feature_dim, self.d_model, kernel_size=1, stride=1)
+        if self.use_depth:
+            conv_1_in_dim += self.final_feature_dim
+        else:
+            self.backbone_depth = None
 
-        self.backbone_feats = {}
+        self.conv1x1 = nn.Conv2d(conv_1_in_dim, self.d_model, kernel_size=1, stride=1)
+
+        self.backbone_rgb_feats = {}
 
         def hook_resnet50_feats(model, inp, out):
-            self.backbone_feats["layer4"] = out
+            self.backbone_rgb_feats["layer4"] = out
 
         self.backbone.layer4.register_forward_hook(hook_resnet50_feats)
 
-    def extract_tokens(self, x):
-        _ = self.backbone(x)
-        tokens = self.backbone_feats["layer4"]
+        if self.use_depth:
+            self.backbone_depth_feats = {}
+
+            def hook_resnet50_feats_depth(model, inp, out):
+                self.backbone_depth_feats["layer4"] = out
+
+            self.backbone_depth.layer4.register_forward_hook(hook_resnet50_feats_depth)
+
+    def extract_tokens(self, rgb, depth=None):
+        _ = self.backbone(rgb)
+        tokens = self.backbone_rgb_feats["layer4"]
+
+        if self.use_depth:
+            _ = self.backbone_depth(depth)
+            tokens_depth = self.backbone_depth_feats["layer4"]
+            tokens = torch.cat([tokens, tokens_depth], dim=1)
 
         res = {}
         if self.use_roi:
@@ -373,94 +481,6 @@ class DETR(DETRBase):
         tokens = self.conv1x1(tokens)
         tokens = rearrange(tokens, "b c h w -> b c (h w)")
         res["tokens"] = tokens
-        return res
-
-
-class DETRPretrained(nn.Module):
-
-    def __init__(
-        self,
-        num_classes,
-        use_pretrained_backbone=True,
-        rot_out_dim=4,
-        t_out_dim=3,
-        opt_only=[],
-        d_model=256,
-        n_layers=6,
-        dropout=0.0,
-        dropout_heads=0.0,
-        head_num_layers=2,
-    ):
-        super().__init__()
-
-        self.use_pretrained_backbone = use_pretrained_backbone
-        self.rot_out_dim = rot_out_dim
-        self.t_out_dim = t_out_dim
-        self.opt_only = opt_only
-        self.d_model = d_model
-        self.n_layers = n_layers
-        self.num_classes = num_classes
-        self.dropout = dropout
-        self.dropout_heads = dropout_heads
-        self.head_num_layers = head_num_layers
-
-        self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
-        self.use_t = not opt_only or (opt_only and "t" in opt_only)
-
-        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
-
-        self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
-        self.bbox_embed = get_clones(
-            MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-        )
-        self.model.class_embed = nn.Identity()
-        self.model.bbox_embed = nn.Identity()
-        self.model.transformer.decoder.norm = nn.Identity()
-
-        for m in self.model.modules():
-            if isinstance(m, nn.Dropout):
-                m.p = dropout
-
-        if self.use_t:
-            self.t_mlps = get_clones(
-                MLP(d_model, t_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-            )
-        if self.use_rot:
-            self.rot_mlps = get_clones(
-                MLP(d_model, rot_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-            )
-
-        self.decoder_outs = {}
-        for i, layer in enumerate(self.model.transformer.decoder.layers):
-            name = f"layer_{i}"
-            layer.register_forward_hook(get_hook(self.decoder_outs, name))
-
-    def forward(self, x):
-        main_out = self.model(x)
-        outs = []
-        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
-            out = {}
-            out["pred_logits"] = self.class_embed[layer_idx](o).transpose(0, 1)
-            out["pred_boxes"] = self.bbox_embed[layer_idx](o).sigmoid().transpose(0, 1)
-            if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](o)
-                out["rot"] = pred_rot.transpose(0, 1)
-            if self.use_t:
-                pred_t = self.t_mlps[layer_idx](o)
-                out["t"] = pred_t.transpose(0, 1)
-
-            outs.append(out)
-        last_out = outs.pop()
-        res = {
-            "pred_logits": last_out["pred_logits"],
-            "pred_boxes": last_out["pred_boxes"],
-            "aux_outputs": outs,
-        }
-        if self.use_rot:
-            res["rot"] = last_out["rot"]
-        if self.use_t:
-            res["t"] = last_out["t"]
-
         return res
 
 
