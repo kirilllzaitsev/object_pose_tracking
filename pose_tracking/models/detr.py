@@ -11,6 +11,7 @@ from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
+    DepthPositionalEncoding,
     PosEncoding,
     PosEncodingCoord,
     PositionEmbeddingLearned,
@@ -506,7 +507,7 @@ class KeypointDETR(DETRBase):
         if use_mask_as_obj_indicator:
             self.token_dim += 1
         if self.use_depth:
-            self.token_dim += 1
+            self.pe_depth = DepthPositionalEncoding(self.d_model)
         self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
@@ -577,7 +578,7 @@ class KeypointDETR(DETRBase):
             obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask)
             tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
         if self.use_depth:
-            tokens = torch.cat([tokens, depth_1d.unsqueeze(-1)], dim=-1)
+            tokens = tokens + self.pe_depth(depth_1d.unsqueeze(-1))
 
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
