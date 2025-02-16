@@ -61,8 +61,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     world_size = int(os.environ.get("WORLD_SIZE", os.environ.get("SLURM_NTASKS", 1)))
     rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    if args.is_ddp_interactive:
-        rank = local_rank
     if args.use_ddp:
         print(f"host: {gethostname()}, {world_size=}, {rank=}, {local_rank=}")
     if args.use_ddp:

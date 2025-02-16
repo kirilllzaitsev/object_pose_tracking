@@ -225,7 +225,8 @@ class Trainer:
 
             batch_size = len(batched_seq[0]["rgb"])
 
-            self.model_without_ddp.reset_state(batch_size, device=self.device)
+            if self.do_reset_state:
+                self.model_without_ddp.reset_state(batch_size, device=self.device)
 
             if (stage != "train" and not self.do_chunkify_val) or (
                 stage == "train" and not self.use_entire_seq_in_train

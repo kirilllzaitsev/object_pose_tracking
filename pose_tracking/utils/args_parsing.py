@@ -49,9 +49,6 @@ def get_parser():
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
-    train_args.add_argument(
-        "--is_ddp_interactive", action="store_true", help="SLURM is running in the interactive mode"
-    )
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")

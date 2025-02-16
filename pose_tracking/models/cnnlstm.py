@@ -318,7 +318,7 @@ class RecurrentCNNVanilla(RecurrentNet):
                 out_dim=self.depth_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                dropout=dropout,
+                dropout=dropout_heads,
             )
         else:
             self.t_mlp_out_dim = 3
@@ -627,7 +627,10 @@ class RecurrentCNN(RecurrentCNNVanilla):
                 latent = torch.cat([latent_rgb, latent_depth], dim=1)
             else:
                 latent = latent_rgb
-            state_new = self.state_cell(latent, state_prev)
+            if self.use_rnn:
+                state_new = self.state_cell(latent, state_prev)
+            else:
+                state_new = self.state_cell(latent)
             state_new_postp = self.postp_state(state_new)
             extracted_obs = state_new_postp
 
