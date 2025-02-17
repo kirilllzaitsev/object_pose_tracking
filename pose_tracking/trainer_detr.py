@@ -511,11 +511,11 @@ class TrainerDeformableDETR(Trainer):
         if use_prev_image:
             targets = get_prev_data("prev_target")
             image = torch.stack(get_prev_data("prev_image"))
-            depth = get_prev_data("depth")
-            if len(depth) > 0:
+            depth = get_prev_data("prev_depth")
+            if len(depth) > 0 and len(depth[0]) > 0:
                 depth = torch.stack(depth)
-            mask = get_prev_data("mask")
-            if len(mask) > 0:
+            mask = get_prev_data("prev_mask")
+            if len(mask) > 0 and len(mask[0]) > 0:
                 mask = torch.stack(mask)
         else:
             targets = batch_t["target"]
@@ -524,8 +524,11 @@ class TrainerDeformableDETR(Trainer):
             mask = batch_t["mask"]
         intrinsics = torch.stack([x["intrinsics"] for x in targets])
 
+        extra_kwargs = {}
+        if self.model_without_ddp.use_depth:
+            extra_kwargs["depth"] = depth
+
         if self.model_name == "detr_kpt":
-            extra_kwargs = {}
             if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
                 extra_kwargs["intrinsics"] = intrinsics.to(self.device)
             if self.kpt_spatial_dim > 2:
@@ -538,7 +541,7 @@ class TrainerDeformableDETR(Trainer):
                 **extra_kwargs,
             )
         else:
-            out = self.model(image, pose_tokens=pose_tokens, prev_tokens=prev_tokens)
+            out = self.model(image, pose_tokens=pose_tokens, prev_tokens=prev_tokens, **extra_kwargs)
 
         if use_prev_image:
             loss_dict = {}

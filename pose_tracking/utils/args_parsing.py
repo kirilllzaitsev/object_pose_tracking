@@ -116,6 +116,7 @@ def get_parser():
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     poseformer_args.add_argument("--mt_use_roi", action="store_true", help="Apply RoI for rot mlp in DETR basic")
+    poseformer_args.add_argument("--mt_use_depth", action="store_true", help="Use RGBD")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"

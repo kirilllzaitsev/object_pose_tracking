@@ -6,8 +6,8 @@ import torchvision
 def get_encoders(
     model_name="efficientnet_b1",
     device="cpu",
-    weights_rgb=None,
-    weights_depth=None,
+    weights_rgb="imagenet",
+    weights_depth="imagenet",
     do_freeze=False,
     disable_bn_running_stats=False,
     norm_layer_type=None,
@@ -103,7 +103,14 @@ def get_encoders(
         encoder_depth = torchvision.models.resnet50(
             weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
         )
-        encoder_depth.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        encoder_depth.conv1 = nn.Conv2d(
+            1,
+            64,
+            kernel_size=encoder_rgb.conv1.kernel_size,
+            stride=encoder_rgb.conv1.stride,
+            padding=encoder_rgb.conv1.padding,
+            bias=False,
+        )
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
                 dropout_layer,
