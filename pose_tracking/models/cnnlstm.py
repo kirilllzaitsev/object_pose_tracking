@@ -248,6 +248,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         use_prev_latent=False,
         do_predict_kpts=False,
         do_predict_rot=True,
+        do_predict_t=True,
         do_predict_abs_pose=False,
         use_kpts_for_rot=False,
         use_depth=True,
@@ -279,6 +280,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         self.use_prev_latent = use_prev_latent
         self.do_predict_kpts = do_predict_kpts
         self.do_predict_rot = do_predict_rot
+        self.do_predict_t = do_predict_t
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
         self.use_kpts_for_rot = use_kpts_for_rot
 
@@ -351,14 +353,15 @@ class RecurrentCNNVanilla(RecurrentNet):
             self.t_mlp_in_dim += self.input_dim
             self.rot_mlp_in_dim += self.input_dim
 
-        self.t_mlp = MLP(
-            in_dim=self.t_mlp_in_dim,
-            out_dim=self.t_mlp_out_dim,
-            hidden_dim=self.rt_hidden_dim,
-            num_layers=rt_mlps_num_layers,
-            act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
-            dropout=dropout_heads,
-        )
+        if do_predict_t:
+            self.t_mlp = MLP(
+                in_dim=self.t_mlp_in_dim,
+                out_dim=self.t_mlp_out_dim,
+                hidden_dim=self.rt_hidden_dim,
+                num_layers=rt_mlps_num_layers,
+                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                dropout=dropout_heads,
+            )
         if do_predict_rot:
             self.rot_mlp = MLP(
                 in_dim=self.rot_mlp_in_dim,
@@ -462,13 +465,9 @@ class RecurrentCNNVanilla(RecurrentNet):
             t_in = torch.cat([t_in, prev_latent], dim=1)
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
-        t = self.t_mlp(t_in)
-        res.update(
-            {
-                "latent_depth": latent_depth,
-                "t": t,
-            }
-        )
+        if self.do_predict_t:
+            t = self.t_mlp(t_in)
+            res["t"] = t
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(extracted_obs)
@@ -501,6 +500,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
 
+        res["latent_depth"] = latent_depth
         return res
 
     def extract_img_info(self, latent_rgb, latent_depth, state_prev):
@@ -720,10 +720,8 @@ class RecurrentCNNSeparated(RecurrentCNN):
 
     def reset_state(self, batch_size, device):
         self.t_rnn.reset_state(batch_size, device)
-        super().reset_state(batch_size, device)
 
     def detach_state(self):
-        super().detach_state()
         self.t_rnn.detach_state()
 
     def forward(
@@ -793,6 +791,117 @@ class RecurrentCNNSeparated(RecurrentCNN):
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(t_net_out["latent"])
+            kpts = kpts.view(bs, 8 + 24, 2)
+            res["kpts"] = kpts
+
+        return res
+
+
+class RecurrentCNNDouble(RecurrentCNN):
+    """ """
+
+    def __init__(
+        self,
+        *args,
+        use_crop_for_rot=True,
+        **kwargs,
+    ):
+        self.use_crop_for_rot = use_crop_for_rot
+
+        use_obs_belief = kwargs.pop("use_obs_belief", False)
+        kwargs["use_obs_belief"] = False
+        super().__init__(*args, **kwargs)
+
+        self.t_rnn_kwargs = copy.deepcopy(kwargs)
+        self.t_rnn_kwargs["encoder_name"] = None
+        self.t_rnn_kwargs["do_predict_rot"] = False
+        self.t_rnn_kwargs["use_obs_belief"] = use_obs_belief
+        self.t_rnn = RecurrentCNN(
+            *args,
+            **self.t_rnn_kwargs,
+        )
+        self.rot_rnn_kwargs = copy.deepcopy(self.t_rnn_kwargs)
+        self.rot_rnn_kwargs["do_predict_rot"] = True
+        self.rot_rnn = RecurrentCNN(
+            *args,
+            **self.rot_rnn_kwargs,
+        )
+
+        self.rot_mlp = None
+        self.t_mlp = None
+
+    def reset_state(self, batch_size, device):
+        self.t_rnn.reset_state(batch_size, device)
+        self.rot_rnn.reset_state(batch_size, device)
+
+    def detach_state(self):
+        self.t_rnn.detach_state()
+        self.rot_rnn.detach_state()
+
+    def forward(
+        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
+    ):
+
+        bbox = kwargs["bbox"]
+        bs, C, H, W = rgb.size()
+
+        latent_rgb = self.encoder_img(rgb)
+        latent_depth = self.encoder_depth(depth)
+
+        if state is not None:
+            state_t = state[:, : self.state_dim]
+            state_rot = state[:, self.state_dim :]
+        else:
+            state_t = state_rot = None
+
+        if prev_latent is not None:
+            prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
+            prev_latent_rot = prev_latent[:, self.encoder_out_dim * 2 :]
+        else:
+            prev_latent_t = prev_latent_rot = None
+
+        t_net_out = self.t_rnn(
+            rgb,
+            depth,
+            prev_pose=prev_pose,
+            latent_rgb=latent_rgb,
+            latent_depth=latent_depth,
+            prev_latent=prev_latent_t,
+            state=state_t,
+        )
+        rot_net_out = self.rot_rnn(
+            rgb,
+            depth,
+            prev_pose=prev_pose,
+            latent_rgb=latent_rgb,
+            latent_depth=latent_depth,
+            prev_latent=prev_latent_rot,
+            state=state_rot,
+        )
+
+        res = {}
+        res.update(
+            {
+                "latent_depth": latent_depth,
+                "state": torch.cat([t_net_out["state"], rot_net_out["state"]], dim=1),
+                "t": t_net_out["t"],
+                "rot": rot_net_out["rot"],
+                "decoder_out": (
+                    torch.cat([t_net_out.get("decoder_out"), rot_net_out.get("decoder_out")], dim=1)
+                    if self.use_belief_decoder
+                    else None
+                ),
+            }
+        )
+
+        if self.use_prev_latent:
+            res["latent"] = torch.cat([t_net_out["latent"], rot_net_out["latent"]], dim=1)
+
+        if self.do_predict_2d_t:
+            res["center_depth"] = t_net_out["center_depth"]
+
+        if self.do_predict_kpts:
+            kpts = self.kpts_mlp(torch.cat([t_net_out["latent"], rot_net_out["latent"]], dim=1))
             kpts = kpts.view(bs, 8 + 24, 2)
             res["kpts"] = kpts
 
