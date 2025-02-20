@@ -885,12 +885,38 @@ class RecurrentCNNDouble(RecurrentCNN):
             prev_latent=prev_latent_t,
             state=state_t,
         )
+
+        if self.use_crop_for_rot:
+            padding = 5
+            new_boxes = []
+            for i, boxes_padded in enumerate(bbox):
+                boxes_padded = boxes_padded.clone()
+                boxes_padded[..., 0] = boxes_padded[..., 0] - padding
+                boxes_padded[..., 1] = boxes_padded[..., 1] - padding
+                boxes_padded[..., 2] = boxes_padded[..., 2] + padding
+                boxes_padded[..., 3] = boxes_padded[..., 3] + padding
+                image_size = rgb.shape[-2:]
+                H, W = image_size
+                boxes_padded[..., 0].clamp_(min=0, max=W)
+                boxes_padded[..., 1].clamp_(min=0, max=H)
+                boxes_padded[..., 2].clamp_(min=0, max=W)
+                boxes_padded[..., 3].clamp_(min=0, max=H)
+                new_boxes.append(boxes_padded)
+            crop_size = (60, 80)
+            rgb_crop = roi_align(rgb, new_boxes, crop_size)
+            depth_crop = roi_align(depth, new_boxes, crop_size)
+            latent_rgb_rot = self.encoder_img_rot(rgb_crop)
+            latent_depth_rot = self.encoder_depth_rot(depth_crop)
+        else:
+            latent_rgb_rot = latent_rgb
+            latent_depth_rot = latent_depth
+
         rot_net_out = self.rot_rnn(
             rgb,
             depth,
             prev_pose=prev_pose,
-            latent_rgb=latent_rgb,
-            latent_depth=latent_depth,
+            latent_rgb=latent_rgb_rot,
+            latent_depth=latent_depth_rot,
             prev_latent=prev_latent_rot,
             state=state_rot,
         )
@@ -899,7 +925,7 @@ class RecurrentCNNDouble(RecurrentCNN):
         res.update(
             {
                 "latent_depth": latent_depth,
-                "state": torch.cat([t_net_out["state"], rot_net_out["state"]], dim=1),
+                "state": [t_net_out["state"], rot_net_out["state"]],
                 "t": t_net_out["t"],
                 "rot": rot_net_out["rot"],
                 "decoder_out": (
