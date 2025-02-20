@@ -178,6 +178,7 @@ class DETRBase(nn.Module):
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
+        self.use_boxes = not opt_only or (opt_only and "boxes" in opt_only)
         self.do_predict_2d_t = t_out_dim == 2
         self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens)
 
@@ -206,12 +207,13 @@ class DETRBase(nn.Module):
             ),
             n_layers,
         )
-        self.bbox_mlps = get_clones(
-            MLP(
-                in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers, dropout=dropout_heads
-            ),
-            n_layers,
-        )
+        if self.use_boxes:
+            self.bbox_mlps = get_clones(
+                MLP(
+                    in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers, dropout=dropout_heads
+                ),
+                n_layers,
+            )
         if self.use_t:
             self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers)
         if self.use_rot:
@@ -316,12 +318,13 @@ class DETRBase(nn.Module):
         outs = []
         for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
             pred_logits = self.class_mlps[layer_idx](o)
-            pred_boxes = self.bbox_mlps[layer_idx](o)
-            pred_boxes = torch.sigmoid(pred_boxes)
             out = {
                 "pred_logits": pred_logits,
-                "pred_boxes": pred_boxes,
             }
+            if self.use_boxes:
+                pred_boxes = self.bbox_mlps[layer_idx](o)
+                pred_boxes = torch.sigmoid(pred_boxes)
+                out["pred_boxes"] = pred_boxes
             if self.use_pose_tokens:
                 pose_token = self.pose_proj(o)
                 if prev_pose_tokens is not None and len(prev_pose_tokens) > 0:
@@ -372,7 +375,7 @@ class DETRBase(nn.Module):
         last_out = outs.pop()
         res = {
             "pred_logits": last_out["pred_logits"],
-            "pred_boxes": last_out["pred_boxes"],
+            "pred_boxes": last_out.get("pred_boxes"),
             "aux_outputs": outs,
         }
         if self.use_rot:

@@ -268,6 +268,9 @@ class RecurrentCNNVanilla(RecurrentNet):
         self.dropout_heads = dropout_heads
         self.rt_mlps_num_layers = rt_mlps_num_layers
         self.rnn_state_init_type = rnn_state_init_type
+        self.encoder_img_weights = encoder_img_weights
+        self.encoder_depth_weights = encoder_depth_weights
+        self.norm_layer_type = norm_layer_type
 
         self.use_depth = use_depth
         self.do_predict_2d_t = do_predict_2d_t
