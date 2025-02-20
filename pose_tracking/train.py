@@ -171,6 +171,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_entire_seq_in_train=args.use_entire_seq_in_train,
         seq_len_max_train=args.seq_len_max_train,
         include_depth=args.mt_use_depth,
+        include_bbox_2d=args.use_crop_for_rot,
+        do_normalize_depth=args.mt_use_depth,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]

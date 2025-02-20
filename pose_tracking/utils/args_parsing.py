@@ -211,6 +211,7 @@ def get_parser():
     model_args.add_argument("--do_freeze_encoders", action="store_true", help="Whether to freeze encoder backbones")
     model_args.add_argument("--use_prev_pose_condition", action="store_true", help="Use previous pose as condition")
     model_args.add_argument("--use_obs_belief", action="store_true", help="Use observation belief encoder-decoder")
+    model_args.add_argument("--use_crop_for_rot", action="store_true", help="Crop inputs for rot branch")
     model_args.add_argument("--use_belief_decoder", action="store_true")
     model_args.add_argument(
         "--model_name",
@@ -221,6 +222,7 @@ def get_parser():
             "cnnlstm",
             "cnnlstm_sep",
             "cnnlstm_vanilla",
+            "cnnlstm_double",
             "videopose",
             "detr",
             "detr_basic",

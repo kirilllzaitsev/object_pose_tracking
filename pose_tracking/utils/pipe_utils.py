@@ -34,6 +34,7 @@ from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPi
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.cnnlstm import (
     RecurrentCNN,
+    RecurrentCNNDouble,
     RecurrentCNNSeparated,
     RecurrentCNNVanilla,
 )
@@ -151,6 +152,7 @@ def get_model(args, num_classes=None):
         detr_args = dict(
             use_pose_tokens=args.mt_use_pose_tokens,
             use_roi=args.mt_use_roi,
+            use_depth=args.mt_use_depth,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -172,7 +174,6 @@ def get_model(args, num_classes=None):
 
             model = DETR(
                 backbone_name=args.encoder_name,
-                use_pretrained_backbone=args.encoder_img_weights is not None,
                 **detr_args,
             )
         else:
@@ -181,6 +182,8 @@ def get_model(args, num_classes=None):
             model = KeypointDETR(
                 kpt_spatial_dim=args.mt_kpt_spatial_dim,
                 use_mask_on_input=args.mt_use_mask_on_input,
+                use_mask_as_obj_indicator=False,
+                do_calibrate_kpt=args.mt_do_calibrate_kpt,
                 **detr_args,
             )
     else:
@@ -189,18 +192,20 @@ def get_model(args, num_classes=None):
         latent_dim = args.encoder_out_dim  # defined by the encoders
         depth_dim = latent_dim
         rgb_dim = latent_dim
+        extra_kwargs = {}
         if args.model_name == "cnnlstm":
             model_cls = RecurrentCNN
         elif args.model_name == "cnnlstm_vanilla":
             model_cls = RecurrentCNNVanilla
         elif args.model_name == "cnnlstm_sep":
             model_cls = RecurrentCNNSeparated
+        elif args.model_name == "cnnlstm_double":
+            model_cls = RecurrentCNNDouble
+            extra_kwargs["use_crop_for_rot"] = args.use_crop_for_rot
         else:
             raise ValueError(f"Unknown model name {args.model_name}")
-        if args.model_name == "cnnlstm_vanilla":
-            extra_kwargs = {}
-        else:
-            extra_kwargs = dict(
+        if args.model_name != "cnnlstm_vanilla":
+            extra_kwargs.update(
                 use_obs_belief=args.use_obs_belief,
                 use_priv_decoder=args.use_priv_decoder,
                 use_belief_decoder=args.use_belief_decoder,
@@ -262,6 +267,7 @@ def get_trackformer_args(args):
 
     tf_args.focal_loss = args.tf_use_focal_loss
     tf_args.use_kpts = args.tf_use_kpts
+    tf_args.use_depth = args.mt_use_depth
     tf_args.use_kpts_as_ref_pt = args.tf_use_kpts_as_ref_pt
     tf_args.use_kpts_as_img = args.tf_use_kpts_as_img
 
@@ -741,7 +747,7 @@ class Printer:
         self.log_fn(f"## {stage.upper()} ##")
         LOSS_METRICS = [k for k in train_stats if "loss" in k]
         ERROR_METRICS = [k for k in train_stats if "err" in k]
-        ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm", "nan_count"]
+        ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm", "add_abs", "5deg5cm_abs"]
 
         for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
             msg = []
