@@ -809,18 +809,22 @@ class RecurrentCNNDouble(RecurrentCNN):
         self.use_crop_for_rot = use_crop_for_rot
 
         use_obs_belief = kwargs.pop("use_obs_belief", False)
+        use_belief_decoder = kwargs.pop("use_belief_decoder", False)
         kwargs["use_obs_belief"] = False
+        kwargs["use_belief_decoder"] = False
         super().__init__(*args, **kwargs)
 
         self.t_rnn_kwargs = copy.deepcopy(kwargs)
         self.t_rnn_kwargs["encoder_name"] = None
         self.t_rnn_kwargs["do_predict_rot"] = False
         self.t_rnn_kwargs["use_obs_belief"] = use_obs_belief
+        self.t_rnn_kwargs["use_belief_decoder"] = use_belief_decoder
         self.t_rnn = RecurrentCNN(
             *args,
             **self.t_rnn_kwargs,
         )
         self.rot_rnn_kwargs = copy.deepcopy(self.t_rnn_kwargs)
+        self.rot_rnn_kwargs["do_predict_t"] = False
         self.rot_rnn_kwargs["do_predict_rot"] = True
         self.rot_rnn = RecurrentCNN(
             *args,
@@ -829,6 +833,19 @@ class RecurrentCNNDouble(RecurrentCNN):
 
         self.rot_mlp = None
         self.t_mlp = None
+        self.state_cell = None
+        self.prev_t_mlp = None
+        self.prev_rot_mlp = None
+
+        if use_crop_for_rot:
+            self.encoder_img_rot, self.encoder_depth_rot = get_encoders(
+                self.encoder_name,
+                do_freeze=self.do_freeze_encoders,
+                weights_rgb=self.encoder_img_weights,
+                weights_depth=self.encoder_depth_weights,
+                norm_layer_type=self.norm_layer_type,
+                out_dim=self.encoder_out_dim,
+            )
 
     def reset_state(self, batch_size, device):
         self.t_rnn.reset_state(batch_size, device)
@@ -849,8 +866,7 @@ class RecurrentCNNDouble(RecurrentCNN):
         latent_depth = self.encoder_depth(depth)
 
         if state is not None:
-            state_t = state[:, : self.state_dim]
-            state_rot = state[:, self.state_dim :]
+            state_t, state_rot = state
         else:
             state_t = state_rot = None
 
