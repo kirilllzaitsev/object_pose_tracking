@@ -161,34 +161,14 @@ class TrainerPizza(Trainer):
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
-            if not self.do_chunkify_val or stage == "train":
-                seq_stats = self.batched_seq_forward(
-                    batched_seq=batched_seq,
-                    optimizer=optimizer,
-                    save_preds=save_preds,
-                    preds_dir=preds_dir,
-                    stage=stage,
-                    do_vis=do_vis,
-                )
-            else:
-                chunks = self.chunkify_batched_seq(batched_seq)
-
-                seq_stats = defaultdict(lambda: defaultdict(float))
-                for cidx, chunk in enumerate(chunks):
-                    seq_stats_chunk = self.batched_seq_forward(
-                        batched_seq=chunk,
-                        optimizer=optimizer,
-                        save_preds=save_preds,
-                        preds_dir=preds_dir,
-                        stage=stage,
-                        do_vis=do_vis,
-                    )
-                    for k, v in seq_stats_chunk.items():
-                        for kk, vv in v.items():
-                            seq_stats[k][kk] += vv
-                for k, v in seq_stats.items():
-                    for kk, vv in v.items():
-                        seq_stats[k][kk] /= len(chunks)
+            seq_stats = self.batched_seq_forward(
+                batched_seq=batched_seq,
+                optimizer=optimizer,
+                save_preds=save_preds,
+                preds_dir=preds_dir,
+                stage=stage,
+                do_vis=do_vis,
+            )
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
@@ -285,9 +265,10 @@ class TrainerPizza(Trainer):
             chunks = self.chunkify_batched_seq_sliding_window(batched_seq, window_size=self.seq_len)
             out_ts_raw = []
             for chunk_idx, chunk in enumerate(chunks):
-                out_ts_raw_chunk = self.model(
-                    chunk["rgb"],
-                )
+                with torch.no_grad():
+                    out_ts_raw_chunk = self.model(
+                        chunk["rgb"],
+                    )
                 if chunk_idx > 0:
                     # the delta for previous timesteps is known from the last chunk
                     out_ts_raw_chunk = {k: v[:, -1:] for k, v in out_ts_raw_chunk.items()}
