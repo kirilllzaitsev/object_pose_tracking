@@ -227,6 +227,21 @@ class TrainerPizza(Trainer):
             chunks.append(chunk)
         return chunks
 
+    def chunkify_batched_seq_sliding_window(self, batched_seq, window_size):
+        num_chunks = len(batched_seq["rgb"][0]) - window_size + 1
+        chunks = []
+        for cidx in tqdm(range(num_chunks), desc="Subseq", leave=False):
+            chunk = {
+                k: (
+                    v[:, cidx : cidx + window_size]
+                    if isinstance(v, torch.Tensor)
+                    else [vv[cidx : cidx + window_size] for vv in v]
+                )
+                for k, v in batched_seq.items()
+            }
+            chunks.append(chunk)
+        return chunks
+
     def batched_seq_forward(
         self,
         batched_seq,
@@ -262,9 +277,25 @@ class TrainerPizza(Trainer):
         nan_count = 0
         do_skip_first_step = False
 
-        out_ts_raw = self.model(
-            batched_seq["rgb"],
-        )
+        if stage == "train":
+            out_ts_raw = self.model(
+                batched_seq["rgb"],
+            )
+        else:
+            chunks = self.chunkify_batched_seq_sliding_window(batched_seq, window_size=self.seq_len)
+            out_ts_raw = []
+            for chunk_idx, chunk in enumerate(chunks):
+                out_ts_raw_chunk = self.model(
+                    chunk["rgb"],
+                )
+                if chunk_idx > 0:
+                    # the delta for previous timesteps is known from the last chunk
+                    out_ts_raw_chunk = {k: v[:, -1:] for k, v in out_ts_raw_chunk.items()}
+                out_ts_raw.append(out_ts_raw_chunk)
+            # out_ts_raw is arr of dicts
+            out_ts_raw = {
+                k: torch.cat([out_ts_raw_chunk[k] for out_ts_raw_chunk in out_ts_raw], dim=1) for k in out_ts_raw[0]
+            }
         # out_ts is k x seq_len-1 x bs
         out_ts = convert_batch_seq_to_seq_batch(out_ts_raw)
 
