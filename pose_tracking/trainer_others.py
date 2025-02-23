@@ -171,18 +171,10 @@ class TrainerPizza(Trainer):
                     do_vis=do_vis,
                 )
             else:
-                num_chunks = len(batched_seq["rgb"][0]) // self.seq_len
-                batched_seq_chunks = {
-                    k: ([split_arr(vv, num_chunks) if len(v) > 0 else v for vv in v]) for k, v in batched_seq.items()
-                }
-                batched_seq_chunks = {k: [vv for vv in zip(*v)] for k, v in batched_seq_chunks.items()}
-                seq_stats = defaultdict(lambda: defaultdict(float))
+                chunks = self.chunkify_batched_seq(batched_seq)
 
-                for cidx in tqdm(range(num_chunks), desc="Subseq", leave=False):
-                    chunk = {k: v[cidx] for k, v in batched_seq_chunks.items()}
-                    for k in ["rgb", "pose", "center_depth"]:
-                        if k in chunk:
-                            chunk[k] = torch.stack(chunk[k])
+                seq_stats = defaultdict(lambda: defaultdict(float))
+                for cidx, chunk in enumerate(chunks):
                     seq_stats_chunk = self.batched_seq_forward(
                         batched_seq=chunk,
                         optimizer=optimizer,
@@ -196,7 +188,7 @@ class TrainerPizza(Trainer):
                             seq_stats[k][kk] += vv
                 for k, v in seq_stats.items():
                     for kk, vv in v.items():
-                        seq_stats[k][kk] /= len(batched_seq_chunks)
+                        seq_stats[k][kk] /= len(chunks)
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k] += v
@@ -218,6 +210,22 @@ class TrainerPizza(Trainer):
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
 
         return running_stats
+
+    def chunkify_batched_seq(self, batched_seq):
+        num_chunks = len(batched_seq["rgb"][0]) // self.seq_len
+        batched_seq_chunks = {
+            k: ([split_arr(vv, num_chunks) if len(v) > 0 else v for vv in v]) for k, v in batched_seq.items()
+        }
+        batched_seq_chunks = {k: [vv for vv in zip(*v)] for k, v in batched_seq_chunks.items()}
+
+        chunks = []
+        for cidx in tqdm(range(num_chunks), desc="Subseq", leave=False):
+            chunk = {k: v[cidx] for k, v in batched_seq_chunks.items()}
+            for k in ["rgb", "pose", "center_depth"]:
+                if k in chunk:
+                    chunk[k] = torch.stack(chunk[k])
+            chunks.append(chunk)
+        return chunks
 
     def batched_seq_forward(
         self,
