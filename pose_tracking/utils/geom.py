@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 from pose_tracking.config import logger
-from pose_tracking.utils.misc import pick_library
+from pose_tracking.utils.misc import is_tensor, pick_library
 from scipy.spatial.transform import Rotation as R
 
 
@@ -64,11 +64,16 @@ def get_34_intrinsics(K):
 def get_inv_pose(pose=None, rot=None, t=None):
     if pose is not None:
         assert rot is None and t is None
-        rot = pose[:3, :3]
-        t = pose[:3, 3]
-    inv_pose = np.eye(4)
-    inv_pose[:3, :3] = rot.T
-    inv_pose[:3, 3] = -rot.T @ t
+        rot = pose[..., :3, :3]
+        t = pose[..., :3, 3]
+    lib = torch if is_tensor(t) else np
+    inv_pose = lib.eye(4)
+    if hasattr(rot, "device"):
+        inv_pose = inv_pose.to(rot.device)
+    if len(rot.shape) == 3:
+        inv_pose = inv_pose[None].repeat(len(rot), 1, 1)
+    inv_pose[..., :3, :3] = rot.transpose(-1, -2)
+    inv_pose[..., :3, 3] = -lib.einsum("...ij,...j->...i", rot.transpose(-1, -2), t)
     return inv_pose
 
 
