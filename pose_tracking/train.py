@@ -330,7 +330,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         if args.lrs_type == "step" or not args.use_lrs:
             lr_scheduler.step()
         else:
-            lr_scheduler.step(history["train"]["add"][-1])
+            lr_scheduler.step(history["train"]["loss"][-1])
 
         # clip lr to min value 1e-6
         for param_group in optimizer.param_groups:
@@ -348,7 +348,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                 for k, v in val_stats.items():
                     history["val"][k].append(v)
 
-                cur_val_loss = history["val"]["add"][-1]
+                cur_val_loss = history["val"]["loss"][-1]
                 best_val_loss = min(best_val_loss, cur_val_loss)
                 if args.use_es_val:
                     early_stopping(loss=cur_val_loss)
@@ -358,7 +358,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     printer.saved_artifacts(epoch)
 
         if args.use_es_train and is_main_process:
-            early_stopping(loss=history["train"]["add"][-1])
+            early_stopping(loss=history["train"]["loss"][-1])
 
         if is_main_process:
             for i, pg in enumerate(optimizer.param_groups):

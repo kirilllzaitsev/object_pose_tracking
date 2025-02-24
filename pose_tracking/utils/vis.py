@@ -295,7 +295,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def vis_kpts(img_PIL, points_2d, color="blue", do_fix_img_color=False, conf=None):
+def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None):
     if conf is not None:
         sorted, indices = torch.sort(conf)
 
@@ -306,7 +306,7 @@ def vis_kpts(img_PIL, points_2d, color="blue", do_fix_img_color=False, conf=None
     points_2d = cast_to_numpy(points_2d).astype(int)
     for idx, point in enumerate(points_2d):
         size = 3 if conf is None else int(3 + 3 * conf[idx] * 2)
-        img = cv2.circle(img, tuple(point), size, (255, 0, 0), -1)
+        img = cv2.circle(img, tuple(point), size, color, -1)
 
     img = cv2.putText(
         img,
@@ -574,7 +574,7 @@ def plot_bbox_2d(img, bbox, format="xyxy", is_normalized=False, **kwargs):
 
 
 @plot
-def plot_kpts(img_PIL, points_2d, color="blue", **kwargs):
+def plot_kpts(img_PIL, points_2d, color=(0, 255, 0), **kwargs):
     return vis_kpts(img_PIL, points_2d, color, **kwargs)
 
 
