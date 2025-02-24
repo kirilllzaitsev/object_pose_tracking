@@ -24,18 +24,15 @@ class PIZZA(nn.Module):
         super(PIZZA, self).__init__()
         # RGB image encoder
         self.encoder = get_encoders(
-            model_name=backbone, out_dim=img_feature_dim, weights_rgb="imagenet", norm_layer_type="id"
+            model_name=backbone, out_dim=img_feature_dim, weights_rgb="imagenet", norm_layer_type="frozen_bn"
         )[0]
         # MLP for rotation
         self.MLP_rotation = nn.Sequential(
             nn.Linear(img_feature_dim + img_feature_dim, 800),
-            nn.BatchNorm1d(800),
             nn.ReLU(inplace=True),
             nn.Linear(800, 400),
-            nn.BatchNorm1d(400),
             nn.ReLU(inplace=True),
             nn.Linear(400, 200),
-            nn.BatchNorm1d(200),
             nn.ReLU(inplace=True),
             nn.Linear(200, 3),
         )
@@ -44,13 +41,10 @@ class PIZZA(nn.Module):
             # MLP for translation
             self.MLP_translation = nn.Sequential(
                 nn.Linear(img_feature_dim + img_feature_dim, 800),
-                nn.BatchNorm1d(800),
                 nn.ReLU(inplace=True),
                 nn.Linear(800, 400),
-                nn.BatchNorm1d(400),
                 nn.ReLU(inplace=True),
                 nn.Linear(400, 200),
-                nn.BatchNorm1d(200),
                 nn.ReLU(inplace=True),
                 # nn.Sigmoid(),
             )
@@ -77,7 +71,7 @@ class PIZZA(nn.Module):
     def forward(self, images):
         # Image is of dimension BxLx3x224x224
         [batch_size, len_sequences, img_channel, image_height, image_width] = images.shape
-        images = images.view(batch_size * len_sequences, img_channel, image_height, image_width)
+        images = images.contiguous().view(batch_size * len_sequences, img_channel, image_height, image_width)
         img_embedding = self.encoder(images).view(batch_size, len_sequences, self.img_feature_dim)
         if self.multi_frame:
             img_embedding = self.transformer_encoder(img_embedding)
