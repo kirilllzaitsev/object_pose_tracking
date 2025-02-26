@@ -1,7 +1,10 @@
+import copy
+
 import albumentations as A
 import numpy as np
 from albumentations import Compose, Normalize
 from albumentations.pytorch.transforms import ToTensorV2
+from scipy.spatial.transform import Rotation
 
 
 def get_transforms(transform_names=None, transform_prob=0.75):
@@ -56,3 +59,13 @@ def mask_pixels(img, p=0.5, pixels_masked_max_percent=0.1):
         else:
             img[us[pxs], vs[pxs], :] = 0
     return img
+
+
+def noisify_pose(pose, angle_mean=0, angle_std=3, t_mean=0, t_std=0.01):
+    delta_pose_noise = copy.deepcopy(pose)
+    angles = np.random.normal(angle_mean, angle_std, 3)
+    rot_noise = Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
+    t_noise = np.random.normal(t_mean, t_std, 3)
+    delta_pose_noise[:3, 3] += t_noise
+    delta_pose_noise[:3, :3] = delta_pose_noise[:3, :3] @ rot_noise
+    return delta_pose_noise
