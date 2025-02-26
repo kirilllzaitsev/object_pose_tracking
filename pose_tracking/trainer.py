@@ -210,7 +210,7 @@ class Trainer:
     ):
         if stage == "train":
             self.train_epoch_count += 1
-        running_stats = defaultdict(float)
+        running_stats = defaultdict(list)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
         do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
 
@@ -241,7 +241,7 @@ class Trainer:
                 )
             else:
                 batched_seq_chunks = split_arr(batched_seq, len(batched_seq) // seq_len)
-                seq_stats = defaultdict(lambda: defaultdict(float))
+                seq_stats = defaultdict(lambda: defaultdict(list))
                 num_chunks = len(batched_seq_chunks)
                 last_step_state = None
 
@@ -260,25 +260,25 @@ class Trainer:
                     last_step_state = seq_stats_chunk.pop("last_step_state")
                     for k, v in seq_stats_chunk.items():
                         for kk, vv in v.items():
-                            seq_stats[k][kk] += vv
+                            seq_stats[k][kk].append(vv)
                 for k, v in seq_stats.items():
                     for kk, vv in v.items():
-                        seq_stats[k][kk] /= len(batched_seq_chunks)
+                        seq_stats[k][kk] = np.mean(vv)
             torch.cuda.empty_cache()
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
-                running_stats[k] += v
+                running_stats[k].append(v)
                 if self.do_log and self.do_log_every_seq:
                     self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
             self.seq_counts_per_stage[stage] += 1
 
             if self.do_print_seq_stats:
-                seq_pbar.set_postfix({k: v / (seq_pack_idx + 1) for k, v in running_stats.items()})
+                seq_pbar.set_postfix({k: np.mean(v) for k, v in running_stats.items()})
 
             do_vis = False  # only do vis for the first seq
 
         for k, v in running_stats.items():
-            running_stats[k] = v / len(loader)
+            running_stats[k] = np.mean(v)
         running_stats = reduce_dict(running_stats, device=self.device)
 
         if self.do_log:
@@ -307,8 +307,8 @@ class Trainer:
         batch_size = len(batched_seq[0]["rgb"])
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
-        seq_stats = defaultdict(float)
-        seq_metrics = defaultdict(float)
+        seq_stats = defaultdict(list)
+        seq_metrics = defaultdict(list)
         ts_pbar = tqdm(
             enumerate(batched_seq),
             desc="Timestep",
@@ -317,7 +317,7 @@ class Trainer:
             disable=True,
         )
 
-        total_loss = 0
+        total_losses = []
 
         if self.do_debug:
             self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
@@ -401,12 +401,12 @@ class Trainer:
                         losses_abs_pose = self.calc_abs_pose_loss_for_rel(
                             pose_gt_abs, t_pred_abs_pose=t_abs_pose, rot_pred_abs_pose=rot_abs_pose
                         )
-                        total_loss += losses_abs_pose["loss_abs_pose"]
+                        total_losses.append(losses_abs_pose["loss_abs_pose"].item())
 
                         pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
 
                         for k, v in losses_abs_pose.items():
-                            seq_stats[k] += v.item()
+                            seq_stats[k].append(v.item())
                     else:
                         pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
 
@@ -564,7 +564,7 @@ class Trainer:
                 )
                 loss += losses_abs_pose["loss_abs_pose"]
                 for k, v in losses_abs_pose.items():
-                    seq_stats[k] += v.item()
+                    seq_stats[k].append(v.item())
 
             # optim
             if do_opt_every_ts:
@@ -578,7 +578,7 @@ class Trainer:
                 optimizer.zero_grad()
                 state = [x if x is None else x.detach() for x in state]
             elif do_opt_in_the_end:
-                total_loss += loss
+                total_losses.append(loss)
 
             # METRICS
 
@@ -593,28 +593,28 @@ class Trainer:
                 batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
             )
             for k, v in m_batch_avg.items():
-                seq_metrics[k] += v
+                seq_metrics[k].append(v)
 
             # OTHER
 
-            seq_stats["loss"] += loss.item()
-            seq_stats["loss_depth"] += loss_depth.item()
+            seq_stats["loss"].append(loss.item())
+            seq_stats["loss_depth"].append(loss_depth.item())
             if self.use_pose_loss:
-                seq_stats["loss_pose"] += loss_pose.item()
+                seq_stats["loss_pose"].append(loss_pose.item())
             else:
-                seq_stats["loss_rot"] += loss_rot.item()
-                seq_stats["loss_t"] += loss_t.item()
+                seq_stats["loss_rot"].append(loss_rot.item())
+                seq_stats["loss_t"].append(loss_t.item())
                 if self.include_abs_pose_loss_for_rel and t == seq_length - 1:
-                    seq_stats["loss_t_abs"] += loss_t_abs.item()
-                    seq_stats["loss_rot_abs"] += loss_rot_abs.item()
+                    seq_stats["loss_t_abs"].append(loss_t_abs.item())
+                    seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
             if "priv_decoded" in out:
-                seq_stats["loss_priv"] += loss_priv.item()
+                seq_stats["loss_priv"].append(loss_priv.item())
             if self.do_predict_kpts:
-                seq_stats["loss_kpts"] += loss_kpts.item()
-                seq_stats["loss_cr"] += loss_cr.item()
+                seq_stats["loss_kpts"].append(loss_kpts.item())
+                seq_stats["loss_cr"].append(loss_cr.item())
             if self.do_predict_2d_t:
-                seq_stats["loss_uv"] += loss_uv.item()
-                seq_stats["loss_z"] += loss_z.item()
+                seq_stats["loss_uv"].append(loss_uv.item())
+                seq_stats["loss_z"].append(loss_z.item())
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -705,7 +705,7 @@ class Trainer:
             prev_latent = out["latent"] if self.use_prev_latent else None
 
         if do_opt_in_the_end:
-            total_loss /= seq_length
+            total_loss = torch.mean(torch.stack(total_losses))
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
             if do_vis:
@@ -725,19 +725,15 @@ class Trainer:
         else:
             last_step_state = None
 
-        num_steps = seq_length
-        if do_skip_first_step:
-            num_steps -= 1
-
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
-                stats[k] = v / num_steps
+                stats[k] = np.mean(v)
 
         if self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
             metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
             for k, v in metrics_abs.items():
-                seq_metrics[f"{k}_abs"] += v
+                seq_metrics[f"{k}_abs"].append(v)
             if not self.include_abs_pose_loss_for_rel:
                 with torch.no_grad():
                     loss_t_abs = self.criterion_trans(t_pred_abs, t_gt_abs)
@@ -746,8 +742,8 @@ class Trainer:
                     else:
                         rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                         loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
-                    seq_stats["loss_t_abs"] = loss_t_abs.item()
-                    seq_stats["loss_rot_abs"] = loss_rot_abs.item()
+                    seq_stats["loss_t_abs"].append(loss_t_abs.item())
+                    seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)

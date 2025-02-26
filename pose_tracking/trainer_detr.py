@@ -194,11 +194,11 @@ class TrainerDeformableDETR(Trainer):
                     self.processed_data[k].append(v)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
-        seq_stats = defaultdict(float)
-        seq_metrics = defaultdict(float)
+        seq_stats = defaultdict(list)
+        seq_metrics = defaultdict(list)
         ts_pbar = tqdm(enumerate(batched_seq), desc="Timestep", leave=False, total=len(batched_seq), disable=True)
 
-        total_loss = 0
+        total_losses = []
 
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 8)))
@@ -286,7 +286,7 @@ class TrainerDeformableDETR(Trainer):
 
                 optimizer.step()
             elif do_opt_in_the_end:
-                total_loss += loss
+                total_losses.append(loss)
 
             # METRICS
 
@@ -346,7 +346,7 @@ class TrainerDeformableDETR(Trainer):
                 for k, v in m_batch_avg.items():
                     if "classes" in k:
                         continue
-                    seq_metrics[k] += v
+                    seq_metrics[k].append(v)
 
             # UPDATE VARS
 
@@ -370,14 +370,15 @@ class TrainerDeformableDETR(Trainer):
             # OTHER
 
             loss_value = losses_reduced_scaled.item()
-            seq_stats["loss"] += loss_value
+            seq_stats["loss"].append(loss_value)
             for k, v in {**loss_dict_reduced_scaled}.items():
                 if "indices" in k:
                     continue
-                seq_stats[k] += v
+                seq_stats[k].append(v.item())
             for k in ["class_error", "cardinality_error"]:
                 if k in loss_dict_reduced:
-                    seq_stats[k] += loss_dict_reduced[k]
+                    v = loss_dict_reduced[k]
+                    seq_stats[k].append(v.item())
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -446,12 +447,8 @@ class TrainerDeformableDETR(Trainer):
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
-        num_steps = seq_length
-        if do_skip_first_step:
-            num_steps -= 1
-
         if do_opt_in_the_end:
-            total_loss /= num_steps
+            total_loss = torch.mean(torch.stack(total_losses))
             total_loss.backward()
             unused_params = []
             if len(unused_params):
@@ -468,13 +465,13 @@ class TrainerDeformableDETR(Trainer):
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():
-                stats[k] = v / num_steps
+                stats[k] = np.mean(v)
 
         if self.use_pose and self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
             metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
             for k, v in metrics_abs.items():
-                seq_metrics[f"{k}_abs"] += v
+                seq_metrics[f"{k}_abs"].append(v)
             if not self.include_abs_pose_loss_for_rel:
                 with torch.no_grad():
 
@@ -487,8 +484,8 @@ class TrainerDeformableDETR(Trainer):
                         rot_gt_abs = self.rot_mat_to_vector_converter_fn(rot_mat_gt_abs)
                         rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                         loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
-                    seq_stats["loss_t_abs"] = loss_t_abs.item()
-                    seq_stats["loss_rot_abs"] = loss_rot_abs.item()
+                    seq_stats["loss_t_abs"].append(loss_t_abs.item())
+                    seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
 
         if do_vis:
             os.makedirs(self.vis_dir, exist_ok=True)
