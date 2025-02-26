@@ -382,7 +382,7 @@ class TrainerDeformableDETR(Trainer):
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
-                    self.writer.add_scalar(f"{stage}_ts/{k}", v, self.ts_counts_per_stage[stage])
+                    self.writer.add_scalar(f"{stage}_ts/{k}", np.mean(v), self.ts_counts_per_stage[stage])
 
             if not math.isfinite(loss_value):
                 self.logger.error(f"Loss is {loss_value}, stopping training")

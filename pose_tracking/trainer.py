@@ -35,6 +35,10 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
+from pose_tracking.utils.kpt_utils import (
+    get_pose_from_3d_2d_matches,
+    get_pose_from_matches,
+)
 from pose_tracking.utils.misc import (
     match_module_by_name,
     print_cls,
@@ -99,6 +103,7 @@ class Trainer:
         tf_rot_loss_coef=1,
         use_entire_seq_in_train=False,
         use_seq_len_curriculum=False,
+        use_pnp_for_rot_pred=False,
         do_predict_abs_pose=False,
         seq_len_max=None,
         seq_len_curriculum_step_epoch_freq=5,
@@ -128,6 +133,7 @@ class Trainer:
         self.use_entire_seq_in_train = use_entire_seq_in_train
         self.use_seq_len_curriculum = use_seq_len_curriculum
         self.do_predict_abs_pose = do_predict_abs_pose
+        self.use_pnp_for_rot_pred = use_pnp_for_rot_pred
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -269,7 +275,7 @@ class Trainer:
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
                 running_stats[k].append(v)
                 if self.do_log and self.do_log_every_seq:
-                    self.writer.add_scalar(f"{stage}_seq/{k}", v, self.seq_counts_per_stage[stage])
+                    self.writer.add_scalar(f"{stage}_seq/{k}", np.mean(v), self.seq_counts_per_stage[stage])
             self.seq_counts_per_stage[stage] += 1
 
             if self.do_print_seq_stats:
@@ -333,6 +339,7 @@ class Trainer:
         prev_pose = None
         state = None
         do_skip_first_step = False
+        prev_kpts = None
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -410,9 +417,17 @@ class Trainer:
                     else:
                         pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
 
+                    if self.use_pnp_for_rot_pred:
+                        prev_kpts = out["kpts"]
+
                     if save_preds:
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                         save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
+
+                    # kpt loss
+                    if self.do_predict_kpts:
+                        loss = self.calc_kpt_loss(batch_t, out)["loss"]
+                        total_losses.append(loss)
 
                     continue
 
@@ -576,13 +591,10 @@ class Trainer:
 
             # kpt loss
             if self.do_predict_kpts:
-                kpts_pred = out["kpts"]
-                kpts_gt = batch_t["bbox_2d_kpts"].float()
-                loss_kpts = F.huber_loss(kpts_pred, kpts_gt)
-                bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
-                loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
-                loss += loss_kpts
-                loss += loss_cr * 0.01
+                calc_kpt_loss_res = self.calc_kpt_loss(batch_t, out)
+                loss_kpts = calc_kpt_loss_res["loss_kpts"]
+                loss_cr = calc_kpt_loss_res["loss_cr"]
+                loss += calc_kpt_loss_res["loss"]
 
             if self.do_predict_rel_pose and self.do_predict_abs_pose:
                 t_pred_abs_pose, rot_pred_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
@@ -699,6 +711,11 @@ class Trainer:
                             vis_data["rot_gt_rel"].append(detach_and_cpu(rot_gt_rel))
                         vis_data["rot_gt_rel_mat"].append(detach_and_cpu(rot_gt_rel_mat))
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
+                if self.do_predict_kpts:
+                    vis_data["kpts_pred"].append(detach_and_cpu(out["kpts"]))
+                    vis_data["kpts_gt"].append(detach_and_cpu(batch_t["bbox_2d_kpts"]))
+                    if self.use_pnp_for_rot_pred:
+                        vis_data["prev_kpts"].append(detach_and_cpu(prev_kpts))
 
                 if torch.isnan(loss):
                     if t > 0:
