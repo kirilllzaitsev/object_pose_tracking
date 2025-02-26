@@ -473,7 +473,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             res["t"] = t
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(extracted_obs)
+            kpts = self.kpts_mlp(extracted_obs).sigmoid()
             kpts = kpts.view(bs, 8 + 24, 2)
             res["kpts"] = kpts
 
