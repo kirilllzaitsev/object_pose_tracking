@@ -12,9 +12,11 @@ from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import (
+    cam_to_2d,
     convert_3d_bbox_to_2d,
     interpolate_bbox_edges,
     world_to_2d,
+    world_to_cam,
 )
 from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
 from pose_tracking.utils.misc import print_cls
@@ -144,7 +146,7 @@ class TrackingDataset(Dataset):
             sample["depth"] = depth
 
         if self.do_subtract_bg:
-            sample["rgb"] = sample["rgb"] * sample["mask"][...,None]
+            sample["rgb"] = sample["rgb"] * sample["mask"][..., None]
             if self.include_depth:
                 sample["depth"] = sample["depth"] * sample["mask"]
 
@@ -188,7 +190,9 @@ class TrackingDataset(Dataset):
                     ]
                 )
             ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
-            sample["bbox_2d_kpts"] = world_to_2d(ibbs_res["all_points"], K=self.K, rt=sample["pose"])
+            ibbs_res_kpts_cam = world_to_cam(ibbs_res["all_points"], sample["pose"])
+            sample["bbox_2d_kpts_depth"] = ibbs_res_kpts_cam[:, 2:]
+            sample["bbox_2d_kpts"] = cam_to_2d(ibbs_res_kpts_cam, K=self.K)
             # normalize bbox_2d_kpts to [0, 1]
             sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
             sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
