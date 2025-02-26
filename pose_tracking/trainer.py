@@ -444,6 +444,33 @@ class Trainer:
             pose_mat_pred = torch.stack(
                 [self.pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
             )
+
+            if self.use_pnp_for_rot_pred:
+                kpts = out["kpts"]
+                rot_mat_pred_bidxs = []
+                for bidx in range(batch_size):
+                    prev_kpts_2d = prev_kpts[bidx]
+                    prev_kpts_2d_denorm = prev_kpts_2d * torch.tensor([w, h]).to(self.device)
+                    prev_depth = batched_seq[t - 1]["depth"][bidx]
+                    prev_kpts_depth_actual = prev_depth[
+                        ..., prev_kpts_2d_denorm[:, 1].long(), prev_kpts_2d_denorm[:, 0].long()
+                    ].double()
+                    prev_kpts_depth = batched_seq[t - 1]["bbox_2d_kpts_depth"][bidx] / 10
+                    prev_visib_kpt_mask = prev_kpts_depth.squeeze() <= prev_kpts_depth_actual.squeeze()
+                    prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
+                    prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
+                    prev_kpts_3d = backproj_2d_to_3d(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
+                    kpts_2d_denorm = kpts[bidx] * torch.tensor([w, h]).to(self.device)
+                    visib_kpt_mask = prev_visib_kpt_mask
+                    kpts_2d_denorm_visib = kpts_2d_denorm[visib_kpt_mask]
+                    pose_from_3d_2d_matches_res = get_pose_from_3d_2d_matches(
+                        prev_kpts_3d, kpts_2d_denorm_visib, intrinsics[bidx]
+                    )
+                    rot_mat_pred_bidx = pose_from_3d_2d_matches_res["R"]
+                    rot_mat_pred_bidxs.append(torch.tensor(rot_mat_pred_bidx))
+
+                pose_mat_pred[:, :3, :3] = torch.stack(rot_mat_pred_bidxs).to(self.device)
+
             rot_mat_pred = pose_mat_pred[:, :3, :3]
 
             if self.do_predict_rel_pose:
