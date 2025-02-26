@@ -211,7 +211,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
-        val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank)
+        val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False)
         val_loader = DataLoader(
             val_dataset,
             batch_size=val_batch_size,

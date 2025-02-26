@@ -166,6 +166,7 @@ def get_model(args, num_classes=None):
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
             head_num_layers=args.rt_mlps_num_layers,
+            head_hidden_dim=args.rt_hidden_dim,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
