@@ -760,6 +760,20 @@ class Trainer:
             "last_step_state": last_step_state,
         }
 
+    def calc_kpt_loss(self, batch_t, out):
+        kpts_pred = out["kpts"]
+        kpts_gt = batch_t["bbox_2d_kpts"].float()
+        loss_kpts = F.huber_loss(kpts_pred, kpts_gt)
+        bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
+        loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
+        loss = loss_kpts
+        loss += loss_cr * 0.001
+        return {
+            "loss_kpts": loss_kpts.item(),
+            "loss_cr": loss_cr.item(),
+            "loss": loss,
+        }
+
     def calc_metrics_batch(self, batch_t, pose_mat_pred_metrics, pose_mat_gt_metrics):
         bbox_3d = batch_t["mesh_bbox"]
         diameter = batch_t["mesh_diameter"]
