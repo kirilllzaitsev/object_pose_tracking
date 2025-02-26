@@ -82,6 +82,28 @@ def get_pose_from_matches(mkpts0, mkpts1, camera_matrix, ransac_thresh=1.0, rans
     return res
 
 
+def get_pose_from_3d_2d_matches(kpts_3d, kpts_2d, intrinsics, ransac_conf=0.99999):
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        cast_to_numpy(kpts_3d),
+        cast_to_numpy(kpts_2d),
+        cast_to_numpy(intrinsics),
+        None,
+        flags=cv2.SOLVEPNP_EPNP,
+        iterationsCount=500,
+        confidence=ransac_conf,
+    )
+    if not success:
+        print("Pose estimation failed.")
+        rot_mat_pred_bidx = np.eye(3)
+    else:
+        rot_mat_pred_bidx, _ = cv2.Rodrigues(rvec)
+    return {
+        "R": rot_mat_pred_bidx,
+        "t": tvec,
+        "num_inliers": len(inliers),
+    }
+
+
 def get_matches(image0_rgb, image1_rgb, extractor, matcher):
 
     # load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]
@@ -189,8 +211,8 @@ def load_kpt_det_and_match(features, filter_threshold=0.1):
 def load_extractor(features, max_num_keypoints=1024):
     if features == "superpoint":
         extractor = SuperPoint(max_num_keypoints=max_num_keypoints).eval()  # load the extractor
-        for n,p in extractor.named_parameters():
-            if 'convPa' in n or 'convPb' in n:
+        for n, p in extractor.named_parameters():
+            if "convPa" in n or "convPb" in n:
                 p.requires_grad = False
     elif features == "disk":
         # or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
@@ -267,8 +289,8 @@ def extract_kpts(x, extractor, do_normalize=False, use_zeros_for_pad=True):
         extracted_kpts = extractor.extract(x)
 
     if do_normalize:
-        extracted_kpts["keypoints"] = extracted_kpts["keypoints"] / torch.tensor([w, h], dtype=extracted_kpts["keypoints"].dtype).to(
-            extracted_kpts["keypoints"].device
-        )
+        extracted_kpts["keypoints"] = extracted_kpts["keypoints"] / torch.tensor(
+            [w, h], dtype=extracted_kpts["keypoints"].dtype
+        ).to(extracted_kpts["keypoints"].device)
 
     return {**extracted_kpts, "padding_mask": memory_key_padding_mask}
