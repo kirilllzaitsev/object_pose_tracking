@@ -255,6 +255,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         r_num_layers_inc=0,
         rt_hidden_dim=None,
         extracted_obs_dim=None,
+        bbox_num_kpts=8 + 24,
     ):
         super().__init__(rnn_type=rnn_type, rnn_state_init_type=rnn_state_init_type, state_dim=state_dim)
 
@@ -289,7 +290,8 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         self.input_dim = depth_dim + rgb_dim if use_depth else rgb_dim
         self.rt_hidden_dim = hidden_dim // 2 if rt_hidden_dim is None else rt_hidden_dim
-        self.extracted_obs_dim = hidden_dim if extracted_obs_dim is None else extracted_obs_dim
+        self.extracted_obs_dim = state_dim if extracted_obs_dim is None else extracted_obs_dim
+        self.num_kpts = bbox_num_kpts
 
         if use_rnn:
             if rnn_type == "lstm":
@@ -391,8 +393,10 @@ class RecurrentCNNVanilla(RecurrentNet):
             )
 
         if self.do_predict_kpts:
-            self.kpts_mlp_in_dim = self.input_dim
-            self.kpts_mlp_out_dim = (8 + 24) * 2
+            self.kpts_mlp_in_dim = self.extracted_obs_dim
+            if self.use_prev_latent:
+                self.kpts_mlp_in_dim += self.input_dim
+            self.kpts_mlp_out_dim = self.num_kpts * 2
             self.kpts_mlp = MLP(
                 in_dim=self.kpts_mlp_in_dim,
                 out_dim=self.kpts_mlp_out_dim,
@@ -473,8 +477,11 @@ class RecurrentCNNVanilla(RecurrentNet):
             res["t"] = t
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(extracted_obs).sigmoid()
-            kpts = kpts.view(bs, 8 + 24, 2)
+            kpt_in = extracted_obs
+            if self.use_prev_latent:
+                kpt_in = torch.cat([kpt_in, prev_latent], dim=1)
+            kpts = self.kpts_mlp(kpt_in).sigmoid()
+            kpts = kpts.view(bs, self.num_kpts, 2)
             res["kpts"] = kpts
 
         if self.do_predict_rot:
