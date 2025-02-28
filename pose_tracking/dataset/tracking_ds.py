@@ -59,6 +59,7 @@ class TrackingDataset(Dataset):
         rot_repr="quaternion",
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
+        bbox_num_kpts=32,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -88,6 +89,7 @@ class TrackingDataset(Dataset):
         self.color_file_id_strs = color_file_id_strs
         self.rot_repr = rot_repr
         self.t_repr = t_repr
+        self.bbox_num_kpts = bbox_num_kpts
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
         if color_file_id_strs is not None:
@@ -189,13 +191,17 @@ class TrackingDataset(Dataset):
                         bbox_2d[3] - bbox_2d[1],
                     ]
                 )
-            ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
-            ibbs_res_kpts_cam = world_to_cam(ibbs_res["all_points"], sample["pose"])
-            sample["bbox_2d_kpts_depth"] = ibbs_res_kpts_cam[:, 2:]
-            sample["bbox_2d_kpts"] = cam_to_2d(ibbs_res_kpts_cam, K=self.K)
-            # normalize bbox_2d_kpts to [0, 1]
+            if self.bbox_num_kpts == 32:
+                ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
+                sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
+                bbox_3d_kpts = ibbs_res["all_points"]
+            else:
+                bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
+
+            bbox_3d_kpts = world_to_cam(bbox_3d_kpts, sample["pose"])
+            sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[:, 2:]
+            sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=self.K)
             sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
-            sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
 
         sample = self.augment_sample(sample, i)
 
