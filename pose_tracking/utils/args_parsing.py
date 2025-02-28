@@ -204,6 +204,9 @@ def get_parser():
     )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
     model_args.add_argument("--use_kpts_for_rot", action="store_true", help="Use keypoints for rot estimation")
+    model_args.add_argument(
+        "--use_pnp_for_rot_pred", action="store_true", help="Use EPnP for rot estimation based on predicted kpts"
+    )
     model_args.add_argument("--use_prev_latent", action="store_true", help="Use t-1 latent as condition")
     model_args.add_argument("--use_rnn", action="store_true", help="Use a simple MLP instead of RNN")
     model_args.add_argument("--use_priv_decoder", action="store_true", help="Use privileged info decoder")
@@ -266,6 +269,7 @@ def get_parser():
     model_args.add_argument(
         "--r_num_layers_inc", type=int, default=0, help="Number of layers to add to the rotation MLP"
     )
+    model_args.add_argument("--bbox_num_kpts", type=int, default=8 + 24, help="Number of kpts to predict by the model")
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
     model_args.add_argument("--dropout_heads", type=float, default=0.0, help="Dropout rate for rot/t/bbox/clf MLPs")
 
@@ -401,7 +405,7 @@ def postprocess_args(args, use_if_provided=True):
 
     if args.use_obs_belief:
         assert args.use_depth
-    if args.use_kpts_for_rot:
+    if args.use_kpts_for_rot or args.use_pnp_for_rot_pred:
         assert args.do_predict_kpts
 
     if args.exp_name.startswith("args_"):
@@ -437,6 +441,12 @@ def fix_outdated_args(args):
             args.use_depth = True
         if not hasattr(args, "use_obs_belief"):
             args.use_obs_belief = not args.no_obs_belief
+        if not hasattr(args, "use_belief_decoder"):
+            args.use_belief_decoder = True
+        if not hasattr(args, "state_dim"):
+            args.state_dim = args.hidden_dim
+        if not hasattr(args, "rt_hidden_dim"):
+            args.rt_hidden_dim = args.hidden_dim
 
     # for all args present in parser but not in args, set them to their default values
     for group in parser._action_groups:
