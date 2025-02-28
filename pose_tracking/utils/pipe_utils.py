@@ -19,6 +19,7 @@ from pose_tracking.config import (
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
 )
+from pose_tracking.dataset.custom import CustomDataset
 from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetCube,
     CustomSimDatasetIkea,
@@ -401,6 +402,7 @@ def get_trainer(
         use_entire_seq_in_train=args.use_entire_seq_in_train,
         use_seq_len_curriculum=args.use_seq_len_curriculum,
         do_predict_abs_pose=args.do_predict_abs_pose,
+        use_pnp_for_rot_pred=args.use_pnp_for_rot_pred,
         **extra_kwargs,
     )
 
@@ -508,14 +510,11 @@ def get_datasets(
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
         ds_kwargs_custom = ycbi_kwargs
-    elif ds_name == "ikea":
-        ds_kwargs_custom = dict()
-    elif ds_name == "ho3d_v3":
+    elif ds_name in ["ikea", "custom", "ho3d_v3"]:
         ds_kwargs_custom = dict()
     else:
         cube_sim_kwargs = dict(
             mesh_path=f"{ds_video_dir_train}/mesh/cube.obj",
-            use_priv_info=use_priv_decoder,
         )
         ds_kwargs_custom = cube_sim_kwargs
 
@@ -526,8 +525,8 @@ def get_datasets(
     video_ds_cls = VideoDatasetTracking if is_tf_model or is_detr_model else VideoDataset
 
     train_ds_kwargs = copy.deepcopy(ds_kwargs)
-    train_ds_kwargs["video_dir"] = ds_video_dir_train
     if "train" in ds_types:
+        train_ds_kwargs["video_dir"] = Path(ds_video_dir_train)
         train_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_train,
             ds_name=ds_name,
@@ -576,7 +575,7 @@ def get_datasets(
             assert ds_video_dir_val and ds_video_subdirs_val, print(f"{ds_video_dir_val=} {ds_video_subdirs_val}")
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
-            val_ds_kwargs["video_dir"] = ds_video_dir_val
+            val_ds_kwargs["video_dir"] = Path(ds_video_dir_val)
             val_dataset = get_video_ds(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
@@ -598,7 +597,7 @@ def get_datasets(
         assert ds_video_dir_test and ds_video_subdirs_test, print(f"{ds_video_dir_test=} {ds_video_subdirs_test}")
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
-        test_ds_kwargs["video_dir"] = ds_video_dir_test
+        test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
             ds_name=ds_name,
@@ -666,26 +665,29 @@ def get_video_ds(
 
 def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     ds_kwargs = ds_kwargs.copy()
-    video_dir = Path(ds_kwargs.pop("video_dir"))
+    ds_kwargs["video_dir"] = Path(ds_kwargs["video_dir"]) / ds_video_subdir
     model_name = ds_kwargs.pop("model_name", None)
     if ds_name == "ycbi":
         if model_name == "pizza":
             ds_cls = YCBineoatDataset
         else:
             ds_cls = YCBineoatDataset
-        ds = ds_cls(video_dir=video_dir / ds_video_subdir, **ds_kwargs)
+        ds = ds_cls(**ds_kwargs)
     elif ds_name == "cube_sim":
         ds = CustomSimDatasetCube(
             **ds_kwargs,
         )
+    elif ds_name == "custom":
+        ds = CustomDataset(
+            **ds_kwargs,
+            mesh_path=None,
+        )
     elif ds_name == "ho3d_v3":
         ds = HO3DDataset(
-            video_dir=video_dir / ds_video_subdir,
             **ds_kwargs,
         )
     elif ds_name == "ikea":
         ds = CustomSimDatasetIkea(
-            video_dir=video_dir / ds_video_subdir,
             **ds_kwargs,
         )
     else:
@@ -694,7 +696,7 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
 
 
 def get_ds_dirs(args):
-    if args.ds_name in ["ikea", "cube"]:
+    if args.ds_name in ["ikea", "cube", "custom"]:
         ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
         ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
     elif args.ds_name in ["ho3d_v3"]:
@@ -707,6 +709,9 @@ def get_ds_dirs(args):
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
         ds_video_subdirs_val = args.obj_names_val
+    elif args.ds_name in ["custom"]:
+        ds_video_subdirs_train = ["cube_data"]
+        ds_video_subdirs_val = ["cube_data"]
     elif args.ds_name in ["ho3d_v3"]:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
