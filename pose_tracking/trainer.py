@@ -811,10 +811,10 @@ class Trainer:
         bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
         loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
         loss = loss_kpts
-        loss += loss_cr * 0.001
+        # loss += loss_cr * 0.001
         return {
-            "loss_kpts": loss_kpts.item(),
-            "loss_cr": loss_cr.item(),
+            "loss_kpts": loss_kpts,
+            "loss_cr": loss_cr,
             "loss": loss,
         }
 

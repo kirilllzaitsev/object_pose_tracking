@@ -54,7 +54,7 @@ def cast_to_numpy(x, dtype=None) -> np.ndarray:
         return np.array([cast_to_numpy(xx) for xx in x])
     elif isinstance(x, dict):
         return {k: cast_to_numpy(v) for k, v in x.items()}
-    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)):
+    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex, np.float32)):
         return x
     arr = x.detach().cpu().numpy()
     if dtype is not None:

@@ -68,8 +68,8 @@ def get_inv_pose(pose=None, rot=None, t=None):
         t = pose[..., :3, 3]
     lib = torch if is_tensor(t) else np
     inv_pose = lib.eye(4)
-    if hasattr(rot, "device"):
-        inv_pose = inv_pose.to(rot.device)
+    if is_tensor(t):
+        inv_pose = inv_pose.to(t.device)
     if len(rot.shape) == 3:
         inv_pose = inv_pose[None].repeat(len(rot), 1, 1)
     inv_pose[..., :3, :3] = rot.transpose(-1, -2)

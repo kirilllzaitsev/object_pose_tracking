@@ -659,6 +659,8 @@ def plot_sample_dict(sample):
     pose = sample["pose"].squeeze()
     if pose.shape[-1] == 7:
         pose = convert_pose_vector_to_matrix(pose)
+    elif pose.shape[-1] == 9:
+        pose = convert_pose_vector_to_matrix(pose, rot_repr="rotation6d")
     if "bbox_2d" in sample:
         bbox_2d = sample["bbox_2d"].squeeze()
     else:
