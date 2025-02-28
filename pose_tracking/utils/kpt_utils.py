@@ -100,7 +100,7 @@ def get_pose_from_3d_2d_matches(kpts_3d, kpts_2d, intrinsics, ransac_conf=0.9999
     return {
         "R": rot_mat_pred_bidx,
         "t": tvec,
-        "num_inliers": len(inliers),
+        "num_inliers": len(inliers) if inliers is not None else 0,
     }
 
 

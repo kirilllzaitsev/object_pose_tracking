@@ -173,6 +173,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         include_depth=args.mt_use_depth,
         include_bbox_2d=args.use_crop_for_rot,
         do_normalize_depth=args.mt_use_depth,
+        bbox_num_kpts=args.bbox_num_kpts,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]

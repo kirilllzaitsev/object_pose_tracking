@@ -244,6 +244,7 @@ def get_model(args, num_classes=None):
             encoder_out_dim=args.encoder_out_dim,
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
+            bbox_num_kpts=args.bbox_num_kpts,
             **extra_kwargs,
         )
 
@@ -478,6 +479,7 @@ def get_datasets(
     max_depth_m=10,
     use_entire_seq_in_train=False,
     do_normalize_depth=False,
+    bbox_num_kpts=32,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -504,6 +506,7 @@ def get_datasets(
         rot_repr=rot_repr,
         t_repr=t_repr,
         do_subtract_bg=do_subtract_bg,
+        bbox_num_kpts=bbox_num_kpts,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

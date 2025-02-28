@@ -295,7 +295,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None):
+def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None, include_ids=False):
     if conf is not None:
         sorted, indices = torch.sort(conf)
 
@@ -318,6 +318,20 @@ def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf
         2,
         cv2.LINE_AA,
     )
+
+    if include_ids:
+        for idx, point in enumerate(points_2d):
+            img = cv2.putText(
+                img,
+                str(idx),
+                tuple(point),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
     return np.array(img)
 
 
