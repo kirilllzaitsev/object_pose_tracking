@@ -471,7 +471,7 @@ class Trainer:
                         ..., prev_kpts_2d_denorm[:, 1].long(), prev_kpts_2d_denorm[:, 0].long()
                     ].double()
                     prev_kpts_depth = batched_seq[t - 1]["bbox_2d_kpts_depth"][bidx] / 10
-                    prev_visib_kpt_mask = prev_kpts_depth.squeeze() <= prev_kpts_depth_actual.squeeze()
+                    prev_visib_kpt_mask = torch.abs(prev_kpts_depth - prev_kpts_depth_actual) < 1e-2
                     prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
                     prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
                     prev_kpts_3d = backproj_2d_to_3d(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
