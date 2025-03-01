@@ -264,6 +264,18 @@ class DETRBase(nn.Module):
             if pose_token_time_encoding == "learned":
                 seq_len = 3
                 self.time_pos_encoder = self.get_pos_encoder("learned", n_tokens=seq_len)
+        if do_refinement_with_attn:
+            pose_refiner_encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=n_heads,
+                dim_feedforward=4 * d_model,
+                dropout=dropout,
+                batch_first=True,
+            )
+            pose_refiner_n_layers = 1
+            self.pose_refiner_transformer = nn.TransformerEncoder(
+                pose_refiner_encoder_layer, num_layers=pose_refiner_n_layers
+            )
 
         # Add hooks to get intermediate outcomes
         self.decoder_outs = {}
