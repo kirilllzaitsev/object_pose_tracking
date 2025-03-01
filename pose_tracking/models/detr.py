@@ -378,11 +378,15 @@ class DETRBase(nn.Module):
                 time_pos_embed = torch.cat(
                     [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
                 ).to(pose_token.device)
-                if num_prev_tokens>0:
+                if num_prev_tokens > 0:
                     prev_layers_pose_tokens = torch.cat([o["pose_token"] for o in outs[:layer_idx]])
-                    prev_layers_pose_tokens_pos = prev_layers_pose_tokens + time_pos_embed[:-1].unsqueeze(1).unsqueeze(1)
+                    prev_layers_pose_tokens_pos = prev_layers_pose_tokens + time_pos_embed[:-1].unsqueeze(1).unsqueeze(
+                        1
+                    )
                     prev_layers_pose_tokens_pos = einops.rearrange(prev_layers_pose_tokens_pos, "t b q d -> b (t q) d")
-                    layers_pose_tokens = torch.cat([prev_layers_pose_tokens_pos, pose_token + time_pos_embed[-1:]], dim=1)
+                    layers_pose_tokens = torch.cat(
+                        [prev_layers_pose_tokens_pos, pose_token + time_pos_embed[-1:]], dim=1
+                    )
                 else:
                     layers_pose_tokens = pose_token + time_pos_embed[-1:]
                 pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens)
@@ -404,15 +408,32 @@ class DETRBase(nn.Module):
                 bs = ind.shape[0]
                 roi_features_cnn = roi_features_cnn.view(bs, self.n_queries, -1)
                 rot_mlp_in = torch.cat([pose_token, roi_features_cnn], dim=-1)
-                out["rot"] = self.rot_mlps[layer_idx](rot_mlp_in)
-                out["t"] = self.t_mlps[layer_idx](pose_token)
             else:
-                if self.use_rot:
-                    pred_rot = self.rot_mlps[layer_idx](pose_token)
-                    out["rot"] = pred_rot
-                if self.use_t:
-                    pred_t = self.t_mlps[layer_idx](pose_token)
-                    out["t"] = pred_t
+                rot_mlp_in = pose_token
+            if self.do_refinement:
+                if layer_idx > 0:
+                    if self.do_refinement_with_pose_token:
+                        prev_layer_t_refine_in = outs[-1]["pose_token"]
+                        prev_layer_rot_refine_in = outs[-1]["pose_token"]
+                    else:
+                        # concat pose preds from l-1
+                        prev_layer_t_refine_in = outs[-1]["t"]
+                        prev_layer_rot_refine_in = outs[-1]["rot"]
+                else:
+                    if self.do_refinement_with_pose_token:
+                        prev_layer_t_refine_in = torch.zeros_like(t_mlp_in)[..., : self.d_model]
+                        prev_layer_rot_refine_in = torch.zeros_like(rot_mlp_in)[..., : self.d_model]
+                    else:
+                        prev_layer_t_refine_in = torch.zeros_like(t_mlp_in)[..., : self.t_out_dim]
+                        prev_layer_rot_refine_in = torch.zeros_like(rot_mlp_in)[..., : self.rot_out_dim]
+                t_mlp_in = torch.cat([t_mlp_in, prev_layer_t_refine_in], dim=-1)
+                rot_mlp_in = torch.cat([rot_mlp_in, prev_layer_rot_refine_in], dim=-1)
+            if self.use_rot:
+                pred_rot = self.rot_mlps[layer_idx](rot_mlp_in)
+                out["rot"] = pred_rot
+            if self.use_t:
+                pred_t = self.t_mlps[layer_idx](t_mlp_in)
+                out["t"] = pred_t
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
