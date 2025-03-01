@@ -149,6 +149,9 @@ class DETRBase(nn.Module):
         t_out_dim=3,
         use_pose_tokens=False,
         use_roi=False,
+        do_refinement=False,
+        do_refinement_with_attn=False,
+        do_refinement_with_pose_token=False,
         use_depth=False,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
@@ -158,6 +161,9 @@ class DETRBase(nn.Module):
         self.use_pose_tokens = use_pose_tokens
         self.use_roi = use_roi
         self.use_depth = use_depth
+        self.do_refinement = do_refinement
+        self.do_refinement_with_pose_token = do_refinement_with_pose_token
+        self.do_refinement_with_attn = do_refinement_with_attn
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -210,16 +216,29 @@ class DETRBase(nn.Module):
         if self.use_boxes:
             self.bbox_mlps = get_clones(
                 MLP(
-                    in_dim=d_model, out_dim=4, hidden_dim=head_hidden_dim, num_layers=head_num_layers, dropout=dropout_heads
+                    in_dim=d_model,
+                    out_dim=4,
+                    hidden_dim=head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
                 ),
                 n_layers,
             )
         if self.use_t:
-            self.t_mlps = get_clones(MLP(d_model, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers)
+            t_mlp_in_dim = d_model
+            if do_refinement:
+                t_mlp_in_dim += self.d_model if do_refinement_with_pose_token else self.t_out_dim
+            self.t_mlp_in_dim = t_mlp_in_dim
+            self.t_mlps = get_clones(
+                MLP(t_mlp_in_dim, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
+            )
         if self.use_rot:
             rot_mlp_in_dim = d_model
             if use_roi:
                 rot_mlp_in_dim += d_model
+            if do_refinement:
+                rot_mlp_in_dim += self.d_model if do_refinement_with_pose_token else self.rot_out_dim
+            self.rot_mlp_in_dim = rot_mlp_in_dim
             self.rot_mlps = get_clones(
                 MLP(rot_mlp_in_dim, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
             )
