@@ -373,6 +373,22 @@ class DETRBase(nn.Module):
             else:
                 pose_token = o
 
+            if self.do_refinement_with_attn:
+                num_prev_tokens = layer_idx
+                time_pos_embed = torch.cat(
+                    [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
+                ).to(pose_token.device)
+                if num_prev_tokens>0:
+                    prev_layers_pose_tokens = torch.cat([o["pose_token"] for o in outs[:layer_idx]])
+                    prev_layers_pose_tokens_pos = prev_layers_pose_tokens + time_pos_embed[:-1].unsqueeze(1).unsqueeze(1)
+                    prev_layers_pose_tokens_pos = einops.rearrange(prev_layers_pose_tokens_pos, "t b q d -> b (t q) d")
+                    layers_pose_tokens = torch.cat([prev_layers_pose_tokens_pos, pose_token + time_pos_embed[-1:]], dim=1)
+                else:
+                    layers_pose_tokens = pose_token + time_pos_embed[-1:]
+                pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens)
+                pose_token = pose_layers_tokens_enc[:, -self.n_queries :]
+
+            t_mlp_in = pose_token
             if self.use_roi:
                 assert img_features is not None
                 pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
