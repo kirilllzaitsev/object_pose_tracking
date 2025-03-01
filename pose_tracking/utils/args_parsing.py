@@ -199,6 +199,9 @@ def get_parser():
     model_args.add_argument("--do_predict_3d_rot", action="store_true", help="Predict object rotation as 3D")
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
     model_args.add_argument("--use_depth", action="store_true", help="Use RGBD")
+    model_args.add_argument("--mt_do_refinement", action="store_true", help="Do pose refinement")
+    model_args.add_argument("--mt_do_refinement_with_pose_token", action="store_true", help="Use pose_token for layer-wise refinement with MLP")
+    model_args.add_argument("--mt_do_refinement_with_attn", action="store_true", help="Use transformer for layer-wise refinement")
     model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
@@ -407,6 +410,10 @@ def postprocess_args(args, use_if_provided=True):
         assert args.use_depth
     if args.use_kpts_for_rot or args.use_pnp_for_rot_pred:
         assert args.do_predict_kpts
+    if args.mt_do_refinement_with_pose_token:
+        assert args.mt_do_refinement
+    if args.mt_do_refinement_with_attn:
+        assert not (args.mt_do_refinement or args.mt_do_refinement_with_pose_token)
 
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")

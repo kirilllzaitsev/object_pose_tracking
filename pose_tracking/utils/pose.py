@@ -1,4 +1,5 @@
 import numpy as np
+from pose_tracking.utils.common import istensor
 import torch
 import trimesh
 from bop_toolkit_lib.transform import euler_matrix
@@ -15,7 +16,7 @@ from pose_tracking.utils.rotation_conversions import (
 def convert_r_t_to_rt(r, t, scale_translation=1.0):
     if len(r.shape) == 3:
         return torch.stack([convert_r_t_to_rt(r[i], t[i], scale_translation) for i in range(r.shape[0])])
-    pose = torch.eye(4, device=r.device)
+    pose = torch.eye(4, device=r.device) if istensor(r) else np.eye(4)
     pose[:3, :3] = r
     pose[:3, 3] = t * scale_translation
     return pose

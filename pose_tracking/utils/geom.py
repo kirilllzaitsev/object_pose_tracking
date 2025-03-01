@@ -212,7 +212,7 @@ def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
 
 def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
-    cur_pose_mat = torch.eye(4, dtype=torch.float, device=prev_pose_mat.device)
+    cur_pose_mat = torch.eye(4, dtype=torch.float, device=prev_pose_mat.device) if is_tensor(prev_pose_mat) else np.eye(4)
     if prev_pose_mat.ndim == 3:
         cur_pose_mat = cur_pose_mat[None].repeat(len(prev_pose_mat), 1, 1)
     if do_couple_rot_t:
