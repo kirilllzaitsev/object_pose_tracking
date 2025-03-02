@@ -489,15 +489,16 @@ def plot_seq(
     if isinstance(seq, list) and isinstance(seq[0], list):
         seq = seq[batch_idx]
         print(f"taking {batch_idx=} of {len(seq)}")
+    if any([x in seq for x in ["image", "rgb"]]):
+        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["rgb", "image", "intrinsics", "mesh_bbox", target_key])
+        seq = batch_seq
+        seq = [x[batch_idx] for x in batch_seq]
+        print(f"taking {batch_idx=} of {len(batch_seq)}")
     img_key = "rgb" if "rgb" in seq[0] and len(seq[0]["rgb"]) > 0 else "image"
     first_key = img_key
     if len(keys_to_plot) == 0:
         keys_to_plot.append(img_key)
 
-    if first_key in seq:
-        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["intrinsics", "mesh_bbox", target_key])
-        seq = batch_seq[batch_idx]
-        print(f"taking {batch_idx=} of {len(batch_seq)}")
 
     if len(seq) > 20:
         print(f"Taking first 20 frames of {len(seq)=}")

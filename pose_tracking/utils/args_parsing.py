@@ -236,6 +236,7 @@ def get_parser():
             "pizza",
             "detr_pretrained",
             "trackformer",
+            "memotr",
         ],
     )
     model_args.add_argument("--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm"])
@@ -261,7 +262,7 @@ def get_parser():
     model_args.add_argument("--belief_hidden_dim", type=int, default=256, help="Dim of the belief-related net parts")
     model_args.add_argument("--belief_num_layers", type=int, default=2, help="Number of layers for belief-related nets")
     model_args.add_argument(
-        "--rt_hidden_dim", type=int, help="Hidden dimension for rot/translation MLPs. Defaults to hidden_dim"
+        "--rt_hidden_dim", default=256, type=int, help="Hidden dimension for rot/translation MLPs"
     )
     model_args.add_argument(
         "--encoder_out_dim", type=int, default=512, help="Output dimension of the img/depth encoder"

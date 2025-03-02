@@ -174,3 +174,15 @@ def match_module_by_name(n, name_keywords):
 def free_cuda_mem():
     gc.collect()
     torch.cuda.empty_cache()
+
+
+def is_empty(v):
+    # returns true if no values are in the dict/list. recursive.
+    if isinstance(v, dict):
+        return all(is_empty(x) for x in v.values())
+    elif isinstance(v, list) and len(v) > 0:
+        return all(is_empty(x) for x in v)
+    elif hasattr(v, "__len__"):
+        return len(v) == 0
+    else:
+        return False

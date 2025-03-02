@@ -379,7 +379,7 @@ class DETRBase(nn.Module):
                     [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
                 ).to(pose_token.device)
                 if num_prev_tokens > 0:
-                    prev_layers_pose_tokens = torch.cat([o["pose_token"] for o in outs[:layer_idx]])
+                    prev_layers_pose_tokens = torch.cat([o["pose_token"] for o in outs[:layer_idx]], dim=1)
                     prev_layers_pose_tokens_pos = prev_layers_pose_tokens + time_pos_embed[:-1].unsqueeze(1).unsqueeze(
                         1
                     )
