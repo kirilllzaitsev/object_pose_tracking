@@ -194,7 +194,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             "d",
         )
 
-    collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza"] else seq_collate_fn
+    collate_fn = batch_seq_collate_fn if args.model_name in ["videopose", "pizza", "motr", "memotr"] else seq_collate_fn
 
     val_batch_size = min(max(1, args.num_workers), args.batch_size)
     if "four_large" in str(ds_video_dir_train):

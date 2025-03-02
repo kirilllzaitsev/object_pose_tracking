@@ -229,9 +229,8 @@ class Trainer:
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
-            batch_size = len(batched_seq[0]["rgb"])
-
             if self.do_reset_state:
+                batch_size = len(batched_seq[0]["rgb"])
                 self.model_without_ddp.reset_state(batch_size, device=self.device)
 
             if (stage != "train" and not self.do_chunkify_val) or (
