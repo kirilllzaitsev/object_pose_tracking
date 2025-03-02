@@ -12,6 +12,7 @@ from pose_tracking.config import (
     ARTIFACTS_DIR,
     DATA_DIR,
     HO3D_ROOT,
+    MEMOTR_DIR,
     PROJ_DIR,
     PROJ_NAME,
     RELATED_DIR,
@@ -105,6 +106,15 @@ def get_model(args, num_classes=None):
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
         )
+    elif args.model_name == "memotr":
+        from memotr.models import build_model
+
+        memotr_args = get_memotr_args(args)
+        args.memotr_args = memotr_args
+        model = build_model(memotr_args, num_classes=num_classes)
+
+        for p in model.parameters():
+            p.requires_grad = True
     elif args.model_name == "trackformer":
         from trackformer.models import build_model
 
@@ -170,7 +180,7 @@ def get_model(args, num_classes=None):
             rot_out_dim=args.rot_out_dim,
             t_out_dim=args.t_out_dim,
             head_num_layers=args.rt_mlps_num_layers,
-            head_hidden_dim=args.rt_hidden_dim,
+            head_hidden_dim=args.rt_hidden_dim or 256,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -259,6 +269,29 @@ def get_model(args, num_classes=None):
     return model
 
 
+def get_memotr_args(args):
+    config = yaml.unsafe_load(
+        open(
+            f"{MEMOTR_DIR}/train_mot17.yaml",
+            "r",
+        )
+    )
+    config["USE_DAB"] = False
+    config["BACKBONE"] = args.encoder_name
+    config["rot_out_dim"] = args.rot_out_dim
+    config["t_out_dim"] = args.t_out_dim
+    config["NUM_DET_QUERIES"] = args.mt_num_queries
+    config["NUM_DEC_LAYERS"] = args.mt_n_layers
+    config["NUM_ENC_LAYERS"] = args.mt_n_layers
+    config["WITH_BOX_REFINE"] = False
+    config["WITH_BOX_REFINE"] = True
+    config["opt_only"] = args.opt_only
+
+    config["LR_BACKBONE"] = args.lr_encoders
+    config["LR_POINTS"] = args.lr * 1e-1
+    config["LR"] = args.lr
+    return config
+
 def get_trackformer_args(args):
     tf_args = argparse.Namespace(
         **yaml.load(
@@ -340,12 +373,15 @@ def get_trainer(
         # trainer_cls = Trainer
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
+    elif "memotr" in args.model_name:
+        from pose_tracking.trainer_memotr import TrainerMemotr
+        trainer_cls = TrainerMemotr
     elif "trackformer" in args.model_name:
         trainer_cls = TrainerTrackformer
     else:
         trainer_cls = Trainer
 
-    is_detr = "detr" in args.model_name or args.model_name == "trackformer"
+    is_detr = "detr" in args.model_name or args.model_name in ["trackformer", "memotr"]
     if is_detr:
         assert num_classes is not None
         extra_kwargs = {
@@ -361,6 +397,8 @@ def get_trainer(
                     "do_calibrate_kpt": args.mt_do_calibrate_kpt,
                 }
             )
+        if "memotr" in args.model_name:
+            extra_kwargs.update({'config': args.memotr_args})
         extra_kwargs.update({"args": args})
     else:
         extra_kwargs = {}
@@ -492,7 +530,8 @@ def get_datasets(
     is_detr_kpt_model = "detr_kpt" in model_name
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
-    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d
+    is_motr_model = "motr" in model_name
+    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d or is_motr_model
     include_mask = include_mask or do_subtract_bg
     ds_kwargs_common = dict(
         shorter_side=None,
@@ -528,7 +567,7 @@ def get_datasets(
 
     res = {}
 
-    video_ds_cls = VideoDatasetTracking if is_tf_model or is_detr_model else VideoDataset
+    video_ds_cls = VideoDatasetTracking if (is_tf_model or is_detr_model or is_motr_model) else VideoDataset
 
     train_ds_kwargs = copy.deepcopy(ds_kwargs)
     if "train" in ds_types:
