@@ -55,8 +55,6 @@ from pose_tracking.utils.rotation_conversions import (
     rotation_6d_to_matrix,
 )
 from tqdm import tqdm
-from trackformer.models import build_criterion
-from trackformer.models.matcher import build_matcher
 
 
 class TrainerDeformableDETR(Trainer):
@@ -90,16 +88,25 @@ class TrainerDeformableDETR(Trainer):
 
         self.use_pose = opt_only is None or ("rot" in opt_only and "t" in opt_only)
 
-        self.tf_args = get_trackformer_args(self.args)
+        self.is_memotr = "memotr" in self.model_name
+        if self.is_memotr:
+            from memotr.models.criterion import build as build_criterion
 
-        self.matcher = build_matcher(self.tf_args)
-        self.criterion = build_criterion(
-            self.tf_args,
-            num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes + 1,
-            matcher=self.matcher,
-            device=self.args.device,
-            use_rel_pose=self.args.do_predict_rel_pose,
-        )
+            self.criterion = build_criterion(config=self.config)
+            self.criterion.set_device(self.device)
+        else:
+            from trackformer.models import build_criterion
+            from trackformer.models.matcher import build_matcher
+
+            self.tf_args = get_trackformer_args(self.args)
+            self.matcher = build_matcher(self.tf_args)
+            self.criterion = build_criterion(
+                self.tf_args,
+                num_classes=num_classes + 1 if self.args.tf_use_focal_loss else num_classes + 1,
+                matcher=self.matcher,
+                device=self.args.device,
+                use_rel_pose=self.args.do_predict_rel_pose,
+            )
 
         if self.use_ddp:
             self.model_without_ddp = self.model.module
@@ -108,7 +115,7 @@ class TrainerDeformableDETR(Trainer):
 
         if "detr_kpt" in args.model_name:
             self.encoder_module_prefix = "extractor"
-        elif "detr" in args.model_name or "trackformer" in args.model_name:
+        elif any(x in args.model_name for x in ["detr", "trackformer", "memotr"]):
             self.encoder_module_prefix = "backbone"
         else:
             self.encoder_module_prefix = None
@@ -123,6 +130,15 @@ class TrainerDeformableDETR(Trainer):
             self.logger.warning(f"Params without grad: {params_wo_grad}")
             self.logger.warning(f"{len(params_wo_grad)=}")
 
+        param_dicts = self.get_param_dicts()
+
+        self.optimizer = torch.optim.AdamW(
+            param_dicts,
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+        )
+
+    def get_param_dicts(self):
         param_dicts = [
             {
                 "params": [
@@ -130,7 +146,7 @@ class TrainerDeformableDETR(Trainer):
                     for name, p in self.model_without_ddp.named_parameters()
                     if is_param_part_of_encoders(name, self.encoder_module_prefix)
                 ],
-                "lr": args.lr_encoders,
+                "lr": self.args.lr_encoders,
             },
             {
                 "params": [
@@ -138,15 +154,11 @@ class TrainerDeformableDETR(Trainer):
                     for name, p in self.model_without_ddp.named_parameters()
                     if not is_param_part_of_encoders(name, self.encoder_module_prefix)
                 ],
-                "lr": args.lr,
+                "lr": self.args.lr,
             },
         ]
 
-        self.optimizer = torch.optim.AdamW(
-            param_dicts,
-            lr=args.lr,
-            weight_decay=args.weight_decay,
-        )
+        return param_dicts
 
     def freeze_encoder(self):
         for name, p in self.model_without_ddp.named_parameters():
@@ -558,6 +570,15 @@ class TrainerTrackformer(TrainerDeformableDETR):
 
         super().__init__(*args_, **kwargs)
 
+        param_dicts = self.get_param_dicts()
+
+        self.optimizer = torch.optim.AdamW(
+            param_dicts,
+            lr=self.args.detr_args.lr,
+            weight_decay=self.args.weight_decay,
+        )
+
+    def get_param_dicts(self):
         param_dicts = [
             {
                 "params": [
@@ -602,11 +623,7 @@ class TrainerTrackformer(TrainerDeformableDETR):
                 }
             )
 
-        self.optimizer = torch.optim.AdamW(
-            param_dicts,
-            lr=self.args.detr_args.lr,
-            weight_decay=self.args.weight_decay,
-        )
+        return param_dicts
 
     def model_forward(self, batch_t, prev_features=None, **kwargs):
         rgb = batch_t["image"]

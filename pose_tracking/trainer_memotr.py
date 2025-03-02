@@ -52,7 +52,7 @@ class TrainerMemotr(TrainerDeformableDETR):
         self.det_score_thresh = 0.5
         self.track_score_thresh = 0.5
 
-    def get_param_dicts(self, args):
+    def get_param_dicts(self):
         from memotr.train_engine import get_param_groups
 
         param_groups, lr_names = get_param_groups(config=self.config, model=self.model)
