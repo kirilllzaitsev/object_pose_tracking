@@ -614,6 +614,7 @@ class KeypointDETR(DETRBase):
 
     def extract_tokens(self, rgb, intrinsics=None, depth=None, mask=None):
         if self.use_mask_on_input:
+            assert mask is not None and len(mask) > 0
             mask = torch.stack([mask_morph(m, op_name="dilate") for m in mask]).unsqueeze(1)
             rgb = rgb * mask
         bs, c, h, w = rgb.shape
@@ -632,13 +633,13 @@ class KeypointDETR(DETRBase):
 
         if self.do_backproj_kpts_to_3d or self.do_calibrate_kpt:
             assert intrinsics is not None
-            assert depth is not None
             K_norm = intrinsics.clone().float()
             K_norm[..., 0] /= w
             K_norm[..., 1] /= h
             K_norm[..., 0, 2] /= w
             K_norm[..., 1, 2] /= h
             if self.do_backproj_kpts_to_3d:
+                assert depth is not None
                 kpts = backproj_2d_to_3d_batch(kpts, depth=depth_1d, K=K_norm)
             elif self.do_calibrate_kpt:
                 kpts = calibrate_2d_pts_batch(kpts, K=K_norm)

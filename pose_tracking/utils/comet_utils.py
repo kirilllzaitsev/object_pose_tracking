@@ -268,11 +268,6 @@ def create_tracking_exp(
         print("WARN: Experiment failed to init. Doing an offline experiment instead")
         experiment = comet_ml.OfflineExperiment(**exp_init_args, project_name=project_name)
 
-    # scripts dir
-    for code_file in glob.glob("./*.py"):
-        experiment.log_code(code_file)
-    log_pkg_code(experiment)
-
     return experiment
 
 

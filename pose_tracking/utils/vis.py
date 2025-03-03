@@ -576,6 +576,7 @@ def plot(fn, num_cols=1):
     def inner(*args, ax=None, **kwargs):
         if ax is None:
             fig, ax = plt.subplots(1, num_cols, figsize=(10, 5))
+            ax.axis("off")
         res = fn(*args, **kwargs)
         ax.imshow(res)
         return ax

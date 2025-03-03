@@ -99,9 +99,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         else:
             exp_tools = defaultdict(lambda: None)
     logdir = exp_tools["logdir"]
-
     exp = exp_tools["exp"]
     writer = exp_tools["writer"]
+    if is_main_process:
+        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
 
     logpath = f"{logdir}/log.log"
     logger = prepare_logger(logpath=logpath, level="INFO")
@@ -132,11 +133,15 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         else:
             num_classes = None
         args.num_classes = num_classes
+        if is_main_process:
+            log_params_to_exp(
+                exp,
+                {"num_classes": num_classes},
+                "args",
+            )
     else:
         num_classes = args.num_classes
 
-    if is_main_process:
-        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
     print_args(args, logger=logger)
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
@@ -171,6 +176,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_entire_seq_in_train=args.use_entire_seq_in_train,
         seq_len_max_train=args.seq_len_max_train,
         include_depth=args.mt_use_depth,
+        include_mask=args.mt_use_mask_on_input,
         include_bbox_2d=args.use_crop_for_rot,
         do_normalize_depth=args.mt_use_depth,
         bbox_num_kpts=args.bbox_num_kpts,
