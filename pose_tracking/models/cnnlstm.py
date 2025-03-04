@@ -304,6 +304,7 @@ class RecurrentCNNVanilla(RecurrentNet):
                     nn.init.xavier_normal_(param)
                 elif "bias" in name:
                     nn.init.constant_(param, 0)
+            self.state_cell.bias_hh.data.fill_(0.5)  # memorize last state
         else:
             self.state_cell = MLP(
                 in_dim=self.input_dim,
