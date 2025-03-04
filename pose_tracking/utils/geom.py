@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import torch
 from pose_tracking.config import logger
+from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.misc import is_tensor, pick_library
 from scipy.spatial.transform import Rotation as R
 
@@ -212,7 +213,9 @@ def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
 
 def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
     """Infer a new pose from a pose and deltas"""
-    cur_pose_mat = torch.eye(4, dtype=torch.float, device=prev_pose_mat.device) if is_tensor(prev_pose_mat) else np.eye(4)
+    cur_pose_mat = (
+        torch.eye(4, dtype=torch.float, device=prev_pose_mat.device) if is_tensor(prev_pose_mat) else np.eye(4)
+    )
     if prev_pose_mat.ndim == 3:
         cur_pose_mat = cur_pose_mat[None].repeat(len(prev_pose_mat), 1, 1)
     if do_couple_rot_t:
@@ -651,3 +654,31 @@ def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):
     res["t_pred_2d_denorm"] = t_pred_2d_denorm
     res["t_pred"] = t_pred
     return res
+
+
+def compute_normals(depth):
+    # https://answers.opencv.org/question/82453/calculate-surface-normals-from-depth-image-using-neighboring-pixels-cross-product/
+    depth = cast_to_numpy(depth).squeeze()
+    if depth.dtype != np.float32:
+        depth = depth.astype(np.float32)
+
+    f1 = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]], dtype=np.float32) / 8.0
+    f2 = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]], dtype=np.float32) / 8.0
+
+    f1m = cv2.flip(f1, 0)
+    f2m = cv2.flip(f2, 1)
+
+    n1 = cv2.filter2D(depth, -1, f1m, borderType=cv2.BORDER_CONSTANT)
+    n2 = cv2.filter2D(depth, -1, f2m, borderType=cv2.BORDER_CONSTANT)
+
+    n1 = -n1
+    n2 = -n2
+
+    temp = np.sqrt(n1 * n1 + n2 * n2 + 1)
+
+    N3 = 1 / temp
+    N1 = n1 * N3
+    N2 = n2 * N3
+
+    surface_normals = cv2.merge([N1, N2, N3])
+    return surface_normals
