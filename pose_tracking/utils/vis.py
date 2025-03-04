@@ -490,7 +490,9 @@ def plot_seq(
         seq = seq[batch_idx]
         print(f"taking {batch_idx=} of {len(seq)}")
     if any([x in seq for x in ["image", "rgb"]]):
-        batch_seq = convert_seq_batch_to_batch_seq(seq, keys=keys_to_plot + ["rgb", "image", "intrinsics", "mesh_bbox", target_key])
+        batch_seq = convert_seq_batch_to_batch_seq(
+            seq, keys=keys_to_plot + ["rgb", "image", "intrinsics", "mesh_bbox", target_key]
+        )
         seq = batch_seq
         seq = [x[batch_idx] for x in batch_seq]
         print(f"taking {batch_idx=} of {len(batch_seq)}")
@@ -498,7 +500,6 @@ def plot_seq(
     first_key = img_key
     if len(keys_to_plot) == 0:
         keys_to_plot.append(img_key)
-
 
     if len(seq) > 20:
         print(f"Taking first 20 frames of {len(seq)=}")
@@ -605,6 +606,11 @@ def plot_optical_flow(flow):
 
 
 @plot
+def plot_normals(flow):
+    return vis_normals(flow)
+
+
+@plot
 def plot_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
     return vis_pose(color, pose, K, bbox=bbox, scale=scale, bbox_color=bbox_color)
 
@@ -624,6 +630,11 @@ def plot_depth(depth, ax=None):
     im = ax.imshow(depth, cmap="viridis")
     plt.colorbar(im, ax=ax)
     return ax
+
+
+def vis_normals(x):
+    rgb = (x + 1) / 2
+    return adjust_img_for_plt(rgb)
 
 
 def vis_optical_flow(flow):
