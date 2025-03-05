@@ -60,6 +60,7 @@ class TrackingDataset(Dataset):
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
         bbox_num_kpts=32,
+        dino_features_folder_name=None,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -90,6 +91,9 @@ class TrackingDataset(Dataset):
         self.rot_repr = rot_repr
         self.t_repr = t_repr
         self.bbox_num_kpts = bbox_num_kpts
+        self.dino_features_folder_name = dino_features_folder_name
+
+        self.do_load_dino_features = dino_features_folder_name is not None
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
         if color_file_id_strs is not None:
@@ -151,6 +155,11 @@ class TrackingDataset(Dataset):
             sample["rgb"] = sample["rgb"] * sample["mask"][..., None]
             if self.include_depth:
                 sample["depth"] = sample["depth"] * sample["mask"]
+
+        if self.do_load_dino_features:
+            features_path = f"{self.video_dir}/{self.dino_features_folder_name}/{self.id_strs[i]}.pt"
+            if os.path.exists(features_path):
+                sample["features_rgb"] = torch.load(features_path, weights_only=False)
 
         if self.include_pose:
             sample["pose"] = self.get_pose(i)

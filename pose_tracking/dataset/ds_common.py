@@ -100,7 +100,7 @@ def from_numpy(x):
     return torch.from_numpy(x).float()
 
 
-def process_raw_sample(sample, *args, **kwargs):
+def process_raw_sample(sample, **kwargs):
     ds_sample = get_ds_sample(
         sample["rgb"],
         rgb_path=sample["rgb_path"],
@@ -110,7 +110,6 @@ def process_raw_sample(sample, *args, **kwargs):
         intrinsics=sample.get("intrinsics"),
         priv=sample.get("priv"),
         mask_visib=sample.get("mask_visib"),
-        *args,
         **kwargs,
     )
     # add keys present in sample but not in ds_sample
