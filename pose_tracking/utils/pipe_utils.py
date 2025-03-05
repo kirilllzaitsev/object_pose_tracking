@@ -520,6 +520,7 @@ def get_datasets(
     max_depth_m=10,
     use_entire_seq_in_train=False,
     do_normalize_depth=False,
+    dino_features_folder_name=None,
     bbox_num_kpts=32,
 ):
 
@@ -549,6 +550,7 @@ def get_datasets(
         t_repr=t_repr,
         do_subtract_bg=do_subtract_bg,
         bbox_num_kpts=bbox_num_kpts,
+        dino_features_folder_name=dino_features_folder_name,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

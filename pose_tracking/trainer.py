@@ -348,6 +348,7 @@ class Trainer:
             pts = batch_t["mesh_pts"]
             intrinsics = batch_t["intrinsics"]
             bbox_2d = batch_t["bbox_2d"]
+            features_rgb = batch_t.get("features_rgb")
             h, w = rgb.shape[-2:]
             hw = (h, w)
             t_gt_abs = pose_gt_abs[:, :3]
@@ -397,6 +398,7 @@ class Trainer:
                         depth,
                         bbox=bbox_2d,
                         state=None,
+                        features_rgb=features_rgb,
                     )
                     state = out["state"]
 
@@ -440,6 +442,7 @@ class Trainer:
                 prev_pose=prev_pose,
                 prev_latent=prev_latent,
                 state=state,
+                features_rgb=features_rgb,
             )
 
             # POSTPROCESS OUTPUTS

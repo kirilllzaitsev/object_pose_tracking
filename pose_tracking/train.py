@@ -180,6 +180,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         include_bbox_2d=args.use_crop_for_rot,
         do_normalize_depth=args.mt_use_depth,
         bbox_num_kpts=args.bbox_num_kpts,
+        dino_features_folder_name=args.dino_features_folder_name,
     )
 
     train_dataset, val_dataset = datasets["train"], datasets["val"]
@@ -205,6 +206,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     val_batch_size = min(max(1, args.num_workers), args.batch_size)
     if "four_large" in str(ds_video_dir_train):
         val_batch_size = max(1, val_batch_size // 4)
+    if "memotr" in args.model_name:
+        val_batch_size = 1
 
     logger.info(f"{args.batch_size=}")
     logger.info(f"{val_batch_size=}")
