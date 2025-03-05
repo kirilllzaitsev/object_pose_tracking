@@ -200,8 +200,14 @@ def get_parser():
     model_args.add_argument("--do_predict_rel_pose", action="store_true", help="Predict relative pose")
     model_args.add_argument("--use_depth", action="store_true", help="Use RGBD")
     model_args.add_argument("--mt_do_refinement", action="store_true", help="Do pose refinement")
-    model_args.add_argument("--mt_do_refinement_with_pose_token", action="store_true", help="Use pose_token for layer-wise refinement with MLP")
-    model_args.add_argument("--mt_do_refinement_with_attn", action="store_true", help="Use transformer for layer-wise refinement")
+    model_args.add_argument(
+        "--mt_do_refinement_with_pose_token",
+        action="store_true",
+        help="Use pose_token for layer-wise refinement with MLP",
+    )
+    model_args.add_argument(
+        "--mt_do_refinement_with_attn", action="store_true", help="Use transformer for layer-wise refinement"
+    )
     model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
@@ -261,9 +267,7 @@ def get_parser():
     model_args.add_argument("--state_dim", type=int, default=512, help="Dim of the recurrent cell state")
     model_args.add_argument("--belief_hidden_dim", type=int, default=256, help="Dim of the belief-related net parts")
     model_args.add_argument("--belief_num_layers", type=int, default=2, help="Number of layers for belief-related nets")
-    model_args.add_argument(
-        "--rt_hidden_dim", default=256, type=int, help="Hidden dimension for rot/translation MLPs"
-    )
+    model_args.add_argument("--rt_hidden_dim", default=256, type=int, help="Hidden dimension for rot/translation MLPs")
     model_args.add_argument(
         "--encoder_out_dim", type=int, default=512, help="Output dimension of the img/depth encoder"
     )
@@ -310,6 +314,12 @@ def get_parser():
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     data_args.add_argument("--num_classes", type=int, help="Hard-coded number of classes")
+    data_args.add_argument(
+        "--dino_features_folder_name",
+        default=None,
+        help="Name of the folder with dino features",
+        choices=["dino_features", "dino_features_multiscale"],
+    )
     data_args.add_argument(
         "--seq_len_max_train",
         type=int,
