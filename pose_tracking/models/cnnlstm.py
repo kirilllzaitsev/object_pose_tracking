@@ -432,10 +432,13 @@ class RecurrentCNNVanilla(RecurrentNet):
                 self.encoder_depth = None
 
     def forward(
-        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
+        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, features_rgb=None, **kwargs
     ):
 
-        latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
+        if features_rgb is None:
+            latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
+        else:
+            latent_rgb = features_rgb
         if self.use_depth:
             latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
 
