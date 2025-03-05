@@ -116,6 +116,27 @@ def get_encoders(
                 dropout_layer,
                 nn.Linear(2048, out_dim),
             )
+    elif model_name == "dino":
+        encoder_rgb = torch.hub.load("facebookresearch/dino:main", "dino_vits8")
+        for p in encoder_rgb.parameters():
+            p.requires_grad = False
+        weights = torchvision.models.ResNet50_Weights.DEFAULT
+        encoder_depth = torchvision.models.resnet50(
+            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
+        )
+        encoder_depth.conv1 = nn.Conv2d(
+            1,
+            64,
+            kernel_size=encoder_depth.conv1.kernel_size,
+            stride=encoder_depth.conv1.stride,
+            padding=encoder_depth.conv1.padding,
+            bias=False,
+        )
+        for m in [encoder_depth]:
+            m.fc = nn.Sequential(
+                dropout_layer,
+                nn.Linear(2048, out_dim),
+            )
     else:
         weights = torchvision.models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
         encoder_rgb = torchvision.models.efficientnet_v2_s(weights=weights if weights_depth == "imagenet" else None)
