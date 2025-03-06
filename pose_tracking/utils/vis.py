@@ -626,6 +626,7 @@ def plot_rgb_depth(color, depth, axs=None):
 def plot_depth(depth, ax=None):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        ax.axis('off')
     depth = adjust_depth_for_plt(depth)
     im = ax.imshow(depth, cmap="viridis")
     plt.colorbar(im, ax=ax)

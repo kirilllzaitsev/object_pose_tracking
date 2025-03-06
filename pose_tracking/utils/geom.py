@@ -394,9 +394,10 @@ def backproj_2d_pts(pts, K, depth):
     assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
     if pts.shape[1] != 2:
         pts = pts.T
-    pts = np.hstack((pts, np.ones((pts.shape[0], 1))))
+    lib = pick_library(pts)
+    pts = lib.hstack((pts, lib.ones((pts.shape[0], 1))))
     pts = pts * depth.reshape(-1, 1)
-    pts = np.linalg.inv(K) @ pts.T
+    pts = lib.linalg.inv(K) @ pts.T
     return pts.T
 
 

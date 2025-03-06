@@ -1,8 +1,8 @@
 import numpy as np
-from pose_tracking.utils.common import istensor
 import torch
 import trimesh
 from bop_toolkit_lib.transform import euler_matrix
+from pose_tracking.utils.common import istensor
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
     matrix_to_axis_angle,
@@ -54,8 +54,10 @@ def convert_rot_vector_to_matrix(rot, rot_repr="quaternion"):
 
 
 def convert_pose_matrix_to_vector(pose, rot_repr="quaternion"):
-    if pose.shape[-2:] != (3, 3):
+    if pose.shape[-2:] != (4, 4):
         return pose
+    if not istensor(pose):
+        pose = torch.tensor(pose)
     t = pose[..., :3, 3]
     rot = pose[..., :3, :3]
     if rot_repr == "quaternion":
