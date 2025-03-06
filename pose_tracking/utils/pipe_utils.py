@@ -258,6 +258,8 @@ def get_model(args, num_classes=None):
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
             bbox_num_kpts=args.bbox_num_kpts,
+            do_predict_t=not (args.opt_only and 't' in args.opt_only),
+            do_predict_rot=not (args.opt_only and 'rot' in args.opt_only),
             **extra_kwargs,
         )
 
