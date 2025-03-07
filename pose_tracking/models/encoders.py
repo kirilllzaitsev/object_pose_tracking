@@ -36,6 +36,7 @@ def get_encoders(
         "mobilenet_v3_small",
         "resnet18",
         "resnet50",
+        "dino",
     ], model_name
 
     if model_name == "regnet_y_800mf":

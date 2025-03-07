@@ -258,8 +258,8 @@ def get_model(args, num_classes=None):
             r_num_layers_inc=args.r_num_layers_inc,
             rt_hidden_dim=args.rt_hidden_dim,
             bbox_num_kpts=args.bbox_num_kpts,
-            do_predict_t=not (args.opt_only and 't' in args.opt_only),
-            do_predict_rot=not (args.opt_only and 'rot' in args.opt_only),
+            do_predict_t=not args.opt_only or "t" in args.opt_only,
+            do_predict_rot=not args.opt_only or "rot" in args.opt_only,
             **extra_kwargs,
         )
 
@@ -293,6 +293,7 @@ def get_memotr_args(args):
     config["LR_POINTS"] = args.lr * 1e-1
     config["LR"] = args.lr
     return config
+
 
 def get_trackformer_args(args):
     tf_args = argparse.Namespace(
@@ -377,6 +378,7 @@ def get_trainer(
         trainer_cls = TrainerDeformableDETR
     elif "memotr" in args.model_name:
         from pose_tracking.trainer_memotr import TrainerMemotr
+
         trainer_cls = TrainerMemotr
     elif "trackformer" in args.model_name:
         trainer_cls = TrainerTrackformer
@@ -400,7 +402,7 @@ def get_trainer(
                 }
             )
         if "memotr" in args.model_name:
-            extra_kwargs.update({'config': args.memotr_args})
+            extra_kwargs.update({"config": args.memotr_args})
         extra_kwargs.update({"args": args})
     else:
         extra_kwargs = {}
@@ -534,7 +536,9 @@ def get_datasets(
     is_roi_model = "_sep" in model_name
     is_pizza_model = "pizza" in model_name
     is_motr_model = "motr" in model_name
-    include_bbox_2d = do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d or is_motr_model
+    include_bbox_2d = (
+        do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d or is_motr_model
+    )
     include_mask = include_mask or do_subtract_bg
     ds_kwargs_common = dict(
         shorter_side=None,
