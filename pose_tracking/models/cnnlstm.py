@@ -432,7 +432,16 @@ class RecurrentCNNVanilla(RecurrentNet):
                 self.encoder_depth = None
 
     def forward(
-        self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, features_rgb=None, **kwargs
+        self,
+        rgb,
+        depth,
+        prev_pose=None,
+        latent_rgb=None,
+        latent_depth=None,
+        prev_latent=None,
+        state=None,
+        features_rgb=None,
+        **kwargs,
     ):
 
         if features_rgb is None:
@@ -478,7 +487,9 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         if self.do_predict_t:
             t = self.t_mlp(t_in)
-            res["t"] = t
+        else:
+            t = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
+        res["t"] = t
 
         if self.do_predict_kpts:
             kpt_in = extracted_obs
@@ -494,6 +505,9 @@ class RecurrentCNNVanilla(RecurrentNet):
             else:
                 rot = self.rot_mlp(rot_in)
             res["rot"] = rot
+        else:
+            rot = torch.zeros(bs, self.rot_mlp_out_dim, device=rgb.device)
+        res["rot"] = rot
 
         if self.do_predict_abs_pose:
             t_abs_pose = self.t_mlp_abs_pose(t_in)
