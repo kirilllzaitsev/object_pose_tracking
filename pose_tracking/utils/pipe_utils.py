@@ -501,7 +501,7 @@ def get_datasets(
     transform_prob=0.0,
     mask_pixels_prob=0.0,
     num_samples=None,
-    ds_types=("train", "val"),
+    ds_types=("train", "val", "train_as_val"),
     do_predict_kpts=False,
     use_priv_decoder=False,
     do_overfit=False,
@@ -629,7 +629,7 @@ def get_datasets(
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
             val_ds_kwargs["video_dir"] = Path(ds_video_dir_val)
-            val_dataset = get_video_ds(
+            val_ds_kwargs_full = dict(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
                 seq_len=seq_len_max_val,
@@ -644,6 +644,13 @@ def get_datasets(
                 max_random_seq_step=max_random_seq_step,
                 do_predict_rel_pose=do_predict_rel_pose,
             )
+            val_dataset = get_video_ds(**val_ds_kwargs_full)
+            if "train_as_val" in ds_types:
+                train_as_val_ds_kwargs_full = copy.deepcopy(val_ds_kwargs_full)
+                train_as_val_ds_kwargs_full["ds_kwargs"]["video_dir"] = Path(ds_video_dir_train)
+                train_as_val_ds_kwargs_full["ds_video_subdirs"] = ds_video_subdirs_train
+                res["train_as_val"] = get_video_ds(**train_as_val_ds_kwargs_full)
+
         res["val"] = val_dataset
 
     if "test" in ds_types:

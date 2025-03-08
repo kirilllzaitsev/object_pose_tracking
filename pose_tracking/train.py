@@ -183,7 +183,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         dino_features_folder_name=args.dino_features_folder_name,
     )
 
-    train_dataset, val_dataset = datasets["train"], datasets["val"]
+    train_dataset, val_dataset, train_as_val_dataset = (
+        datasets["train"],
+        datasets["val"],
+        datasets["train_as_val"],
+    )
 
     logger.info(f"{ds_video_dir_train=}")
     logger.info(f"{ds_video_dir_val=}")
@@ -191,13 +195,19 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(ds_video_subdirs_val)=}")
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
+    logger.info(f"{len(train_as_val_dataset)=}")
     logger.info(f"{train_dataset.video_datasets[0]=}")
     logger.info(f"{val_dataset.video_datasets[0]=}")
+    logger.info(f"{train_as_val_dataset.video_datasets[0]=}")
 
     if is_main_process:
         log_params_to_exp(
             exp,
-            {"len_train_videos": len(train_dataset.video_datasets), "len_val_videos": len(val_dataset.video_datasets)},
+            {
+                "len_train_videos": len(train_dataset.video_datasets),
+                "len_val_videos": len(val_dataset.video_datasets),
+                "len_train_as_val_videos": len(train_as_val_dataset.video_datasets),
+            },
             "d",
         )
 
