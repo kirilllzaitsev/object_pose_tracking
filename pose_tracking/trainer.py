@@ -106,7 +106,7 @@ class Trainer:
         use_pnp_for_rot_pred=False,
         do_predict_abs_pose=False,
         seq_len_max=None,
-        seq_len_curriculum_step_epoch_freq=5,
+        seq_len_curriculum_step_epoch_freq=10,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -201,6 +201,8 @@ class Trainer:
 
         if do_predict_3d_rot:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
+        if criterion_rot_name in ["geodesic"]:
+            assert not (do_predict_3d_rot or do_predict_6d_rot)
 
     def __repr__(self):
         return print_cls(self, excluded_attrs=["processed_data", "model", "args", "model_without_ddp"])
