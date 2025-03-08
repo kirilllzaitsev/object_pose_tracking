@@ -239,6 +239,16 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
+        train_as_val_sampler = DistributedSampler(
+            train_as_val_dataset, num_replicas=world_size, rank=rank, shuffle=False
+        )
+        train_as_val_loader = DataLoader(
+            train_as_val_dataset,
+            batch_size=val_batch_size,
+            sampler=train_as_val_sampler,
+            collate_fn=collate_fn,
+            num_workers=args.num_workers,
+        )
     else:
         shuffle = False if args.do_overfit else True
         train_loader = DataLoader(
@@ -250,6 +260,13 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         )
         val_loader = DataLoader(
             val_dataset,
+            batch_size=val_batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=args.num_workers,
+        )
+        train_as_val_loader = DataLoader(
+            train_as_val_dataset,
             batch_size=val_batch_size,
             shuffle=False,
             collate_fn=collate_fn,
@@ -363,10 +380,15 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     val_loader,
                     stage="val",
                 )
+                train_as_val_stats = trainer.loader_forward(
+                    train_as_val_loader,
+                    stage="train_as_val",
+                )
             if is_main_process:
-                printer.print_stats(val_stats, "val")
-                for k, v in val_stats.items():
-                    history["val"][k].append(v)
+                for stage, stats in zip(['val', 'train_as_val'], [val_stats, train_as_val_stats]):
+                    printer.print_stats(stats, stage)
+                    for k, v in stats.items():
+                        history[stage][k].append(v)
 
                 cur_val_loss = history["val"]["loss"][-1]
                 best_val_loss = min(best_val_loss, cur_val_loss)
