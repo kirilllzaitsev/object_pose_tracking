@@ -850,17 +850,32 @@ class RecurrentCNNDouble(RecurrentCNN):
         self.t_rnn_kwargs["do_predict_rot"] = False
         self.t_rnn_kwargs["use_obs_belief"] = use_obs_belief
         self.t_rnn_kwargs["use_belief_decoder"] = use_belief_decoder
-        self.t_rnn = RecurrentCNN(
-            *args,
-            **self.t_rnn_kwargs,
-        )
         self.rot_rnn_kwargs = copy.deepcopy(self.t_rnn_kwargs)
         self.rot_rnn_kwargs["do_predict_t"] = False
-        self.rot_rnn_kwargs["do_predict_rot"] = True
-        self.rot_rnn = RecurrentCNN(
-            *args,
-            **self.rot_rnn_kwargs,
-        )
+        self.rot_rnn_kwargs["do_predict_rot"] = self.do_predict_rot
+        if kwargs["do_predict_t"]:
+            self.t_rnn = RecurrentCNN(
+                *args,
+                **self.t_rnn_kwargs,
+            )
+        if kwargs["do_predict_rot"]:
+            self.rot_rnn = RecurrentCNN(
+                *args,
+                **self.rot_rnn_kwargs,
+            )
+            if use_crop_for_rot:
+                self.encoder_img_rot, self.encoder_depth_rot = get_encoders(
+                    self.encoder_name,
+                    do_freeze=self.do_freeze_encoders,
+                    weights_rgb=self.encoder_img_weights,
+                    weights_depth=self.encoder_depth_weights,
+                    norm_layer_type=self.norm_layer_type,
+                    out_dim=self.encoder_out_dim,
+                )
+                if not self.use_depth:
+                    self.encoder_depth_rot = None
+        if self.do_predict_rot and self.use_crop_for_rot and not self.do_predict_t:
+            self.encoder_img = None
 
         self.rot_mlp = None
         self.t_mlp = None
@@ -868,23 +883,17 @@ class RecurrentCNNDouble(RecurrentCNN):
         self.prev_t_mlp = None
         self.prev_rot_mlp = None
 
-        if use_crop_for_rot:
-            self.encoder_img_rot, self.encoder_depth_rot = get_encoders(
-                self.encoder_name,
-                do_freeze=self.do_freeze_encoders,
-                weights_rgb=self.encoder_img_weights,
-                weights_depth=self.encoder_depth_weights,
-                norm_layer_type=self.norm_layer_type,
-                out_dim=self.encoder_out_dim,
-            )
-
     def reset_state(self, batch_size, device):
-        self.t_rnn.reset_state(batch_size, device)
-        self.rot_rnn.reset_state(batch_size, device)
+        if self.do_predict_t:
+            self.t_rnn.reset_state(batch_size, device)
+        if self.do_predict_rot:
+            self.rot_rnn.reset_state(batch_size, device)
 
     def detach_state(self):
-        self.t_rnn.detach_state()
-        self.rot_rnn.detach_state()
+        if self.do_predict_t:
+            self.t_rnn.detach_state()
+        if self.do_predict_rot:
+            self.rot_rnn.detach_state()
 
     def forward(
         self, rgb, depth, prev_pose=None, latent_rgb=None, latent_depth=None, prev_latent=None, state=None, **kwargs
@@ -893,88 +902,116 @@ class RecurrentCNNDouble(RecurrentCNN):
         bbox = kwargs["bbox"]
         bs, C, H, W = rgb.size()
 
-        latent_rgb = self.encoder_img(rgb)
-        latent_depth = self.encoder_depth(depth)
+        if self.do_predict_rot and self.use_crop_for_rot and not self.do_predict_t:
+            latent_rgb = None
+        else:
+            latent_rgb = self.encoder_img(rgb)
+        if self.use_depth:
+            latent_depth = self.encoder_depth(depth)
+        else:
+            latent_depth = None
 
         if state is not None:
-            state_t, state_rot = state
+            if self.do_predict_rot and self.do_predict_t:
+                state_t, state_rot = state
+            elif self.do_predict_t:
+                state_t = state[0]
+            else:
+                state_rot = state[0]
         else:
             state_t = state_rot = None
 
         if prev_latent is not None:
-            prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
-            prev_latent_rot = prev_latent[:, self.encoder_out_dim * 2 :]
+            if self.do_predict_rot and self.do_predict_t:
+                prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
+                prev_latent_rot = prev_latent[:, self.encoder_out_dim * 2 :]
+            elif self.do_predict_t:
+                prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
+            else:
+                prev_latent_rot = prev_latent[:, : self.encoder_out_dim * 2]
         else:
             prev_latent_t = prev_latent_rot = None
 
-        t_net_out = self.t_rnn(
-            rgb,
-            depth,
-            prev_pose=prev_pose,
-            latent_rgb=latent_rgb,
-            latent_depth=latent_depth,
-            prev_latent=prev_latent_t,
-            state=state_t,
-        )
-
-        if self.use_crop_for_rot:
-            padding = 5
-            new_boxes = []
-            for i, boxes_padded in enumerate(bbox):
-                boxes_padded = boxes_padded.clone()
-                boxes_padded[..., 0] = boxes_padded[..., 0] - padding
-                boxes_padded[..., 1] = boxes_padded[..., 1] - padding
-                boxes_padded[..., 2] = boxes_padded[..., 2] + padding
-                boxes_padded[..., 3] = boxes_padded[..., 3] + padding
-                image_size = rgb.shape[-2:]
-                H, W = image_size
-                boxes_padded[..., 0].clamp_(min=0, max=W)
-                boxes_padded[..., 1].clamp_(min=0, max=H)
-                boxes_padded[..., 2].clamp_(min=0, max=W)
-                boxes_padded[..., 3].clamp_(min=0, max=H)
-                new_boxes.append(boxes_padded)
-            crop_size = (60, 80)
-            rgb_crop = roi_align(rgb, new_boxes, crop_size)
-            depth_crop = roi_align(depth, new_boxes, crop_size)
-            latent_rgb_rot = self.encoder_img_rot(rgb_crop)
-            latent_depth_rot = self.encoder_depth_rot(depth_crop)
-        else:
-            latent_rgb_rot = latent_rgb
-            latent_depth_rot = latent_depth
-
-        rot_net_out = self.rot_rnn(
-            rgb,
-            depth,
-            prev_pose=prev_pose,
-            latent_rgb=latent_rgb_rot,
-            latent_depth=latent_depth_rot,
-            prev_latent=prev_latent_rot,
-            state=state_rot,
-        )
-
         res = {}
+        state = []
+        decoder_out = []
+        latent = []
+        if self.do_predict_t:
+            t_net_out = self.t_rnn(
+                rgb,
+                depth,
+                prev_pose=prev_pose,
+                latent_rgb=latent_rgb,
+                latent_depth=latent_depth,
+                prev_latent=prev_latent_t,
+                state=state_t,
+            )
+            res["t"] = t_net_out["t"]
+            state += [t_net_out["state"]]
+            decoder_out += [t_net_out.get("decoder_out")]
+            latent += [t_net_out["latent"]]
+        else:
+            res["t"] = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
+
+        if self.do_predict_rot:
+            if self.use_crop_for_rot:
+                padding = 5
+                new_boxes = []
+                for i, boxes_padded in enumerate(bbox):
+                    boxes_padded = boxes_padded.clone()
+                    boxes_padded[..., 0] = boxes_padded[..., 0] - padding
+                    boxes_padded[..., 1] = boxes_padded[..., 1] - padding
+                    boxes_padded[..., 2] = boxes_padded[..., 2] + padding
+                    boxes_padded[..., 3] = boxes_padded[..., 3] + padding
+                    image_size = rgb.shape[-2:]
+                    H, W = image_size
+                    boxes_padded[..., 0].clamp_(min=0, max=W)
+                    boxes_padded[..., 1].clamp_(min=0, max=H)
+                    boxes_padded[..., 2].clamp_(min=0, max=W)
+                    boxes_padded[..., 3].clamp_(min=0, max=H)
+                    new_boxes.append(boxes_padded)
+                crop_size = (60, 80)
+                crop_size = (60 * 2, 80 * 2)
+                rgb_crop = roi_align(rgb, new_boxes, crop_size)
+                depth_crop = roi_align(depth, new_boxes, crop_size)
+                latent_rgb_rot = self.encoder_img_rot(rgb_crop)
+                latent_depth_rot = self.encoder_depth_rot(depth_crop) if self.use_depth else None
+            else:
+                latent_rgb_rot = latent_rgb
+                latent_depth_rot = latent_depth
+
+            rot_net_out = self.rot_rnn(
+                rgb,
+                depth,
+                prev_pose=prev_pose,
+                latent_rgb=latent_rgb_rot,
+                latent_depth=latent_depth_rot,
+                prev_latent=prev_latent_rot,
+                state=state_rot,
+            )
+            res["rot"] = rot_net_out["rot"]
+            state += [rot_net_out["state"]]
+            decoder_out += [rot_net_out.get("decoder_out")]
+            latent += [rot_net_out["latent"]]
+        else:
+            res["rot"] = torch.zeros(bs, self.rot_mlp_out_dim, device=rgb.device)
+
         res.update(
             {
                 "latent_depth": latent_depth,
-                "state": [t_net_out["state"], rot_net_out["state"]],
-                "t": t_net_out["t"],
-                "rot": rot_net_out["rot"],
-                "decoder_out": (
-                    torch.cat([t_net_out.get("decoder_out"), rot_net_out.get("decoder_out")], dim=1)
-                    if self.use_belief_decoder
-                    else None
-                ),
+                "state": state,
+                "decoder_out": (torch.cat(decoder_out, dim=1) if self.use_belief_decoder else None),
             }
         )
 
         if self.use_prev_latent:
-            res["latent"] = torch.cat([t_net_out["latent"], rot_net_out["latent"]], dim=1)
+            res["latent"] = torch.cat(latent, dim=1)
 
         if self.do_predict_2d_t:
             res["center_depth"] = t_net_out["center_depth"]
 
         if self.do_predict_kpts:
-            kpts = self.kpts_mlp(torch.cat([t_net_out["latent"], rot_net_out["latent"]], dim=1))
+            kpts = self.kpts_mlp(torch.cat(latent, dim=1))
             kpts = kpts.view(bs, 8 + 24, 2)
             res["kpts"] = kpts
 
