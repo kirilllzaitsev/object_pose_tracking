@@ -14,6 +14,7 @@ from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import (
     cam_to_2d,
     convert_3d_bbox_to_2d,
+    egocentric_to_allocentric,
     interpolate_bbox_edges,
     world_to_2d,
     world_to_cam,
@@ -47,6 +48,7 @@ class TrackingDataset(Dataset):
         do_normalize_bbox=False,
         do_subtract_bg=False,
         do_normalize_depth=False,
+        use_allocentric_pose=False,
         max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
@@ -75,6 +77,7 @@ class TrackingDataset(Dataset):
         self.do_normalize_bbox = do_normalize_bbox
         self.do_normalize_depth = do_normalize_depth
         self.do_subtract_bg = do_subtract_bg
+        self.use_allocentric_pose = use_allocentric_pose
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -163,7 +166,8 @@ class TrackingDataset(Dataset):
 
         if self.include_pose:
             sample["pose"] = self.get_pose(i)
-            # sample["pose"][:3, :3] = normalize_rotation_matrix(sample["pose"][:3, :3])
+            if self.use_allocentric_pose:
+                sample["pose"] = egocentric_to_allocentric(sample["pose"])
 
         sample["rgb_path"] = self.color_files[i]
         sample["intrinsics"] = self.K
