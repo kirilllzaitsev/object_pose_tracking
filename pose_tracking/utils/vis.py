@@ -18,6 +18,7 @@ from matplotlib import colors
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from PIL import Image, ImageDraw
 from pose_tracking.dataset.ds_common import convert_seq_batch_to_batch_seq
+from pose_tracking.metrics import world_to_cam
 from pose_tracking.utils.common import (
     adjust_depth_for_plt,
     adjust_img_for_plt,
@@ -27,6 +28,7 @@ from pose_tracking.utils.common import (
 from pose_tracking.utils.geom import (
     egocentric_delta_pose_to_pose,
     to_homo,
+    world_to_2d,
     world_to_2d_pt_homo,
 )
 from pose_tracking.utils.kpt_utils import is_torch
@@ -38,7 +40,7 @@ from torchvision.ops.boxes import clip_boxes_to_image
 from tqdm import tqdm
 
 
-def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_rgb=False):
+def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_rgb=False, do_add_text=False):
     """
     @color: BGR
     """
@@ -83,6 +85,27 @@ def draw_xyz_axis(rgb, rt, K, scale=10.0, thickness=2, transparency=0, is_input_
     tmp = tmp.astype(np.uint8)
     if is_input_rgb:
         tmp = cv2.cvtColor(tmp, cv2.COLOR_BGR2RGB)
+
+    if do_add_text:
+        origin_3d_cam = [round(x, 2) for x in world_to_cam(np.array([0.0, 0.0, 0.0]).reshape(-1, 1), rt)[0]]
+        cv2.putText(
+            tmp,
+            f"{origin_3d_cam}",
+            (origin[0], origin[1] - 80),
+            color=0,
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.5,
+        )
+        rot_cam = rt[:3, :3]
+        for i in range(3):
+            cv2.putText(
+                tmp,
+                f"{[round(x, 2) for x in rot_cam[i]]}",
+                (origin[0], origin[1] + 80 + i * 20),
+                color=0,
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=0.5,
+            )
 
     return tmp
 
@@ -626,7 +649,7 @@ def plot_rgb_depth(color, depth, axs=None):
 def plot_depth(depth, ax=None):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        ax.axis('off')
+        ax.axis("off")
     depth = adjust_depth_for_plt(depth)
     im = ax.imshow(depth, cmap="viridis")
     plt.colorbar(im, ax=ax)
