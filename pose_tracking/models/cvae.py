@@ -28,6 +28,7 @@ class CVAE(nn.Module):
         rt_hidden_dim=512,
         use_mlp_for_prev_pose=False,
         use_depth=False,
+        num_samples=128,
     ):
         super().__init__()
         self.z_dim = z_dim
@@ -39,6 +40,9 @@ class CVAE(nn.Module):
         self.encoder_name = encoder_name
         self.encoder_img_weights = encoder_img_weights
         self.norm_layer_type = norm_layer_type
+        self.rt_hidden_dim = rt_hidden_dim
+        self.num_samples = num_samples
+
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
         self.do_predict_3d_rot = do_predict_3d_rot
@@ -46,7 +50,6 @@ class CVAE(nn.Module):
         self.use_prev_latent = use_prev_latent
         self.do_predict_rot = do_predict_rot
         self.do_predict_t = do_predict_t
-        self.rt_hidden_dim = rt_hidden_dim
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
         self.use_depth = use_depth
 
@@ -57,10 +60,10 @@ class CVAE(nn.Module):
             norm_layer_type=norm_layer_type,
             out_dim=encoder_out_dim,
         )
-        self.mu = MLP(in_dim=encoder_out_dim, out_dim=z_dim, hidden_dim=hidden_dim)
-        self.logvar = MLP(in_dim=encoder_out_dim, out_dim=z_dim, hidden_dim=hidden_dim)
+        self.mu = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim)
+        self.logvar = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim)
 
-        self.t_mlp_in_dim = self.rot_mlp_in_dim = z_dim
+        self.t_mlp_in_dim = self.rot_mlp_in_dim = z_dim + encoder_out_dim
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
         if do_predict_2d_t:
             self.t_mlp_out_dim = 2
@@ -122,16 +125,23 @@ class CVAE(nn.Module):
                 num_layers=rt_mlps_num_layers,
                 dropout=dropout_heads,
             )
+        self.pose_encoder = MLP(
+            in_dim=3 + self.rot_mlp_out_dim,
+            out_dim=z_dim,
+            hidden_dim=hidden_dim,
+            num_layers=rt_mlps_num_layers,
+            dropout=dropout_heads,
+        )
 
     def forward(
         self,
         rgb,
+        pose,
         depth=None,
         prev_pose=None,
         latent_rgb=None,
         latent_depth=None,
         prev_latent=None,
-        state=None,
         features_rgb=None,
         **kwargs,
     ):
@@ -179,12 +189,16 @@ class CVAE(nn.Module):
             t_in = torch.cat([t_in, prev_latent], dim=1)
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
-        lat_mu = self.mu(latent)
-        lat_logvar = self.logvar(latent)
+        latent_pose = self.pose_encoder(pose)
+
+        lat_mu = self.mu(latent_pose)
+        lat_logvar = self.logvar(latent_pose)
 
         lat_std = torch.exp(0.5 * lat_logvar)
         eps = torch.randn((bs, self.num_samples, self.z_dim), device=rgb.device)
         lat_sample = eps * lat_std.unsqueeze(1) + lat_mu.unsqueeze(1)
+        # lat_sample concat with latent_pose
+        lat_sample = torch.cat([lat_sample, latent.unsqueeze(1).expand(-1, self.num_samples, -1)], dim=2)
         t_in = lat_sample.flatten(end_dim=1)
         rot_in = lat_sample.flatten(end_dim=1)
 
