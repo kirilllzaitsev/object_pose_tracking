@@ -191,6 +191,11 @@ def get_parser():
     tf_args.add_argument("--tf_track_query_false_positive_prob", type=float, default=0.1)
     tf_args.add_argument("--tf_depth_loss_coef", type=float, default=1)
 
+    cvae_args = parser.add_argument_group("CVAE arguments")
+    cvae_args.add_argument("--cvae_z_dim", default=256, type=int, help="Latent dim")
+    cvae_args.add_argument("--cvae_num_samples", default=256, type=int, help="MC samples")
+    cvae_args.add_argument("--cvae_kl_loss_weight", default=1.0, type=float, help="KL weights")
+
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(
         "--do_predict_2d_t", action="store_true", help="Predict object 2D center and depth separately"
@@ -243,6 +248,7 @@ def get_parser():
             "detr_pretrained",
             "trackformer",
             "memotr",
+            "cvae",
         ],
     )
     model_args.add_argument("--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm"])

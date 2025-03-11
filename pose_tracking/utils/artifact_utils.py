@@ -123,8 +123,13 @@ def load_from_ckpt(
         if "lstm_cell" in key or "rnn_cell" in key:
             new_key = key.replace("lstm_cell", "state_cell").replace("rnn_cell", "state_cell")
             state_dict_model[new_key] = state_dict_model.pop(key)
+    if "t_mlp.layers.2.weight" in state_dict_model and "t_mlp.layers.1.weight" not in state_dict_model:
+        state_dict_model["t_mlp.layers.1.weight"] = state_dict_model.pop("t_mlp.layers.2.weight")
+        state_dict_model["t_mlp.layers.1.bias"] = state_dict_model.pop("t_mlp.layers.2.bias")
+        state_dict_model["rot_mlp.layers.1.weight"] = state_dict_model.pop("rot_mlp.layers.2.weight")
+        state_dict_model["rot_mlp.layers.1.bias"] = state_dict_model.pop("rot_mlp.layers.2.bias")
 
-    model.load_state_dict(state_dicts["model"])
+    model.load_state_dict(state_dict_model)
 
     if optimizer is not None:
         optimizer.load_state_dict(state_dicts["optimizer"])
