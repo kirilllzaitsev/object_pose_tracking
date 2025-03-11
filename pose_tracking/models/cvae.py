@@ -180,9 +180,7 @@ class CVAE(nn.Module):
             rot_in = torch.cat([rot_in, prev_latent], dim=1)
 
         lat_mu = self.mu(latent)
-        lat_logvar = self.mu(latent)
-
-        self.num_samples = 128
+        lat_logvar = self.logvar(latent)
 
         lat_std = torch.exp(0.5 * lat_logvar)
         eps = torch.randn((bs, self.num_samples, self.z_dim), device=rgb.device)
