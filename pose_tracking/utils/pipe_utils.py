@@ -40,6 +40,7 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNSeparated,
     RecurrentCNNVanilla,
 )
+from pose_tracking.models.cvae import CVAE
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -201,6 +202,29 @@ def get_model(args, num_classes=None):
                 do_calibrate_kpt=args.mt_do_calibrate_kpt,
                 **detr_args,
             )
+    elif args.model_name == "cvae":
+        model = CVAE(
+            z_dim=args.cvae_z_dim,
+            hidden_dim=args.hidden_dim,
+            rt_mlps_num_layers=args.rt_mlps_num_layers,
+            encoder_out_dim=args.encoder_out_dim,
+            dropout=args.dropout,
+            dropout_heads=args.dropout_heads,
+            encoder_name=args.encoder_name,
+            encoder_img_weights=args.encoder_img_weights,
+            norm_layer_type=args.norm_layer_type,
+            do_predict_2d_t=args.do_predict_2d_t,
+            do_predict_6d_rot=args.do_predict_6d_rot,
+            do_predict_3d_rot=args.do_predict_3d_rot,
+            use_prev_pose_condition=args.use_prev_pose_condition,
+            use_prev_latent=args.use_prev_latent,
+            do_predict_t=not args.opt_only or "t" in args.opt_only,
+            do_predict_rot=not args.opt_only or "rot" in args.opt_only,
+            rt_hidden_dim=args.rt_hidden_dim,
+            use_mlp_for_prev_pose=args.use_mlp_for_prev_pose,
+            use_depth=args.use_depth,
+            num_samples=args.cvae_num_samples,
+        )
     else:
         num_pts = 256
         priv_dim = num_pts * 3
@@ -360,6 +384,7 @@ def get_trainer(
     args, model, device="cuda", writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
     from pose_tracking.trainer import Trainer
+    from pose_tracking.trainer_cvae import TrainerCVAE
     from pose_tracking.trainer_detr import TrainerDeformableDETR, TrainerTrackformer
     from pose_tracking.trainer_others import TrainerPizza, TrainerVideopose
 
@@ -376,6 +401,8 @@ def get_trainer(
         # trainer_cls = Trainer
     elif "detr" in args.model_name:
         trainer_cls = TrainerDeformableDETR
+    elif "cvae" in args.model_name:
+        trainer_cls = TrainerCVAE
     elif "memotr" in args.model_name:
         from pose_tracking.trainer_memotr import TrainerMemotr
 
@@ -404,6 +431,8 @@ def get_trainer(
         if "memotr" in args.model_name:
             extra_kwargs.update({"config": args.memotr_args})
         extra_kwargs.update({"args": args})
+    elif args.model_name in ["cvae"]:
+        extra_kwargs.update({"kl_loss_coef": args.cvae_kl_loss_coef})
     else:
         extra_kwargs = {}
 
@@ -818,7 +847,17 @@ class Printer:
         self.log_fn(f"## {stage.upper()} ##")
         LOSS_METRICS = [k for k in train_stats if "loss" in k]
         ERROR_METRICS = [k for k in train_stats if "err" in k]
-        ADDITIONAL_METRICS = ["add", "adds", "miou", "5deg5cm", "2deg2cm", "add_abs", "5deg5cm_abs"]
+        ADDITIONAL_METRICS = [
+            "add",
+            "adds",
+            "miou",
+            "5deg5cm",
+            "2deg2cm",
+            "add_abs",
+            "5deg5cm_abs",
+            "t_log_likelihood",
+            "rot_log_likelihood",
+        ]
 
         for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
             msg = []
