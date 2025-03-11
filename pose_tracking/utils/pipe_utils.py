@@ -603,7 +603,7 @@ def get_datasets(
 
     if "val" in ds_types:
         if do_overfit:
-            val_dataset = get_video_ds(
+            val_ds_kwargs_full = dict(
                 ds_video_subdirs=ds_video_subdirs_train,
                 ds_name=ds_name,
                 seq_len=seq_len_max_val,
@@ -619,6 +619,11 @@ def get_datasets(
                 do_predict_rel_pose=do_predict_rel_pose,
                 end_frame_idx=end_frame_idx,
             )
+            val_dataset = get_video_ds(**val_ds_kwargs_full)
+            if "train_as_val" in ds_types:
+                train_as_val_ds_kwargs_full = copy.deepcopy(val_ds_kwargs_full)
+                train_as_val_ds_kwargs_full["max_videos"] = 1
+                res["train_as_val"] = get_video_ds(**train_as_val_ds_kwargs_full)
             assert (
                 set(vds.ds.video_dir for vds in val_dataset.video_datasets)
                 - set(vds.ds.video_dir for vds in train_dataset.video_datasets)
