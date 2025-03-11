@@ -395,11 +395,11 @@ class Trainer:
 
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
-                    out = self.model(
-                        rgb,
-                        depth,
-                        bbox=bbox_2d,
-                        state=None,
+                    out = self.model_forward(
+                        batch_t=batch_t,
+                        prev_latent=prev_latent,
+                        prev_pose=prev_pose,
+                        state=state,
                         features_rgb=features_rgb,
                     )
                     state = out["state"]
@@ -407,16 +407,11 @@ class Trainer:
                     prev_latent = out["latent"] if self.use_prev_latent else None
 
                     if self.do_predict_abs_pose:
-                        t_abs_pose, rot_abs_pose = out["t_abs_pose"], out["rot_abs_pose"]
-                        losses_abs_pose = self.calc_abs_pose_loss_for_rel(
-                            pose_gt_abs, t_pred_abs_pose=t_abs_pose, rot_pred_abs_pose=rot_abs_pose
-                        )
-                        total_losses.append(losses_abs_pose["loss_abs_pose"].item())
-
-                        pose_prev_pred_abs = {"t": t_abs_pose, "rot": rot_abs_pose}
-
+                        losses_abs_pose = out["loss_dict"]["losses_abs_pose"]
+                        total_losses.append(losses_abs_pose["loss_abs_pose"])
                         for k, v in losses_abs_pose.items():
                             seq_stats[k].append(v.item())
+                        pose_prev_pred_abs = {"t": out["t_abs_pose"], "rot": out["rot_abs_pose"]}
                     else:
                         pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
 
@@ -437,12 +432,10 @@ class Trainer:
             if self.use_prev_pose_condition and self.do_predict_rel_pose:
                 prev_pose = pose_prev_pred_abs
 
-            out = self.model(
-                rgb,
-                depth,
-                bbox=bbox_2d,
-                prev_pose=prev_pose,
+            out = self.model_forward(
+                batch_t=batch_t,
                 prev_latent=prev_latent,
+                prev_pose=prev_pose,
                 state=state,
                 features_rgb=features_rgb,
             )
@@ -807,6 +800,31 @@ class Trainer:
             "metrics": seq_metrics,
             "last_step_state": last_step_state,
         }
+
+    def model_forward(self, batch_t, prev_latent=None, prev_pose=None, state=None, features_rgb=None):
+        rgb = batch_t["rgb"]
+        depth = batch_t["depth"]
+        bbox_2d = batch_t["bbox_2d"]
+        pose_gt_abs = batch_t["pose"]
+        res = self.model(
+            rgb=rgb,
+            depth=depth,
+            bbox=bbox_2d,
+            prev_pose=prev_pose,
+            prev_latent=prev_latent,
+            state=state,
+            features_rgb=features_rgb,
+        )
+
+        out = {**res}
+        out["loss_dict"] = {}
+        if self.do_predict_abs_pose:
+            t_abs_pose, rot_abs_pose = res["t_abs_pose"], res["rot_abs_pose"]
+            losses_abs_pose = self.calc_abs_pose_loss_for_rel(
+                pose_gt_abs, t_pred_abs_pose=t_abs_pose, rot_pred_abs_pose=rot_abs_pose
+            )
+            out["loss_dict"]["losses_abs_pose"] = losses_abs_pose
+        return out
 
     def calc_kpt_loss(self, batch_t, out):
         kpts_pred = out["kpts"]
