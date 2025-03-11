@@ -53,6 +53,8 @@ class CVAE(nn.Module):
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
         self.use_depth = use_depth
 
+        self.input_dim = encoder_out_dim * 2 if use_depth else encoder_out_dim
+
         self.encoder_img, _ = get_encoders(
             encoder_name,
             do_freeze=False,
@@ -60,8 +62,8 @@ class CVAE(nn.Module):
             norm_layer_type=norm_layer_type,
             out_dim=encoder_out_dim,
         )
-        self.mu = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim)
-        self.logvar = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim)
+        self.mu = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim, num_layers=3)
+        self.logvar = MLP(in_dim=z_dim, out_dim=z_dim, hidden_dim=hidden_dim, num_layers=3)
 
         self.t_mlp_in_dim = self.rot_mlp_in_dim = z_dim + encoder_out_dim
         self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
@@ -136,7 +138,7 @@ class CVAE(nn.Module):
     def forward(
         self,
         rgb,
-        pose,
+        pose=None,
         depth=None,
         prev_pose=None,
         latent_rgb=None,
@@ -159,10 +161,26 @@ class CVAE(nn.Module):
             latent = torch.cat([latent_rgb, latent_depth], dim=1)
         else:
             latent = latent_rgb
-        extracted_obs = latent
 
-        t_in = extracted_obs
-        rot_in = extracted_obs
+        res["latent"] = latent
+        res["state"] = [None]
+
+        if pose is None:
+            lat_mu = torch.zeros(bs, self.z_dim, device=rgb.device)
+            lat_logvar = torch.zeros(bs, self.z_dim, device=rgb.device)
+        else:
+            latent_pose = self.pose_encoder(pose)
+
+            lat_mu = self.mu(latent_pose)
+            lat_logvar = self.logvar(latent_pose)
+
+        lat_std = torch.exp(0.5 * lat_logvar)
+        eps = torch.randn((bs, self.num_samples, self.z_dim), device=rgb.device)
+        lat_sample = eps * lat_std.unsqueeze(1) + lat_mu.unsqueeze(1)
+
+        latent_t = latent
+        latent_rot = latent
+
         if self.use_prev_pose_condition:
             if prev_pose is None:
                 prev_pose = {
@@ -181,31 +199,31 @@ class CVAE(nn.Module):
             if self.use_mlp_for_prev_pose:
                 t_prev = self.prev_t_mlp(t_prev)
                 rot_prev = self.prev_rot_mlp(prev_pose["rot"])
-            t_in = torch.cat([t_in, t_prev], dim=1)
-            rot_in = torch.cat([rot_in, rot_prev], dim=1)
+            latent_t = torch.cat([latent_t, t_prev], dim=1)
+            latent_rot = torch.cat([latent_rot, rot_prev], dim=1)
         if self.use_prev_latent:
             if prev_latent is None:
                 prev_latent = torch.zeros_like(latent)
-            t_in = torch.cat([t_in, prev_latent], dim=1)
-            rot_in = torch.cat([rot_in, prev_latent], dim=1)
+            latent_t = torch.cat([latent_t, prev_latent], dim=1)
+            latent_rot = torch.cat([latent_rot, prev_latent], dim=1)
 
-        latent_pose = self.pose_encoder(pose)
+        t_in = (torch.cat([lat_sample, latent_t.unsqueeze(1).expand(-1, self.num_samples, -1)], dim=2)).flatten(
+            end_dim=1
+        )
+        rot_in = (torch.cat([lat_sample, latent_rot.unsqueeze(1).expand(-1, self.num_samples, -1)], dim=2)).flatten(
+            end_dim=1
+        )
 
-        lat_mu = self.mu(latent_pose)
-        lat_logvar = self.logvar(latent_pose)
-
-        lat_std = torch.exp(0.5 * lat_logvar)
-        eps = torch.randn((bs, self.num_samples, self.z_dim), device=rgb.device)
-        lat_sample = eps * lat_std.unsqueeze(1) + lat_mu.unsqueeze(1)
-        # lat_sample concat with latent_pose
-        lat_sample = torch.cat([lat_sample, latent.unsqueeze(1).expand(-1, self.num_samples, -1)], dim=2)
-        t_in = lat_sample.flatten(end_dim=1)
-        rot_in = lat_sample.flatten(end_dim=1)
-
-        t = self.t_mlp(t_in)
+        if self.do_predict_t:
+            t = self.t_mlp(t_in).reshape(bs, self.num_samples, self.t_mlp_out_dim)
+        else:
+            t = torch.zeros(bs, self.num_samples, self.t_mlp_out_dim, device=rgb.device)
         res["t"] = t
 
-        rot = self.rot_mlp(rot_in)
+        if self.do_predict_rot:
+            rot = self.rot_mlp(rot_in).reshape(bs, self.num_samples, self.rot_mlp_out_dim)
+        else:
+            rot = torch.zeros(bs, self.num_samples, self.rot_mlp_out_dim, device=rgb.device)
         res["rot"] = rot
 
         res["mu"] = lat_mu
