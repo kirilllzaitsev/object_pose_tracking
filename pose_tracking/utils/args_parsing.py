@@ -194,7 +194,7 @@ def get_parser():
     cvae_args = parser.add_argument_group("CVAE arguments")
     cvae_args.add_argument("--cvae_z_dim", default=256, type=int, help="Latent dim")
     cvae_args.add_argument("--cvae_num_samples", default=256, type=int, help="MC samples")
-    cvae_args.add_argument("--cvae_kl_loss_weight", default=1.0, type=float, help="KL weights")
+    cvae_args.add_argument("--cvae_kl_loss_coef", default=1.0, type=float, help="KL weight")
 
     model_args = parser.add_argument_group("Model arguments")
     model_args.add_argument(

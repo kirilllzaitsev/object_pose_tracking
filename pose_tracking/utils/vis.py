@@ -560,7 +560,7 @@ def plot_seq(
                     is_normalized=bbox_is_normalized,
                     label=label,
                 )
-            elif key in ["pose", "pose_mat_pred", "pose_mat_pred_abs", "pose_mat_gt_abs", "pose_mat_prev_gt_abs"]:
+            elif "pose" in key:
                 pose = img
                 if pose.shape[-2:] != (4, 4):
                     pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)

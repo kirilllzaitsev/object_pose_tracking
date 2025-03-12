@@ -171,7 +171,9 @@ def load_artifacts_from_comet(
     }
     if args_file_path is not None:
         results["args_path"] = args_file_path
-        results["args"] = load_args_from_file(args_file_path)
+        args = load_args_from_file(args_file_path)
+        args.ckpt_path = model_checkpoint_path
+        results["args"] = args
     if include_session:
         results["session_checkpoint_path"] = session_checkpoint_path
     return results

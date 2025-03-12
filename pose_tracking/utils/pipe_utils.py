@@ -288,9 +288,12 @@ def get_model(args, num_classes=None):
         )
 
     if args.ckpt_path:
+        print(f"Loading model from {args.ckpt_path}")
         model = load_from_ckpt(args.ckpt_path, model)["model"]
     if args.ckpt_exp_name:
-        model = load_model_from_exp(model, args.ckpt_exp_name, model_artifact_name="model_best")
+        model_artifact_name = "model_best"
+        print(f"Loading model from {model_artifact_name} artifact at {args.ckpt_exp_name}")
+        model = load_model_from_exp(model, args.ckpt_exp_name, model_artifact_name=model_artifact_name)
 
     return model
 
@@ -432,7 +435,7 @@ def get_trainer(
             extra_kwargs.update({"config": args.memotr_args})
         extra_kwargs.update({"args": args})
     elif args.model_name in ["cvae"]:
-        extra_kwargs.update({"kl_loss_coef": args.cvae_kl_loss_coef})
+        extra_kwargs = {"kl_loss_coef": args.cvae_kl_loss_coef}
     else:
         extra_kwargs = {}
 
