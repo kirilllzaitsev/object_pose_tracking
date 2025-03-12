@@ -237,6 +237,8 @@ def get_parser():
         default="cnnlstm",
         help="Model name",
         choices=[
+            "cnn",
+            "kpt_pose",
             "cnnlstm",
             "cnnlstm_sep",
             "cnnlstm_vanilla",

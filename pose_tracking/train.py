@@ -297,7 +297,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         num_classes=num_classes,
     )
 
-    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae"]):
+    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose"]):
         optimizer = optim.AdamW(
             [
                 {

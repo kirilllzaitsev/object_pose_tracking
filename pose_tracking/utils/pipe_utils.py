@@ -41,6 +41,7 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNVanilla,
 )
 from pose_tracking.models.cvae import CVAE
+from pose_tracking.models.baselines import CNN, KeypointPose
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -238,6 +239,10 @@ def get_model(args, num_classes=None):
             model_cls = RecurrentCNNVanilla
         elif args.model_name == "cnnlstm_sep":
             model_cls = RecurrentCNNSeparated
+        elif args.model_name == "cnn":
+            model_cls = CNN
+        elif args.model_name == "kpt_pose":
+            model_cls = KeypointPose
         elif args.model_name == "cnnlstm_double":
             model_cls = RecurrentCNNDouble
             extra_kwargs["use_crop_for_rot"] = args.use_crop_for_rot
