@@ -773,9 +773,10 @@ class Trainer:
         else:
             last_step_state = None
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = np.mean(v)
+        if not self.do_debug:
+            for stats in [seq_stats, seq_metrics]:
+                for k, v in stats.items():
+                    stats[k] = np.mean(v)
 
         if self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses

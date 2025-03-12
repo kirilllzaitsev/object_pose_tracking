@@ -190,6 +190,7 @@ def get_parser():
     tf_args.add_argument("--tf_track_query_false_negative_prob", type=float, default=0.4)
     tf_args.add_argument("--tf_track_query_false_positive_prob", type=float, default=0.1)
     tf_args.add_argument("--tf_depth_loss_coef", type=float, default=1)
+    tf_args.add_argument("--tf_transformer_hidden_dim", type=int, default=288)
 
     cvae_args = parser.add_argument_group("CVAE arguments")
     cvae_args.add_argument("--cvae_z_dim", default=256, type=int, help="Latent dim")

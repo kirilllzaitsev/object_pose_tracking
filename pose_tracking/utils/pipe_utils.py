@@ -361,7 +361,7 @@ def get_trackformer_args(args):
     tf_args.dec_layers = args.mt_n_layers
     tf_args.dropout = args.dropout
     tf_args.dropout_heads = args.dropout_heads
-    tf_args.hidden_dim = 288
+    tf_args.hidden_dim = args.tf_transformer_hidden_dim
     tf_args.rot_out_dim = args.rot_out_dim
     tf_args.t_out_dim = args.t_out_dim
 

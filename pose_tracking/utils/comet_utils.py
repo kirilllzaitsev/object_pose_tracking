@@ -154,6 +154,7 @@ def load_artifacts_from_comet(
                 assert len(model_assets) > 0, f"No model found with name {artifact_name}"
             model_asset = model_assets[0]
             load_asset(exp_api, model_asset["assetId"], model_checkpoint_path)
+            weights_not_exist = False
             if include_session:
                 session_not_exist = not os.path.exists(session_checkpoint_path)
                 if session_not_exist:
@@ -172,7 +173,8 @@ def load_artifacts_from_comet(
     if args_file_path is not None:
         results["args_path"] = args_file_path
         args = load_args_from_file(args_file_path)
-        args.ckpt_path = model_checkpoint_path
+        if os.path.exists(model_checkpoint_path):
+            args.ckpt_path = model_checkpoint_path
         results["args"] = args
     if include_session:
         results["session_checkpoint_path"] = session_checkpoint_path
