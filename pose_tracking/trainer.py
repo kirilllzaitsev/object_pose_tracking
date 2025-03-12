@@ -396,11 +396,12 @@ class Trainer:
                     pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
                     out = self.model(
-                        rgb,
-                        depth,
+                        rgb=rgb,
+                        depth=depth,
                         bbox=bbox_2d,
                         state=None,
                         features_rgb=features_rgb,
+                        bbox_kpts=batch_t["bbox_3d_kpts"],
                     )
                     state = out["state"]
 
@@ -438,13 +439,14 @@ class Trainer:
                 prev_pose = pose_prev_pred_abs
 
             out = self.model(
-                rgb,
-                depth,
+                rgb=rgb,
+                depth=depth,
                 bbox=bbox_2d,
                 prev_pose=prev_pose,
                 prev_latent=prev_latent,
                 state=state,
                 features_rgb=features_rgb,
+                bbox_kpts=batch_t["bbox_3d_kpts"],
             )
 
             # POSTPROCESS OUTPUTS
@@ -674,8 +676,8 @@ class Trainer:
 
             if do_vis:
                 # save inputs to the exp dir
-                vis_keys = ["rgb", "depth", "intrinsics"]
-                for k in ["mask", "mesh_bbox", "pts"]:
+                vis_keys = ["rgb", "intrinsics"]
+                for k in ["mask", "mesh_bbox", "pts", "depth"]:
                     if k in batch_t and len(batch_t[k]) > 0:
                         vis_keys.append(k)
                 for k in vis_keys:
