@@ -43,6 +43,7 @@ class TrackingDataset(Dataset):
         include_mask=True,
         include_pose=True,
         include_bbox_2d=False,
+        include_bbox_3d=True,
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
@@ -72,6 +73,7 @@ class TrackingDataset(Dataset):
         self.include_depth = include_depth
         self.include_pose = include_pose
         self.include_bbox_2d = include_bbox_2d
+        self.include_bbox_3d = include_bbox_3d
         self.do_erode_mask = do_erode_mask
         self.do_convert_depth_to_m = do_convert_depth_to_m
         self.do_normalize_bbox = do_normalize_bbox
@@ -178,6 +180,15 @@ class TrackingDataset(Dataset):
             sample["mesh_bbox"] = self.mesh_bbox
             sample["mesh_diameter"] = self.mesh_diameter
 
+        if (self.include_bbox_2d and self.bbox_num_kpts == 32) or self.include_bbox_3d:
+            ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
+            sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
+            bbox_3d_kpts = ibbs_res["all_points"]
+            if self.include_bbox_3d:
+                sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
+        else:
+            bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
+
         if self.include_bbox_2d:
             if not self.include_mask:
                 mask = self.get_mask(i)
@@ -204,12 +215,6 @@ class TrackingDataset(Dataset):
                         bbox_2d[3] - bbox_2d[1],
                     ]
                 )
-            if self.bbox_num_kpts == 32:
-                ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
-                sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
-                bbox_3d_kpts = ibbs_res["all_points"]
-            else:
-                bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
 
             bbox_3d_kpts = world_to_cam(bbox_3d_kpts, sample["pose"])
             sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[:, 2:]
