@@ -72,9 +72,6 @@ class TrainerCVAE(Trainer):
 
         total_losses = []
 
-        if self.do_debug:
-            self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
-
         if do_vis:
             vis_batch_idxs = list(range(min(batch_size, 8)))
             vis_data = defaultdict(list)
@@ -543,9 +540,10 @@ class TrainerCVAE(Trainer):
         else:
             last_step_state = None
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = np.mean(v)
+        if not self.do_debug:
+            for stats in [seq_stats, seq_metrics]:
+                for k, v in stats.items():
+                    stats[k] = np.mean(v)
 
         if self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses

@@ -11,14 +11,8 @@ from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
 from pose_tracking.utils.common import detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
-from pose_tracking.utils.geom import (
-    convert_2d_t_to_3d,
-    egocentric_delta_pose_to_pose,
-)
-from pose_tracking.utils.misc import (
-    is_empty,
-    reduce_dict,
-)
+from pose_tracking.utils.geom import convert_2d_t_to_3d, egocentric_delta_pose_to_pose
+from pose_tracking.utils.misc import is_empty, reduce_dict
 from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
     matrix_to_axis_angle,
@@ -144,7 +138,9 @@ class TrainerMemotr(TrainerDeformableDETR):
             )
             if is_train:
                 if t < seq_length - 1:
-                    tracks = self.model_without_ddp.postprocess_single_frame(previous_tracks, new_tracks, unmatched_dets)
+                    tracks = self.model_without_ddp.postprocess_single_frame(
+                        previous_tracks, new_tracks, unmatched_dets
+                    )
             else:
                 # raise RuntimeError
                 tracks = self.model_without_ddp.postprocess_single_frame(previous_tracks, new_tracks, None)
@@ -168,6 +164,9 @@ class TrainerMemotr(TrainerDeformableDETR):
 
             # reduce losses over all GPUs for logging purposes
             loss_dict_reduced_scaled = reduce_dict(loss_dict)
+            loss_dict_reduced_scaled["loss_bbox"] = loss_dict_reduced_scaled.pop("box_l1_loss")
+            loss_dict_reduced_scaled["loss_giou"] = loss_dict_reduced_scaled.pop("box_giou_loss")
+            loss_dict_reduced_scaled["loss_ce"] = loss_dict_reduced_scaled.pop("label_focal_loss")
             losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
             # optim
@@ -421,9 +420,8 @@ class TrainerMemotr(TrainerDeformableDETR):
         # check frame grads
         frame = tensor_list_to_nested_tensor(tensor_list=frame).to(self.device)
         out = self.model(frame=frame, tracks=tracks)
-        loss_dict, log_dict = self.criterion.get_mean_by_n_gts()
+        loss_dict, _ = self.criterion.get_mean_by_n_gts()
         return {
             "out": out,
             "loss_dict": loss_dict,
-            "log_dict": log_dict,
         }
