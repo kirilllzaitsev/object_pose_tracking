@@ -200,6 +200,128 @@ class CNN(nn.Module):
         return res
 
 
+class KeypointCNN(nn.Module):
+    def __init__(
+        self,
+        num_kpts=32,
+        hidden_dim=512,
+        rt_mlps_num_layers=1,
+        encoder_out_dim=512,
+        dropout=0.0,
+        dropout_heads=0.0,
+        encoder_name="resnet18",
+        encoder_img_weights="imagenet",
+        norm_layer_type="frozen_bn",
+        do_predict_2d_t=False,
+        do_predict_6d_rot=False,
+        do_predict_3d_rot=False,
+        use_prev_pose_condition=False,
+        use_prev_latent=False,
+        do_predict_rot=True,
+        do_predict_t=True,
+        rt_hidden_dim=512,
+        use_mlp_for_prev_pose=False,
+        use_depth=False,
+        **kwargs,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.rt_mlps_num_layers = rt_mlps_num_layers
+        self.encoder_out_dim = encoder_out_dim
+        self.dropout = dropout
+        self.dropout_heads = dropout_heads
+        self.encoder_name = encoder_name
+        self.encoder_img_weights = encoder_img_weights
+        self.norm_layer_type = norm_layer_type
+        self.rt_hidden_dim = rt_hidden_dim
+        self.num_kpts = num_kpts
+
+        self.do_predict_2d_t = do_predict_2d_t
+        self.do_predict_6d_rot = do_predict_6d_rot
+        self.do_predict_3d_rot = do_predict_3d_rot
+        self.use_prev_pose_condition = use_prev_pose_condition
+        self.use_prev_latent = use_prev_latent
+        self.do_predict_rot = do_predict_rot
+        self.do_predict_t = do_predict_t
+        self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
+        self.use_depth = use_depth
+
+        self.input_dim = encoder_out_dim * 2 if use_depth else encoder_out_dim
+        self.rot_mlp_out_dim = 6 if do_predict_6d_rot else (3 if do_predict_3d_rot else 4)
+        self.t_mlp_out_dim = 2 if do_predict_2d_t else 3
+
+        self.encoder_img, self.encoder_depth = get_encoders(
+            encoder_name,
+            do_freeze=False,
+            weights_rgb=encoder_img_weights,
+            norm_layer_type=norm_layer_type,
+            out_dim=encoder_out_dim,
+        )
+
+        if not self.use_depth:
+            self.encoder_depth = None
+
+        self.t_mlp_in_dim = self.rot_mlp_in_dim = encoder_out_dim
+
+        if use_prev_latent:
+            self.t_mlp_in_dim += self.input_dim
+
+        self.t_mlp = MLP(
+            in_dim=self.t_mlp_in_dim,
+            out_dim=num_kpts * 3,
+            hidden_dim=self.rt_hidden_dim,
+            num_layers=rt_mlps_num_layers,
+            act_out=None,
+            dropout=dropout_heads,
+        )
+
+    def forward(
+        self,
+        rgb,
+        depth=None,
+        prev_pose=None,
+        latent_rgb=None,
+        latent_depth=None,
+        prev_latent=None,
+        features_rgb=None,
+        **kwargs,
+    ):
+
+        if features_rgb is None:
+            latent_rgb = self.encoder_img(rgb) if latent_rgb is None else latent_rgb
+        else:
+            latent_rgb = features_rgb
+        if self.use_depth:
+            latent_depth = self.encoder_depth(depth) if latent_depth is None else latent_depth
+
+        bs = latent_rgb.size(0)
+        res = {}
+        if self.use_depth:
+            latent = torch.cat([latent_rgb, latent_depth], dim=1)
+        else:
+            latent = latent_rgb
+
+        res["latent"] = latent
+        res["state"] = [None]
+
+        if self.use_prev_latent:
+            if prev_latent is None:
+                prev_latent = torch.zeros_like(latent)
+            latent = torch.cat([latent, prev_latent], dim=1)
+
+        kpt_in = latent
+
+        kpts = self.t_mlp(kpt_in).view(bs, self.num_kpts, 3)
+        res["kpts"] = kpts
+
+        t = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
+        rot = torch.zeros(bs, self.rot_mlp_out_dim, device=rgb.device)
+        res["t"] = t
+        res["rot"] = rot
+
+        return res
+
+
 class KeypointPose(nn.Module):
     def __init__(
         self,
