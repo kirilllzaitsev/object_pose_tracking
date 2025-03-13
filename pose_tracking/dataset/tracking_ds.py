@@ -181,11 +181,12 @@ class TrackingDataset(Dataset):
             sample["mesh_diameter"] = self.mesh_diameter
 
         if (self.include_bbox_2d and self.bbox_num_kpts == 32) or self.include_bbox_3d:
-            ibbs_res = interpolate_bbox_edges(self.mesh_bbox, num_points=24)
+            ibbs_res = interpolate_bbox_edges(copy.deepcopy(self.mesh_bbox), num_points=24)
             sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
             bbox_3d_kpts = ibbs_res["all_points"]
             if self.include_bbox_3d:
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
+                sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
         else:
             bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
 
