@@ -2,12 +2,12 @@ import math
 
 import cv2
 import numpy as np
-from pose_tracking.utils.pose import matrix_to_quaternion
-from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 import torch
 from pose_tracking.config import logger
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.misc import is_tensor, pick_library
+from pose_tracking.utils.pose import matrix_to_quaternion
+from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from scipy.spatial.transform import Rotation as R
 from transforms3d.axangles import axangle2mat
 from transforms3d.quaternions import axangle2quat, mat2quat, qmult, quat2mat
@@ -73,14 +73,17 @@ def get_inv_pose(pose=None, rot=None, t=None):
         assert rot is None and t is None
         rot = pose[..., :3, :3]
         t = pose[..., :3, 3]
-    lib = torch if is_tensor(t) else np
+    lib = pick_library(t)
     inv_pose = lib.eye(4)
     if is_tensor(t):
         inv_pose = inv_pose.to(t.device)
+        inv_rot = rot.transpose(-1, -2)
+    else:
+        inv_rot = rot.swapaxes(-1, -2)
     if len(rot.shape) == 3:
         inv_pose = inv_pose[None].repeat(len(rot), 1, 1)
-    inv_pose[..., :3, :3] = rot.transpose(-1, -2)
-    inv_pose[..., :3, 3] = -lib.einsum("...ij,...j->...i", rot.transpose(-1, -2), t)
+    inv_pose[..., :3, :3] = inv_rot
+    inv_pose[..., :3, 3] = -lib.einsum("...ij,...j->...i", inv_rot, t)
     return inv_pose
 
 
@@ -213,7 +216,13 @@ def calibrate_2d_pts(pts, K):
 def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
     """Extract r and t deltas from two poses in the same frame"""
     trans_delta = cur_pose_mat[..., :3, 3] - prev_pose_mat[..., :3, 3]
-    rot_mat_delta = cur_pose_mat[..., :3, :3] @ prev_pose_mat[..., :3, :3].transpose(-2, -1)
+
+    if is_tensor(prev_pose_mat):
+        prev_rot_mat_inv = prev_pose_mat[..., :3, :3].transpose(-2, -1)
+    else:
+        prev_rot_mat_inv = prev_pose_mat[..., :3, :3].swapaxes(-2, -1)
+
+    rot_mat_delta = cur_pose_mat[..., :3, :3] @ prev_rot_mat_inv
     return trans_delta, rot_mat_delta
 
 
