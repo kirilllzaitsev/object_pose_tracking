@@ -220,7 +220,7 @@ class Trainer:
             self.train_epoch_count += 1
         running_stats = defaultdict(list)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
-        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
+        do_vis = self.do_vis and (self.train_epoch_count - 1) % self.vis_epoch_freq == 0 and stage == "train"
 
         if self.use_seq_len_curriculum:
             if self.train_epoch_count % self.seq_len_curriculum_step_epoch_freq == 0:
@@ -326,7 +326,7 @@ class Trainer:
 
         total_losses = []
 
-        if self.do_debug:
+        if self.do_debug and "lstm" in self.model_name:
             self.processed_data["state"].append(detach_and_cpu({"hx": self.model.hx, "cx": self.model.cx}))
 
         if do_vis:
@@ -586,9 +586,9 @@ class Trainer:
             # depth loss
             if self.use_belief_decoder:
                 loss_depth = F.mse_loss(out["decoder_out"]["depth_final"], out["latent_depth"])
+                loss += loss_depth
             else:
                 loss_depth = torch.tensor(0.0).to(self.device)
-            loss += loss_depth
 
             # priv loss
             if "priv_decoded" in out:
