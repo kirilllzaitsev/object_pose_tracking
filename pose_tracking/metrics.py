@@ -78,7 +78,7 @@ def calc_metrics(
         return res
     if use_miou:
         assert bbox_3d is not None
-        bbox_3d = cast_to_numpy(bbox_3d)
+        bbox_3d = copy.deepcopy(cast_to_numpy(bbox_3d))
         if is_meters:
             bbox_3d *= 1000
         miou = calc_3d_iou_new(

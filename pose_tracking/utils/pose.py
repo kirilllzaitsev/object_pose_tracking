@@ -24,7 +24,7 @@ def convert_r_t_to_rt(r, t, scale_translation=1.0):
 
 def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
     # assumes translation occupies the first 3 elements of the pose vector
-    if pose.shape[-1] == 3:
+    if pose.shape[-2:] == (4, 4):
         return pose
     t = pose[..., :3]
     pose_matrix = torch.eye(4, device=pose.device)
