@@ -41,7 +41,7 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNVanilla,
 )
 from pose_tracking.models.cvae import CVAE
-from pose_tracking.models.baselines import CNN, KeypointPose
+from pose_tracking.models.baselines import CNN, KeypointCNN, KeypointPose
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -241,6 +241,8 @@ def get_model(args, num_classes=None):
             model_cls = RecurrentCNNSeparated
         elif args.model_name == "cnn":
             model_cls = CNN
+        elif args.model_name == "cnn_kpt":
+            model_cls = KeypointCNN
         elif args.model_name == "kpt_pose":
             model_cls = KeypointPose
         elif args.model_name == "cnnlstm_double":
@@ -392,6 +394,7 @@ def get_trainer(
     args, model, device="cuda", writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
     from pose_tracking.trainer import Trainer
+    from pose_tracking.trainer_kpt import TrainerKeypoints
     from pose_tracking.trainer_cvae import TrainerCVAE
     from pose_tracking.trainer_detr import TrainerDeformableDETR, TrainerTrackformer
     from pose_tracking.trainer_others import TrainerPizza, TrainerVideopose
@@ -411,6 +414,8 @@ def get_trainer(
         trainer_cls = TrainerDeformableDETR
     elif "cvae" in args.model_name:
         trainer_cls = TrainerCVAE
+    elif "cnn_kpt" in args.model_name:
+        trainer_cls = TrainerKeypoints
     elif "memotr" in args.model_name:
         from pose_tracking.trainer_memotr import TrainerMemotr
 

@@ -239,6 +239,7 @@ def get_parser():
         choices=[
             "cnn",
             "kpt_pose",
+            "cnn_kpt",
             "cnnlstm",
             "cnnlstm_sep",
             "cnnlstm_vanilla",

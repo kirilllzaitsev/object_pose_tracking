@@ -297,7 +297,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         num_classes=num_classes,
     )
 
-    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose"]):
+    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose", "cnn_kpt"]):
         optimizer = optim.AdamW(
             [
                 {
@@ -385,7 +385,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     stage="train_as_val",
                 )
             if is_main_process:
-                for stage, stats in zip(['val', 'train_as_val'], [val_stats, train_as_val_stats]):
+                for stage, stats in zip(["val", "train_as_val"], [val_stats, train_as_val_stats]):
                     printer.print_stats(stats, stage)
                     for k, v in stats.items():
                         history[stage][k].append(v)
