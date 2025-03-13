@@ -41,9 +41,9 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
 def convert_rot_vector_to_matrix(rot, rot_repr="quaternion"):
     if rot.shape[-1] == 4:
         rot_mat = quaternion_to_matrix(rot)
-    if rot.shape[-1] == 3:
+    elif rot.shape[-1] == 3:
         rot_mat = axis_angle_to_matrix(rot)
-    if rot.shape[-1] == 6:
+    elif rot.shape[-1] == 6:
         rot_mat = rotation_6d_to_matrix(rot)
     else:
         raise ValueError(f"Unknown rotation representation: {rot.shape}")
