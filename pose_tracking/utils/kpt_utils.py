@@ -371,7 +371,9 @@ def kabsch_torch_batched(P, Q):
     d = torch.det(torch.matmul(Vt.transpose(1, 2), U.transpose(1, 2)))  # B
     flip = d < 0.0
     if flip.any().item():
-        Vt[flip, -1] *= -1.0
+        flip_expanded = flip.unsqueeze(1).expand_as(Vt[:, -1])
+        new_last = torch.where(flip_expanded, -Vt[:, -1], Vt[:, -1])
+        Vt = torch.cat([Vt[:, :-1], new_last.unsqueeze(1)], dim=1)
 
     # Optimal rotation
     R = torch.matmul(Vt.transpose(1, 2), U.transpose(1, 2))
