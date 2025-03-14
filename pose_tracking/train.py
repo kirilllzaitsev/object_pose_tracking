@@ -364,10 +364,15 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         for k, v in train_stats.items():
             history["train"][k].append(v)
 
+        last_lrs_before = lr_scheduler.get_last_lr()
         if args.lrs_type == "step" or not args.use_lrs:
             lr_scheduler.step()
         else:
             lr_scheduler.step(history["train"]["loss"][-1])
+        last_lrs_after = lr_scheduler.get_last_lr()
+        for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
+            if lr_before != lr_after:
+                logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
 
         # clip lr to min value 1e-6
         for param_group in optimizer.param_groups:
