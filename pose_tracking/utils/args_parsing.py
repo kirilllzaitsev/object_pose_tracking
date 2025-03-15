@@ -240,6 +240,7 @@ def get_parser():
             "cnn",
             "kpt_pose",
             "cnn_kpt",
+            "kpt_kpt",
             "cnnlstm",
             "cnnlstm_sep",
             "cnnlstm_vanilla",

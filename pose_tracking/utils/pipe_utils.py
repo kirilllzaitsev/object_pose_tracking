@@ -41,7 +41,7 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNVanilla,
 )
 from pose_tracking.models.cvae import CVAE
-from pose_tracking.models.baselines import CNN, KeypointCNN, KeypointPose
+from pose_tracking.models.baselines import CNN, KeypointCNN, KeypointKeypoint, KeypointPose
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -245,6 +245,8 @@ def get_model(args, num_classes=None):
             model_cls = KeypointCNN
         elif args.model_name == "kpt_pose":
             model_cls = KeypointPose
+        elif args.model_name == "kpt_kpt":
+            model_cls = KeypointKeypoint
         elif args.model_name == "cnnlstm_double":
             model_cls = RecurrentCNNDouble
             extra_kwargs["use_crop_for_rot"] = args.use_crop_for_rot
@@ -414,7 +416,7 @@ def get_trainer(
         trainer_cls = TrainerDeformableDETR
     elif "cvae" in args.model_name:
         trainer_cls = TrainerCVAE
-    elif "cnn_kpt" in args.model_name:
+    elif any(x in args.model_name for x in ["cnn_kpt", "kpt_kpt"]):
         trainer_cls = TrainerKeypoints
     elif "memotr" in args.model_name:
         from pose_tracking.trainer_memotr import TrainerMemotr
@@ -491,6 +493,7 @@ def get_trainer(
         use_seq_len_curriculum=args.use_seq_len_curriculum,
         do_predict_abs_pose=args.do_predict_abs_pose,
         use_pnp_for_rot_pred=args.use_pnp_for_rot_pred,
+        bbox_num_kpts=args.bbox_num_kpts,
         **extra_kwargs,
     )
 

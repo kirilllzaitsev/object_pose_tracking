@@ -311,7 +311,7 @@ class KeypointCNN(nn.Module):
 
         kpt_in = latent
 
-        kpts = self.t_mlp(kpt_in).view(bs, self.num_kpts, 3)
+        kpts = self.t_mlp(kpt_in).reshape(bs, self.num_kpts, 3)
         res["kpts"] = kpts
 
         t = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
@@ -325,7 +325,7 @@ class KeypointCNN(nn.Module):
 class KeypointPose(nn.Module):
     def __init__(
         self,
-        num_kpts=32,
+        bbox_num_kpts=32,
         hidden_dim=512,
         rt_mlps_num_layers=1,
         encoder_out_dim=512,
@@ -356,7 +356,7 @@ class KeypointPose(nn.Module):
         self.encoder_img_weights = encoder_img_weights
         self.norm_layer_type = norm_layer_type
         self.rt_hidden_dim = rt_hidden_dim
-        self.num_kpts = num_kpts
+        self.num_kpts = bbox_num_kpts
 
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot

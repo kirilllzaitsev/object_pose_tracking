@@ -107,6 +107,7 @@ class Trainer:
         do_predict_abs_pose=False,
         seq_len_max=None,
         seq_len_curriculum_step_epoch_freq=10,
+        bbox_num_kpts=32,
         **kwargs,
     ):
         assert criterion_pose is not None or (
@@ -154,6 +155,7 @@ class Trainer:
         self.max_clip_grad_norm = max_clip_grad_norm
         self.tf_t_loss_coef = tf_t_loss_coef
         self.tf_rot_loss_coef = tf_rot_loss_coef
+        self.bbox_num_kpts = bbox_num_kpts
         if use_seq_len_curriculum:
             self.seq_len_init = 2 if do_predict_rel_pose else 1
             self.seq_len_current = self.seq_len_init
