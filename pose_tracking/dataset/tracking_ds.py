@@ -187,6 +187,7 @@ class TrackingDataset(Dataset):
             if self.include_bbox_3d:
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
+                sample["bbox_3d_kpts_corners"] = world_to_cam(self.mesh_bbox, sample["pose"]).astype(np.float32)
         else:
             bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
 
