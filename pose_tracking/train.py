@@ -14,6 +14,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.optim as optim
+from comet_ml.integration.pytorch import watch
 from pose_tracking.callbacks import EarlyStopping
 from pose_tracking.config import (
     DATA_DIR,
@@ -297,7 +298,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         num_classes=num_classes,
     )
 
-    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose", "cnn_kpt"]):
+    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose", "cnn_kpt", "kpt_kpt"]):
         optimizer = optim.AdamW(
             [
                 {
@@ -348,6 +349,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     printer = Printer(logger)
     best_val_loss = np.inf
     history = defaultdict(lambda: defaultdict(list))
+    if is_main_process:
+        log_model_stats_epoch_freq = 5
+        steps_per_epoch = len(train_loader) * args.seq_len
+        watch(model, log_step_interval=steps_per_epoch * log_model_stats_epoch_freq)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
@@ -369,14 +374,12 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             lr_scheduler.step()
         else:
             lr_scheduler.step(history["train"]["loss"][-1])
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
         last_lrs_after = lr_scheduler.get_last_lr()
         for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
             if lr_before != lr_after:
                 logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
-
-        # clip lr to min value 1e-6
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
 
         if epoch % args.val_epoch_freq == 0:
             model.eval()
