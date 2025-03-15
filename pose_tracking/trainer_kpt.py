@@ -118,6 +118,7 @@ class TrainerKeypoints(Trainer):
         state = None
         do_skip_first_step = False
         prev_kpts = None
+        kpts_key = "bbox_3d_kpts" if self.bbox_num_kpts == 32 else "bbox_3d_kpts_corners"
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -148,15 +149,14 @@ class TrainerKeypoints(Trainer):
                         bbox=bbox_2d,
                         state=None,
                         features_rgb=features_rgb,
-                        bbox_kpts=batch_t["bbox_3d_kpts"],
+                        bbox_kpts=batch_t[kpts_key],
                     )
                     state = out["state"]
 
                     prev_latent = out["latent"] if self.use_prev_latent else None
+                    prev_kpts = out["kpts"]
 
                     pose_prev_pred_abs = {"t": t_gt_abs, "rot": rot_gt_abs}
-
-                    prev_kpts = out["kpts"]
 
                     if save_preds:
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
@@ -175,7 +175,8 @@ class TrainerKeypoints(Trainer):
                 prev_latent=prev_latent,
                 state=state,
                 features_rgb=features_rgb,
-                bbox_kpts=batch_t["bbox_3d_kpts"],
+                bbox_kpts=batch_t[kpts_key],
+                prev_bbox_kpts=batched_seq[t - 1][kpts_key],
             )
 
             # POSTPROCESS OUTPUTS
@@ -196,7 +197,7 @@ class TrainerKeypoints(Trainer):
             #     [self.pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
             # )
             if self.do_predict_rel_pose:
-                bbox_3d_kpts_prev = batched_seq[t - 1]["bbox_3d_kpts"]
+                bbox_3d_kpts_prev = batched_seq[t - 1][kpts_key]
                 bbox_3d_kpts_cur = bbox_3d_kpts_prev + kpts_pred
                 ka_rot, ka_t, _ = kabsch_torch_batched(bbox_3d_kpts_prev, bbox_3d_kpts_cur)
             else:
@@ -326,9 +327,9 @@ class TrainerKeypoints(Trainer):
                 loss += loss_priv * 0.01
 
             # kpt loss
-            kpts_gt = batch_t["bbox_3d_kpts"].float()
+            kpts_gt = batch_t[kpts_key].float()
             if self.do_predict_rel_pose:
-                kpts_gt_prev = batched_seq[t - 1]["bbox_3d_kpts"].float()
+                kpts_gt_prev = batched_seq[t - 1][kpts_key].float()
                 kpts_gt_delta = kpts_gt - kpts_gt_prev
                 loss_kpts = F.huber_loss(kpts_pred, kpts_gt_delta)
                 # bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
@@ -354,13 +355,14 @@ class TrainerKeypoints(Trainer):
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
                 if do_vis:
                     grad_norms, grad_norm = self.get_grad_info()
+                    self.logger.warning("\n///")
+                    self.logger.warning(f"\nSTEP: {self.ts_counts_per_stage[stage]=}\n{grad_norm=}\n///")
                     vis_data["grad_norm"].append(grad_norm)
                     vis_data["grad_norms"].append(grad_norms)
+                    self.logger.warning("///\n")
                 optimizer.step()
                 optimizer.zero_grad()
                 state = [x if x is None else x.detach() for x in state]
-            elif do_opt_in_the_end:
-                total_losses.append(loss)
 
             # METRICS
 
@@ -491,17 +493,6 @@ class TrainerKeypoints(Trainer):
             out_prev = {"t": out["t"], "rot": out["rot"]}
             prev_latent = out["latent"] if self.use_prev_latent else None
 
-        if do_opt_in_the_end:
-            total_loss = torch.mean(torch.stack(total_losses))
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-            if do_vis:
-                grad_norms, grad_norm = self.get_grad_info()
-                vis_data["grad_norm"].append(grad_norm)
-                vis_data["grad_norms"].append(grad_norms)
-            optimizer.step()
-            optimizer.zero_grad()
-
         if self.use_rnn:
             last_step_state = {
                 "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
@@ -538,6 +529,8 @@ class TrainerKeypoints(Trainer):
             save_vis_path = (
                 f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}_step_{self.ts_counts_per_stage[stage]}.pt"
             )
+            vis_data["seq_metrics"].append(seq_metrics)
+            vis_data["seq_stats"].append(seq_stats)
             torch.save(vis_data, save_vis_path)
             self.save_vis_paths.append(save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
