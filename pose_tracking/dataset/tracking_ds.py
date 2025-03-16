@@ -163,6 +163,7 @@ class TrackingDataset(Dataset):
 
         if self.do_load_dino_features:
             features_path = f"{self.video_dir}/{self.dino_features_folder_name}/{self.id_strs[i]}.pt"
+            assert os.path.exists(features_path), f"Could not find features at {features_path}"
             if os.path.exists(features_path):
                 sample["features_rgb"] = torch.load(features_path, weights_only=False)
 
@@ -188,6 +189,7 @@ class TrackingDataset(Dataset):
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts_corners"] = world_to_cam(self.mesh_bbox, sample["pose"]).astype(np.float32)
+                sample["bbox_3d_kpts_corners"][:, 2] *= 1e-0
         else:
             bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
 
