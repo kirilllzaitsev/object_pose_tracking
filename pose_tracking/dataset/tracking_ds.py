@@ -173,7 +173,7 @@ class TrackingDataset(Dataset):
                 sample["pose"] = egocentric_to_allocentric(sample["pose"])
 
         sample["rgb_path"] = self.color_files[i]
-        sample["intrinsics"] = self.K
+        sample["intrinsics"] = self.get_intrinsics(i)
         sample["obj_name"] = self.obj_name
 
         if self.mesh is not None:
@@ -237,6 +237,9 @@ class TrackingDataset(Dataset):
 
         return sample
 
+    def get_intrinsics(self, idx):
+        return self.K
+
     def augment_sample(self, sample, idx):
         return sample
 
@@ -260,8 +263,8 @@ class TrackingDataset(Dataset):
     def get_pose(self, idx):
         return load_pose(self.pose_files[idx])
 
-    def set_up_obj_mesh(self, mesh_path):
-        load_res = load_mesh(mesh_path)
+    def set_up_obj_mesh(self, mesh_path, is_mm=False):
+        load_res = load_mesh(mesh_path, is_mm=is_mm)
         self.mesh = load_res["mesh"]
         self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
         self.mesh_diameter = load_res["diameter"]
