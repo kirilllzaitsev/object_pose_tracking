@@ -1,4 +1,6 @@
+import functools
 import math
+from collections import defaultdict
 
 import cv2
 import numpy as np
@@ -183,15 +185,16 @@ def backproj_2d_to_3d(pts, depth, K):
     """
     assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
     lib = pick_library(pts)
-    if pts.shape[1] != 2:
-        pts = pts.T
+    t_func = get_transpose_func(pts)
+    if pts.shape[-1] != 2:
+        pts = t_func(pts)
     ones = lib.ones((pts.shape[0], 1))
     if lib == torch:
         ones = ones.to(pts.device)
     pts = lib.hstack((pts, ones))
-    pts = pts * depth.reshape(-1, 1)
-    pts = lib.linalg.inv(K) @ pts.T
-    return pts.T
+    pts = pts * depth[..., None]
+    pts = lib.linalg.inv(K) @ t_func(pts)
+    return t_func(pts)
 
 
 def calibrate_2d_pts_batch(pts, K):
@@ -421,6 +424,28 @@ def backproj_2d_pts(pts, K, depth):
     return pts.T
 
 
+def backproj_2d_pts_batch(pts, K, depth):
+    """
+    Backproject 2D points to 3D points
+    Args:
+        pts: (N, 2) or (2, N)
+        K: 3x3 camera intrinsic matrix
+        depth: 1D depth values
+    """
+    assert len(pts.shape) == 3, f"pts.shape: {pts.shape}"
+    if pts.shape[-1] != 2:
+        pts = pts.T
+    lib = pick_library(pts)
+    ones = lib.ones((pts.shape[0], pts.shape[1], 1))
+    if is_tensor(pts):
+        ones = ones.to(pts.device)
+    pts = lib.cat((pts, ones), dim=-1)
+    pts = pts * depth.unsqueeze(-1)
+    pts_T = pts.transpose(-1, -2) if is_tensor(pts) else pts.swapaxes(-1, -2)
+    pts = lib.linalg.inv(K) @ pts_T
+    return pts.transpose(-1, -2) if is_tensor(pts) else pts.swapaxes(-1, -2)
+
+
 def look_at_rotation(point):
     """
     @param point: point in normalized image coordinates not in pixels
@@ -474,6 +499,15 @@ def transform_pts(pts, r=None, t=None, pose=None):
         t = pose[:3, 3]
     pts_t = r @ pts.T + t.reshape((3, 1))
     return pts_t.T
+
+
+def transform_pts_batch(pts, r=None, t=None, pose=None):
+    assert len(pts.shape) == 3, f"pts.shape: {pts.shape}"
+    if pose is not None:
+        r = pose[..., :3, :3]
+        t = pose[..., :3, 3]
+    pts_t = r @ pts.transpose(-1, -2) + t.unsqueeze(-1)
+    return pts_t.transpose(-1, -2)
 
 
 def rotate_pts_batch(R, pts):
@@ -542,6 +576,15 @@ def interpolate_bbox_edges(corners, num_points=24):
     Returns:
         Array of shape (num_points, 3), containing the interpolated points.
     """
+
+    if isinstance(corners, list) or len(corners.shape) == 3:
+        # return np.stack([interpolate_bbox_edges(c, num_points) for c in corners])
+        res = defaultdict(list)
+        for i, c in enumerate(corners):
+            for k, v in interpolate_bbox_edges(c, num_points).items():
+                res[k].append(v)
+        return {k: np.stack(v) for k, v in res.items()}
+
     # Define the 12 edges of the 3D bounding box by corner indices
     edges = [
         (0, 1),
@@ -640,7 +683,7 @@ def bbox_to_8_point_centered(min_coords=None, max_coords=None, center=None, bbox
 
 
 def convert_3d_t_for_2d(t_gt_abs, intrinsics, hw):
-    t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(1), intrinsics).squeeze(1)
+    t_gt_2d = cam_to_2d(t_gt_abs.unsqueeze(-1), intrinsics).squeeze(-1)
     t_gt_2d_norm = normalize_2d_kpts(t_gt_2d, hw)
 
     depth_gt = t_gt_abs[..., 2]
