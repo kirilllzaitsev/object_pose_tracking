@@ -16,9 +16,10 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
 from pose_tracking.config import logger
-from pose_tracking.dataset.tracking_ds import TrackingDataset
+from pose_tracking.dataset.tracking_ds import TrackingDataset, TrackingMultiObjDataset
 from pose_tracking.utils.geom import (
     backproj_depth,
     bbox_to_8_point_centered,
@@ -33,40 +34,25 @@ from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from pose_tracking.utils.trimesh_utils import compute_pts_span
 
 
-class CustomSimDataset(TrackingDataset):
-
-    ds_name = "custom_sim"
+class CustomSimDatasetBase(object):
 
     def __init__(
         self,
-        *args,
         cam_init_rot=None,
-        mesh_path=None,
         cam_pose_path=None,
-        obj_id=None,
         do_remap_pose_from_isaac=True,
         do_load_bbox_from_metadata=False,
-        use_priv_info=False,
         **kwargs,
     ):
 
+        super(CustomSimDatasetBase, self).__init__(**kwargs)
+
         self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
-        self.use_priv_info = use_priv_info
         self.do_load_bbox_from_metadata = do_load_bbox_from_metadata
 
-        self.obj_id = obj_id
+        self.video_dir = kwargs["video_dir"]
         self.cam_pose_path = cam_pose_path
-
-        super().__init__(*args, **kwargs)
-
-        if mesh_path is None:
-            for name in ["mesh", self.obj_name]:
-                mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
-                if os.path.exists(mesh_path_prop):
-                    mesh_path = mesh_path_prop
-                    break
-        if mesh_path is not None:
-            self.set_up_obj_mesh(mesh_path)
+        self.cam_init_rot = cam_init_rot
 
         if cam_pose_path is None:
             if os.path.exists(f"{self.video_dir}/cam_pose.txt"):
@@ -81,6 +67,46 @@ class CustomSimDataset(TrackingDataset):
             self.w2c = get_inv_pose(pose=self.c2w)
         else:
             self.c2w = None
+
+    def pose_remap_from_isaac(self, pose):
+        rt = self.w2c @ pose
+        return rt
+
+
+class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
+
+    ds_name = "custom_sim"
+
+    def __init__(
+        self,
+        *args,
+        mesh_path=None,
+        obj_id=None,
+        use_priv_info=False,
+        **kwargs,
+    ):
+
+        self.use_priv_info = use_priv_info
+        self.obj_id = obj_id
+
+        super().__init__(*args, **kwargs)
+
+        if mesh_path is None:
+            for name in ["mesh", self.obj_name]:
+                mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
+                if os.path.exists(mesh_path_prop):
+                    mesh_path = mesh_path_prop
+                    break
+        if mesh_path is not None:
+            self.set_up_obj_mesh(mesh_path)
+
+    def get_pose(self, idx):
+        pose = load_pose(self.pose_files[idx])
+        if self.obj_id is not None:
+            pose = pose[self.obj_id]
+        if self.do_remap_pose_from_isaac:
+            pose = self.pose_remap_from_isaac(pose)
+        return pose
 
     def get_pose_paths(self):
         paths = []
