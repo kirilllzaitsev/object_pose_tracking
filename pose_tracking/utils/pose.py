@@ -6,6 +6,7 @@ from pose_tracking.utils.common import istensor
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
     matrix_to_axis_angle,
+    matrix_to_euler_angles,
     matrix_to_quaternion,
     matrix_to_rotation_6d,
     quaternion_to_matrix,
@@ -57,12 +58,14 @@ def convert_pose_matrix_to_vector(pose, rot_repr="quaternion"):
         pose = torch.tensor(pose)
     t = pose[..., :3, 3]
     rot = pose[..., :3, :3]
-    if rot.shape[-1] == 4:
+    if rot_repr == "quaternion":
         rot = matrix_to_quaternion(rot)
-    elif rot.shape[-1] == 3:
+    elif rot_repr == "axis_angle":
         rot = matrix_to_axis_angle(rot)
-    elif rot.shape[-1] == 6:
+    elif rot_repr == "rotation6d":
         rot = matrix_to_rotation_6d(rot)
+    elif rot_repr == "euler":
+        rot = matrix_to_euler_angles(rot, convention="XYZ")
     else:
         raise ValueError(f"Unknown rotation representation: {rot.shape}")
     return torch.cat([t, rot], dim=-1)

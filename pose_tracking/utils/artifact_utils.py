@@ -72,7 +72,7 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         pose_path.parent.mkdir(parents=True, exist_ok=True)
         rgb_path.parent.mkdir(parents=True, exist_ok=True)
         gt_path.parent.mkdir(parents=True, exist_ok=True)
-        if bboxs is not None and labels is not None:
+        if bboxs is not None and labels is not None and len(labels) > 0:
             bbox_path = seq_dir / "bbox" / f"{name}.json"
             bbox_path.parent.mkdir(parents=True, exist_ok=True)
             with open(bbox_path, "w") as f:
