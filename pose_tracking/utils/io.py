@@ -151,6 +151,17 @@ def load_mask(path, wh=None):
     return mask
 
 
+def load_semantic_mask(path, wh=None, ignored_colors=None):
+    mask = load_mask_(path)[..., ::-1]
+
+    ignored_colors = [] if ignored_colors is None else ignored_colors
+    for color in ignored_colors:
+        mask[(mask == color).all(axis=-1)] = 0
+    if wh is not None:
+        mask = resize_img(mask, wh=wh)
+    return mask
+
+
 def save_depth(path, im):
     im_mm = im * 1e3
     save_depth_16bit(path, im_mm)
