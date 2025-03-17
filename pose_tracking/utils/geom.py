@@ -22,25 +22,30 @@ def world_to_2d(pts, K, rt):
 def cam_to_2d(pts, K):
     # project 3d pts in camera frame onto img
 
-    if len(pts.shape) == 3:
-        new_pts = torch.bmm(K, pts.transpose(-1, -2)).transpose(-1, -2)
-        new_pts = (new_pts / new_pts[..., 2:])[..., :2]
-        return new_pts
-
-    if pts.shape[-1] == 3:
-        pts = pts.T
-    new_pts = K @ pts
-    new_pts = new_pts[:2, ...] / new_pts[2, ...]
-    return new_pts.T
+    t_func = get_transpose_func(pts)
+    if len(pts.shape) > len(K.shape):
+        K = K[None]
+    pts_T = t_func(pts) if pts.shape[-1] == 3 else pts
+    new_pts = K @ pts_T
+    new_pts = new_pts[..., :2, :] / new_pts[..., 2:, :]
+    return t_func(new_pts)
 
 
 def world_to_cam(pts, rt):
-    # returns N x 3 pts in camera frame
-    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
-    if pts.shape[1] == 3:
-        pts = pts.T
-    new_pts = rt[:3, :3] @ pts + rt[:3, 3].reshape(3, 1)
-    return new_pts.T
+    # returns (B x) N x 3 pts in camera frame
+    t_func = get_transpose_func(pts)
+    if pts.shape[-1] == 3:
+        pts = t_func(pts)
+    new_pts = rt[..., :3, :3] @ pts + rt[..., :3, 3][..., None]
+    return t_func(new_pts)
+
+
+def get_transpose_func(x, dim0=-1, dim1=-2):
+    if is_tensor(x):
+        t_func = functools.partial(torch.transpose, dim0=dim0, dim1=dim1)
+    else:
+        t_func = functools.partial(np.swapaxes, axis1=dim0, axis2=dim1)
+    return t_func
 
 
 def world_to_2d_pt_homo(pt, K, rt):
