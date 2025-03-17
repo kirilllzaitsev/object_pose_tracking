@@ -26,6 +26,7 @@ from pose_tracking.utils.common import (
     cast_to_torch,
 )
 from pose_tracking.utils.geom import (
+    cam_to_2d,
     egocentric_delta_pose_to_pose,
     to_homo,
     world_to_2d,
@@ -182,8 +183,27 @@ def draw_poses_on_video(
     return images
 
 
-def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), scale=50.0, pose_gt=None):
-    rgb = adjust_img_for_plt(rgb)
+def draw_pose_on_img(
+    rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), scale=50.0, pose_gt=None, final_frame=None
+):
+    if len(pose_pred.shape) == 3:
+        final_frame = None
+        if bbox is not None:
+            assert len(bbox.shape) == 3, f"{bbox.shape=}"
+        for idx in range(len(pose_pred)):
+            final_frame = draw_pose_on_img(
+                rgb,
+                K,
+                pose_pred[idx],
+                bbox=None if bbox is None else bbox[idx],
+                bbox_color=bbox_color,
+                scale=scale,
+                pose_gt=None if pose_gt is None else pose_gt[idx],
+                final_frame=final_frame,
+            )
+        return final_frame
+
+    rgb = adjust_img_for_plt(rgb) if final_frame is None else final_frame
     K = cast_to_numpy(K)
     pose_pred = cast_to_numpy(pose_pred)
     final_frame = draw_xyz_axis(rgb, scale=scale, K=K, rt=pose_pred, is_input_rgb=True)
@@ -196,10 +216,36 @@ def draw_pose_on_img(rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), sca
 
 
 def vis_bbox_2d(
-    img, bbox, color=(255, 0, 0), width=3, format="xyxy", is_normalized=False, label=None, score=None, label_place="top"
+    img,
+    bbox,
+    color=(255, 0, 0),
+    width=3,
+    format="xyxy",
+    is_normalized=False,
+    label=None,
+    score=None,
+    label_place="top",
+    final_frame=None,
 ):
-    img = adjust_img_for_plt(img)
+    img = adjust_img_for_plt(img) if final_frame is None else final_frame
     bbox = cast_to_numpy(bbox).squeeze()
+
+    if len(bbox.shape) == 2:
+        final_frame = None
+        for idx in range(len(bbox)):
+            final_frame = vis_bbox_2d(
+                img,
+                bbox[idx],
+                color=color,
+                width=width,
+                format=format,
+                is_normalized=is_normalized,
+                label=label[idx] if label is not None else None,
+                score=score[idx] if score is not None else None,
+                label_place=label_place,
+                final_frame=final_frame,
+            )
+        return final_frame
 
     assert len(bbox.shape) == 1, f"{bbox.shape=}"
 
@@ -548,6 +594,11 @@ def plot_seq(
                 dtype = np.float32
             elif key in ["mask"]:
                 grid_img = adjust_img_for_plt(img[None])
+            elif "bbox_3d" in key:
+                pts_3d = fetcher_fn(key, sidx)
+                pts_2d = cam_to_2d(pts_3d, fetcher_fn("intrinsics", sidx).float())
+                grid_img = vis_kpts(fetcher_fn(img_key, sidx), pts_2d, color=(0, 255, 0), do_fix_img_color=True)
+
             elif "box" in key:
                 label = None
                 for lkey in ["labels", "class_id"]:
