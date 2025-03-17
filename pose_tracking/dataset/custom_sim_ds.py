@@ -119,17 +119,50 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
             paths.append(path)
         return paths
 
+
+class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
+
+    ds_name = "custom_sim_multi_obj"
+
+    def __init__(
+        self,
+        *args,
+        mesh_path=None,
+        obj_ids=None,
+        **kwargs,
+    ):
+
+        self.obj_ids = obj_ids
+
+        super().__init__(*args, **kwargs)
+
+        if mesh_path is None:
+            for name in ["mesh", self.obj_name]:
+                mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
+                if os.path.exists(mesh_path_prop):
+                    mesh_path = mesh_path_prop
+                    break
+        if mesh_path is not None:
+            self.set_up_obj_mesh(mesh_path)
+
     def get_pose(self, idx):
         pose = load_pose(self.pose_files[idx])
-        if self.obj_id is not None:
-            pose = pose[self.obj_id]
+        if self.obj_ids is not None:
+            pose = np.stack([pose[obj_id] for obj_id in self.obj_ids])
         if self.do_remap_pose_from_isaac:
             pose = self.pose_remap_from_isaac(pose)
         return pose
 
     def pose_remap_from_isaac(self, pose):
-        rt = self.w2c @ pose
-        return rt
+        rt = self.w2c @ pose[..., None]
+        return rt.squeeze()
+
+    def get_pose_paths(self):
+        paths = []
+        for idx, path in enumerate(self.color_files):
+            path = Path(path.replace("rgb/", "pose/")).parent / f"{self.id_strs[idx]}.npy"
+            paths.append(path)
+        return paths
 
 
 class CustomSimDatasetCube(CustomSimDataset):
@@ -209,4 +242,41 @@ class CustomSimDatasetIkea(CustomSimDataset):
 
     def augment_sample(self, sample, idx):
         sample["class_id"] = [self.metadata[self.obj_id].get("class_id", 0)]
+        return sample
+
+
+class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
+    ds_name = "custom_sim_multi_obj_ikea"
+
+    def __init__(
+        self,
+        # obj_name="object_0",
+        obj_ids=None,
+        cam_init_rot=(0.0, 1.0, 0.0, 0.0),
+        do_load_bbox_from_metadata=True,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            # obj_name=obj_name,
+            # obj_id=obj_id,
+            cam_init_rot=cam_init_rot,
+            do_load_bbox_from_metadata=do_load_bbox_from_metadata,
+            *args,
+            **kwargs,
+        )
+
+        metadata_path = f"{self.video_dir}/metadata.json"
+        assert os.path.exists(metadata_path)
+        self.metadata = json.load(open(metadata_path))
+        self.obj_ids = list(range(len(self.metadata))) if obj_ids is None else obj_ids
+
+        self.mesh_paths_orig = [x["usd_path"] for x in self.metadata]
+        if do_load_bbox_from_metadata:
+            assert self.metadata is not None, f"metadata not found at {metadata_path}"
+            self.mesh_bbox = np.stack([bbox_to_8_point_centered(bbox=self.metadata[oidx]["bbox"]) for oidx in self.obj_ids])
+            self.mesh_diameter = [compute_pts_span(self.mesh_bbox[oidx]) for oidx in self.obj_ids]
+
+    def augment_sample(self, sample, idx):
+        sample["class_id"] = [self.metadata[oidx].get("class_id", 0) for oidx in self.obj_ids]
         return sample
