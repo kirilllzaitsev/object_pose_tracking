@@ -5,7 +5,7 @@ import torch.nn as nn
 from pose_tracking.models.encoders import get_encoders
 from pose_tracking.utils.misc import print_cls
 from torchvision.ops import roi_align
-
+import torch.nn.functional as F
 
 class BeliefEncoder(nn.Module):
     def __init__(
@@ -152,11 +152,11 @@ class MLP(nn.Module):
         if num_layers > 1:
             self.layers = []
             self.droputs = []
-            self.layers.append(nn.Sequential(nn.Linear(in_dim, hidden_dim), nn.LayerNorm(hidden_dim)))
+            self.layers.append(nn.Linear(in_dim, hidden_dim))
             for i in range(num_layers - 2):
                 if dropout > 0:
                     self.droputs.append(nn.Dropout(dropout))
-                self.layers.append(nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.LayerNorm(hidden_dim)))
+                self.layers.append(nn.Linear(in_dim, hidden_dim))
             if dropout > 0:
                 self.droputs.append(nn.Dropout(dropout))
             self.layers.append(nn.Linear(hidden_dim, out_dim))
@@ -164,11 +164,11 @@ class MLP(nn.Module):
             self.layers = [nn.Linear(in_dim, out_dim)]
         self.layers = nn.ModuleList(self.layers)
         if act == "gelu":
-            self.act = nn.GELU()
+            self.act = F.gelu
         elif act == "relu":
-            self.act = nn.ReLU()
+            self.act = F.relu
         elif act == "leaky_relu":
-            self.act = nn.LeakyReLU()
+            self.act = F.leaky_relu
         else:
             raise ValueError(f"Unknown activation function {act}")
         self.act_out = act_out
