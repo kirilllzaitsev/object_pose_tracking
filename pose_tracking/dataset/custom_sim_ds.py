@@ -25,7 +25,7 @@ from pose_tracking.utils.geom import (
     bbox_to_8_point_centered,
     get_inv_pose,
 )
-from pose_tracking.utils.io import load_pose
+from pose_tracking.utils.io import load_pose, load_semantic_mask
 from pose_tracking.utils.pcl import (
     downsample_pcl_via_subsampling,
     downsample_pcl_via_voxels,
@@ -269,31 +269,29 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
 
     def __init__(
         self,
-        # obj_name="object_0",
+        obj_names=["object_0"],
         obj_ids=None,
         cam_init_rot=(0.0, 1.0, 0.0, 0.0),
         do_load_bbox_from_metadata=True,
         *args,
         **kwargs,
     ):
+
         super().__init__(
-            # obj_name=obj_name,
-            # obj_id=obj_id,
+            obj_names=obj_names,
+            obj_ids=obj_ids,
             cam_init_rot=cam_init_rot,
             do_load_bbox_from_metadata=do_load_bbox_from_metadata,
             *args,
             **kwargs,
         )
 
-        metadata_path = f"{self.video_dir}/metadata.json"
-        assert os.path.exists(metadata_path)
-        self.metadata = json.load(open(metadata_path))
-        self.obj_ids = list(range(len(self.metadata))) if obj_ids is None else obj_ids
-
         self.mesh_paths_orig = [x["usd_path"] for x in self.metadata]
         if do_load_bbox_from_metadata:
-            assert self.metadata is not None, f"metadata not found at {metadata_path}"
-            self.mesh_bbox = np.stack([bbox_to_8_point_centered(bbox=self.metadata[oidx]["bbox"]) for oidx in self.obj_ids])
+            assert self.metadata is not None, f"metadata not found at {self.metadata_path}"
+            self.mesh_bbox = np.stack(
+                [bbox_to_8_point_centered(bbox=self.metadata[oidx]["bbox"]) for oidx in self.obj_ids]
+            )
             self.mesh_diameter = [compute_pts_span(self.mesh_bbox[oidx]) for oidx in self.obj_ids]
 
     def augment_sample(self, sample, idx):
