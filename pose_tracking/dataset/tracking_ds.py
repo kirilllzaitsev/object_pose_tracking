@@ -207,31 +207,41 @@ class TrackingDataset(Dataset):
                 mask = self.get_mask(i)
                 if self.do_erode_mask:
                     mask = mask_morph(mask, kernel_size=11)
-            bbox_2d = infer_bounding_box(mask)
-            if bbox_2d is None:
-                print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
-                return None
-            bbox_2d = bbox_2d.astype(np.float32)
-            if self.do_normalize_bbox:
-                bbox_2d[:, 0] /= self.w
-                bbox_2d[:, 1] /= self.h
-            if self.bbox_format == "xyxy":
-                bbox_2d = bbox_2d.reshape(1, -1)
-                sample["bbox_2d"] = bbox_2d
-            elif self.bbox_format == "cxcywh":
-                bbox_2d = bbox_2d.reshape(-1)
-                sample["bbox_2d"] = np.array(
-                    [
-                        (bbox_2d[0] + bbox_2d[2]) / 2,
-                        (bbox_2d[1] + bbox_2d[3]) / 2,
-                        bbox_2d[2] - bbox_2d[0],
-                        bbox_2d[3] - bbox_2d[1],
-                    ]
-                )
+            if self.num_objs > 1:
+                colors = [x for x in np.unique(mask.reshape(-1, mask.shape[2]), axis=0) if x.sum() > 0]
+                bin_masks = [np.all(mask == c, axis=-1) for c in colors]
+            else:
+                bin_masks = [mask]
+            bbox_2ds = []
+            for bin_mask in bin_masks:
+                bbox_2d = infer_bounding_box(bin_mask)
+                if bbox_2d is None:
+                    print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
+                    return None
+                bbox_2d = bbox_2d.astype(np.float32)
+                if self.do_normalize_bbox:
+                    bbox_2d[..., 0] /= self.w
+                    bbox_2d[..., 1] /= self.h
+                if self.bbox_format == "xyxy":
+                    bbox_2d = bbox_2d.reshape(1, -1)
+                    bbox_2ds.append(bbox_2d)
+                elif self.bbox_format == "cxcywh":
+                    bbox_2d = bbox_2d.reshape(-1)
+                    bbox_2ds.append(
+                        np.array(
+                            [
+                                (bbox_2d[0] + bbox_2d[2]) / 2,
+                                (bbox_2d[1] + bbox_2d[3]) / 2,
+                                bbox_2d[2] - bbox_2d[0],
+                                bbox_2d[3] - bbox_2d[1],
+                            ]
+                        )
+                    )
+            sample["bbox_2d"] = np.stack(bbox_2ds)
 
             bbox_3d_kpts = world_to_cam(bbox_3d_kpts, sample["pose"])
-            sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[:, 2:]
-            sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=self.K)
+            sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[..., 2:]
+            sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=sample["intrinsics"])
             sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
 
         sample = self.augment_sample(sample, i)
