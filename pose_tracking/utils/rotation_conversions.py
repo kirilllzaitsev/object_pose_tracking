@@ -30,7 +30,7 @@ e.g.
 def convert_rotation_representation(rot, rot_representation):
     if rot_representation == "rotation6d":
         return matrix_to_rotation_6d(rot)
-    elif rot_representation == "euler_angles":
+    elif rot_representation == "euler":
         return matrix_to_euler_angles(rot, "XYZ")
     elif rot_representation == "quaternion":
         return matrix_to_quaternion(rot)

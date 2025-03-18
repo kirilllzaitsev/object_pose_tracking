@@ -5,6 +5,7 @@ from bop_toolkit_lib.transform import euler_matrix
 from pose_tracking.utils.common import istensor
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
+    euler_angles_to_matrix,
     matrix_to_axis_angle,
     matrix_to_euler_angles,
     matrix_to_quaternion,
@@ -43,7 +44,12 @@ def convert_rot_vector_to_matrix(rot, rot_repr="quaternion"):
     if rot.shape[-1] == 4:
         rot_mat = quaternion_to_matrix(rot)
     elif rot.shape[-1] == 3:
-        rot_mat = axis_angle_to_matrix(rot)
+        if rot_repr == "axis_angle":
+            rot_mat = axis_angle_to_matrix(rot)
+        elif rot_repr == "euler":
+            rot_mat = euler_angles_to_matrix(rot, convention="XYZ")
+        else:
+            raise ValueError(f"Unknown rotation representation: {rot_repr}")   
     elif rot.shape[-1] == 6:
         rot_mat = rotation_6d_to_matrix(rot)
     else:
