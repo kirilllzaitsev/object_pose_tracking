@@ -16,6 +16,7 @@ from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import (
     calc_metrics,
     calc_r_error,
+    calc_rt_errors,
     calc_t_error,
     eval_batch_det,
 )
@@ -39,6 +40,7 @@ from pose_tracking.utils.geom import (
 from pose_tracking.utils.kpt_utils import (
     get_pose_from_3d_2d_matches,
     get_pose_from_matches,
+    kabsch_torch,
     kabsch_torch_batched,
 )
 from pose_tracking.utils.misc import (
@@ -328,10 +330,22 @@ class TrainerKeypoints(Trainer):
 
             # kpt loss
             kpts_gt = batch_t[kpts_key].float()
+            kpts_mean = torch.tensor(
+                [
+                    [0.0024, 0.0022, 0.0039],
+                    [0.0016, 0.0023, 0.0037],
+                    [0.0033, 0.0020, 0.0036],
+                    [0.0024, 0.0022, 0.0042],
+                    [0.0016, 0.0024, 0.0031],
+                    [0.0007, 0.0024, 0.0030],
+                    [0.0024, 0.0022, 0.0031],
+                    [0.0015, 0.0026, 0.0039],
+                ]
+            ).to(self.device)
             if self.do_predict_rel_pose:
                 kpts_gt_prev = batched_seq[t - 1][kpts_key].float()
                 kpts_gt_delta = kpts_gt - kpts_gt_prev
-                loss_kpts = F.huber_loss(kpts_pred, kpts_gt_delta)
+                loss_kpts = F.huber_loss(kpts_pred / kpts_mean, kpts_gt_delta / kpts_mean)
                 # bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
                 # loss_cr = kpt_cross_ratio_loss(kpts_gt_prev + kpts_pred, bbox_2d_kpts_collinear_idxs)
                 # loss += loss_cr
