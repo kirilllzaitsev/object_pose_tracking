@@ -151,15 +151,16 @@ class MLP(nn.Module):
 
         if num_layers > 1:
             self.layers = []
-            self.droputs = []
+            self.dropouts = []
             self.layers.append(nn.Linear(in_dim, hidden_dim))
             for i in range(num_layers - 2):
                 if dropout > 0:
-                    self.droputs.append(nn.Dropout(dropout))
+                    self.dropouts.append(nn.Dropout(dropout))
                 self.layers.append(nn.Linear(in_dim, hidden_dim))
             if dropout > 0:
-                self.droputs.append(nn.Dropout(dropout))
+                self.dropouts.append(nn.Dropout(dropout))
             self.layers.append(nn.Linear(hidden_dim, out_dim))
+            self.dropouts = nn.ModuleList(self.dropouts)
         else:
             self.layers = [nn.Linear(in_dim, out_dim)]
         self.layers = nn.ModuleList(self.layers)
@@ -176,8 +177,8 @@ class MLP(nn.Module):
     def forward(self, x):
         for layer_idx, layer in enumerate(self.layers[:-1]):
             x = self.act(layer(x))
-            if layer_idx < len(self.droputs):
-                x = self.droputs[layer_idx](x)
+            if layer_idx < len(self.dropouts):
+                x = self.dropouts[layer_idx](x)
         x = self.layers[-1](x)
         if self.act_out is not None:
             x = self.act_out(x)

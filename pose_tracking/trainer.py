@@ -222,7 +222,7 @@ class Trainer:
             self.train_epoch_count += 1
         running_stats = defaultdict(list)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
-        do_vis = self.do_vis and (self.train_epoch_count - 1) % self.vis_epoch_freq == 0 and stage == "train"
+        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
 
         if self.use_seq_len_curriculum:
             if self.train_epoch_count % self.seq_len_curriculum_step_epoch_freq == 0:
@@ -270,6 +270,8 @@ class Trainer:
                     for k, v in seq_stats_chunk.items():
                         for kk, vv in v.items():
                             seq_stats[k][kk].append(vv)
+                    if cidx == 1:
+                        do_vis = False
                 for k, v in seq_stats.items():
                     for kk, vv in v.items():
                         seq_stats[k][kk] = np.mean(vv)
