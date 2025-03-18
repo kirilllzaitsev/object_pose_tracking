@@ -2,10 +2,11 @@ import copy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from pose_tracking.models.encoders import get_encoders
 from pose_tracking.utils.misc import print_cls
 from torchvision.ops import roi_align
-import torch.nn.functional as F
+
 
 class BeliefEncoder(nn.Module):
     def __init__(
@@ -419,6 +420,25 @@ class RecurrentCNNVanilla(RecurrentNet):
                 num_layers=rt_mlps_num_layers + r_num_layers_inc,
                 dropout=dropout_heads,
             )
+
+        # deepVO
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Linear):
+                torch.nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif type(m) in (nn.LSTMCell, nn.GRUCell):
+                torch.nn.init.kaiming_normal_(m.weight_ih)
+                torch.nn.init.kaiming_normal_(m.weight_hh)
+                m.bias_ih.data.zero_()
+                m.bias_hh.data.zero_()
+                # Set forget gate bias to 1 (remember)
+                n = m.bias_hh.size(0)
+                start, end = n // 4, n // 2
+                m.bias_hh.data[start:end].fill_(1.0)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
         self.encoder_name = encoder_name
         if encoder_name is None:
