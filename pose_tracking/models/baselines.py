@@ -441,6 +441,8 @@ class KeypointPose(nn.Module):
             dropout=dropout_heads,
         )
 
+        self.init_params(self)
+
     def forward(
         self,
         bbox_kpts,
@@ -575,7 +577,10 @@ class KeypointKeypoint(nn.Module):
             hidden_dim=hidden_dim,
             num_layers=rt_mlps_num_layers,
             dropout=dropout_heads,
+            act_out=nn.LeakyReLU(),
         )
+
+        self.init_params(self)
 
     def forward(
         self,

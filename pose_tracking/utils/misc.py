@@ -191,3 +191,11 @@ def is_empty(v):
         return len(v) == 0
     else:
         return False
+
+
+def init_params(module):
+    for m in module.modules():
+        if isinstance(m, torch.nn.Linear):
+            torch.nn.init.kaiming_normal_(m.weight.data)
+            if m.bias is not None:
+                m.bias.data.zero_()
