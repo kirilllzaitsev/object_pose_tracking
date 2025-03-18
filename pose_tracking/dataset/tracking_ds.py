@@ -298,6 +298,39 @@ class TrackingDataset(Dataset):
         )
 
 
+class TrackingMultiObjDataset(TrackingDataset):
+
+    def __init__(self, *args, obj_ids=None, obj_names=None, **kwargs):
+        self.obj_ids = obj_ids or []
+        self.obj_names = obj_names or []
+        super().__init__(*args, **kwargs, num_objs=max(len(self.obj_ids), len(self.obj_names)))
+
+    def set_up_obj_mesh(self, mesh_path, is_mm=False):
+        meshes = []
+        mesh_bbox = []
+        mesh_diameter = []
+        mesh_pts = []
+        mesh_paths = []
+        mesh_paths_orig = []
+
+        for obj_name in self.obj_names:
+            obj_mesh_dir = f"{mesh_path}/{obj_name}"
+            load_res = load_mesh(f"{obj_mesh_dir}/mesh.obj", is_mm=is_mm)
+            mesh = load_res["mesh"]
+            meshes.append(mesh)
+            mesh_bbox.append(copy.deepcopy(np.asarray(load_res["bbox"])))
+            mesh_diameter.append(load_res["diameter"])
+            mesh_pts.append(torch.tensor(trimesh.sample.sample_surface(mesh, self.num_mesh_pts)[0]).float())
+            mesh_paths.append(mesh_path)
+            mesh_paths_orig.append(mesh_path)
+        self.mesh = meshes
+        self.mesh_bbox = mesh_bbox
+        self.mesh_diameter = mesh_diameter
+        self.mesh_pts = torch.stack(mesh_pts)
+        self.mesh_path = mesh_paths
+        self.mesh_path_orig = mesh_paths_orig
+
+
 class TrackingDatasetEval:
     def __init__(self, ds, preds_path):
         self.ds = ds
