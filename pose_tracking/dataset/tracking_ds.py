@@ -1,5 +1,6 @@
 import copy
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -19,7 +20,13 @@ from pose_tracking.utils.geom import (
     world_to_2d,
     world_to_cam,
 )
-from pose_tracking.utils.io import load_color, load_depth, load_mask, load_pose
+from pose_tracking.utils.io import (
+    load_color,
+    load_depth,
+    load_mask,
+    load_pose,
+    load_semantic_mask,
+)
 from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import infer_bounding_box, mask_morph
 from pose_tracking.utils.trimesh_utils import load_mesh
@@ -64,6 +71,7 @@ class TrackingDataset(Dataset):
         is_intrinsics_for_all_samples=True,
         bbox_num_kpts=32,
         dino_features_folder_name=None,
+        num_objs=1,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -97,6 +105,7 @@ class TrackingDataset(Dataset):
         self.t_repr = t_repr
         self.bbox_num_kpts = bbox_num_kpts
         self.dino_features_folder_name = dino_features_folder_name
+        self.num_objs = num_objs
 
         self.do_load_dino_features = dino_features_folder_name is not None
 

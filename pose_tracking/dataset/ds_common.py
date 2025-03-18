@@ -47,8 +47,8 @@ def get_ds_sample(
         mask = adjust_mask_for_torch(mask)
         sample["mask"] = from_numpy(mask)
     if pose is not None:
-        rot = pose[:3, :3]
-        t = pose[:3, 3]
+        rot = pose[..., :3, :3]
+        t = pose[..., :3, 3]
         if t_repr == "2d":
             hw = rgb.shape[-2:]
             t_2d_norm, center_depth = convert_3d_t_for_2d(cast_to_torch(t), cast_to_torch(intrinsics), hw)
@@ -58,7 +58,7 @@ def get_ds_sample(
             sample["xy"] = t_2d_norm
         if rot_repr is not None:
             quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
-            pose = np.concatenate([t, quat])
+            pose = np.concatenate([t, quat], axis=-1)
 
         sample["pose"] = from_numpy(pose)
     if mask_visib is not None:
@@ -115,7 +115,7 @@ def process_raw_sample(sample, **kwargs):
     # add keys present in sample but not in ds_sample
     for k, v in sample.items():
         if k not in ds_sample:
-            if v is not None and not ("path" in k or "name" in k) and not isinstance(v, torch.Tensor):
+            if v is not None and not any(x in k for x in ("name", "path")) and not isinstance(v, torch.Tensor):
                 v = torch.tensor(v)
             ds_sample[k] = v
     return ds_sample
