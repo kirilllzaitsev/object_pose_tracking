@@ -120,51 +120,6 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
         return paths
 
 
-class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
-
-    ds_name = "custom_sim_multi_obj"
-
-    def __init__(
-        self,
-        *args,
-        mesh_path=None,
-        obj_ids=None,
-        **kwargs,
-    ):
-
-        self.obj_ids = obj_ids
-
-        super().__init__(*args, **kwargs)
-
-        if mesh_path is None:
-            for name in ["mesh", self.obj_name]:
-                mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
-                if os.path.exists(mesh_path_prop):
-                    mesh_path = mesh_path_prop
-                    break
-        if mesh_path is not None:
-            self.set_up_obj_mesh(mesh_path)
-
-    def get_pose(self, idx):
-        pose = load_pose(self.pose_files[idx])
-        if self.obj_ids is not None:
-            pose = np.stack([pose[obj_id] for obj_id in self.obj_ids])
-        if self.do_remap_pose_from_isaac:
-            pose = self.pose_remap_from_isaac(pose)
-        return pose
-
-    def pose_remap_from_isaac(self, pose):
-        rt = self.w2c @ pose[..., None]
-        return rt.squeeze()
-
-    def get_pose_paths(self):
-        paths = []
-        for idx, path in enumerate(self.color_files):
-            path = Path(path.replace("rgb/", "pose/")).parent / f"{self.id_strs[idx]}.npy"
-            paths.append(path)
-        return paths
-
-
 class CustomSimDatasetCube(CustomSimDataset):
     ds_name = "custom_sim_cube"
 
@@ -243,6 +198,70 @@ class CustomSimDatasetIkea(CustomSimDataset):
     def augment_sample(self, sample, idx):
         sample["class_id"] = [self.metadata[self.obj_id].get("class_id", 0)]
         return sample
+
+
+class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
+
+    ds_name = "custom_sim_multi_obj"
+
+    def __init__(
+        self,
+        *args,
+        mesh_path=None,
+        obj_ids=None,
+        obj_names=None,
+        **kwargs,
+    ):
+
+        self.obj_ids = obj_ids
+        self.obj_names = obj_names
+
+        self.metadata_path = f"{kwargs['video_dir']}/metadata.json"
+        assert os.path.exists(self.metadata_path)
+        self.metadata = json.load(open(self.metadata_path))
+        self.obj_ids = list(range(len(self.metadata))) if obj_ids is None else obj_ids
+        self.segm_labels_to_id = self.metadata[0]["sim_meta"]["segm_labels_to_id"]
+
+        super().__init__(*args, obj_ids=self.obj_ids, obj_names=obj_names, **kwargs)
+
+        if mesh_path is None:
+            mesh_path = f"{self.video_dir}/mesh"
+            if not os.path.exists(mesh_path):
+                print(f"WARNING: {mesh_path} not found")
+                mesh_path = None
+        if mesh_path is not None:
+            self.set_up_obj_mesh(mesh_path)
+
+    def get_pose(self, idx):
+        pose = load_pose(self.pose_files[idx])
+        if self.obj_ids is not None:
+            pose = np.stack([pose[obj_id] for obj_id in self.obj_ids])
+        if self.do_remap_pose_from_isaac:
+            pose = self.pose_remap_from_isaac(pose)
+        return pose
+
+    def pose_remap_from_isaac(self, pose):
+        rt = self.w2c @ (pose[..., None] if len(pose.shape) == 2 else pose)
+        return rt.squeeze()
+
+    def get_pose_paths(self):
+        paths = []
+        for idx, path in enumerate(self.color_files):
+            path = Path(path.replace("rgb/", "pose/")).parent / f"{self.id_strs[idx]}.npy"
+            paths.append(path)
+        return paths
+
+    def get_mask(self, i):
+        ignored_colors = (
+            self.segm_labels_to_id["background"],
+            self.segm_labels_to_id["ground"],
+            self.segm_labels_to_id["table"],
+        )
+        return load_semantic_mask(
+            self.color_files[i].replace("rgb", "semantic_segmentation"),
+            wh=(self.w, self.h),
+            ignored_colors=ignored_colors,
+        )
 
 
 class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
