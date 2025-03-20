@@ -169,8 +169,10 @@ def split_arr(arr, num_chunks):
 
 def match_module_by_name(n, name_keywords):
     out = False
+    if isinstance(name_keywords, str):
+        name_keywords = [name_keywords]
     for b in name_keywords:
-        if b in n:
+        if b in n.split("."):
             out = True
             break
     return out
@@ -193,8 +195,14 @@ def is_empty(v):
         return False
 
 
-def init_params(module):
-    for m in module.modules():
+def init_params(module, excluded_names=None, included_names=None):
+    excluded_names = [] if excluded_names is None else excluded_names
+    included_names = [] if included_names is None else included_names
+    for n, m in module.named_modules():
+        not_included = len(included_names) > 0 and not any([match_module_by_name(n, x) for x in included_names])
+        is_excluded = any([match_module_by_name(n, x) for x in excluded_names])
+        if is_excluded or not_included:
+            continue
         if isinstance(m, torch.nn.Linear):
             torch.nn.init.kaiming_normal_(m.weight.data)
             if m.bias is not None:
