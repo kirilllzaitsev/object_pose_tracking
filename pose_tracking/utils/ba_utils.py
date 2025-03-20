@@ -1,9 +1,9 @@
+from collections import defaultdict
+
 import torch
 import torch.nn.functional as F
 from pose_tracking.utils.geom import (
     backproj_2d_pts,
-    backproj_2d_pts_batch,
-    backproj_2d_to_3d,
     cam_to_2d,
     get_inv_pose,
     transform_pts,
@@ -267,11 +267,10 @@ def energy_f(
 ):
     is_batch = len(pts_i.shape) == 3
     if is_batch:
-        backproj_2d_pts_func = backproj_2d_pts_batch
         transform_pts_func = transform_pts_batch
     else:
-        backproj_2d_pts_func = backproj_2d_pts
         transform_pts_func = transform_pts
+    backproj_2d_pts_func = backproj_2d_pts
     pts_i_3d = backproj_2d_pts_func(pts_i, depth=z_i, K=K)
     pts_j_3d = backproj_2d_pts_func(pts_j, depth=z_j, K=K)
     pose_i_inv = get_inv_pose(pose_i)
@@ -283,17 +282,31 @@ def energy_f(
 
 
 def energy_g(pts_i, z_i, z_j, K, pose_i, pose_j, normals_i, robust_delta=0.005):
-    pts_i_3d = backproj_2d_pts(pts_i, depth=z_i, K=K)
+    is_batch = len(pts_i.shape) == 3
+    if is_batch:
+        transform_pts_func = transform_pts_batch
+    else:
+        transform_pts_func = transform_pts
+    backproj_2d_pts_func = backproj_2d_pts
+    pts_i_3d = backproj_2d_pts_func(pts_i, depth=z_i, K=K)
     pose_i_inv = get_inv_pose(pose_i)
-    pts_obj = transform_pts(pts_i_3d, pose=pose_i_inv)
-    pts_j = transform_pts(pts_obj, pose=pose_j)
+    pts_obj = transform_pts_func(pts_i_3d, pose=pose_i_inv)
+    pts_j = transform_pts_func(pts_obj, pose=pose_j)
     pts_j_2d = cam_to_2d(pts_j, K)
-    pts_j_3d = backproj_2d_to_3d(pts_j_2d, depth=z_j, K=K)
+    pts_j_3d = backproj_2d_pts_func(pts_j_2d, depth=z_j, K=K)
     pose_j_inv = get_inv_pose(pose_j)
-    pts_obj_3d = transform_pts(pts_j_3d, pose=pose_j_inv)
-    pts_i_3d_2 = transform_pts(pts_obj_3d, pose=pose_i)
+    pts_obj_3d = transform_pts_func(pts_j_3d, pose=pose_j_inv)
+    pts_i_3d_2 = transform_pts_func(pts_obj_3d, pose=pose_i)
     diff = pts_i_3d_2 - pts_i_3d
-    normals_i_pts = normals_i[pts_i[:, 1].long(), pts_i[:, 0].long()]
+    if is_batch:
+        normals_i_pts = []
+        bs = pts_i.shape[0]
+        for i in range(bs):
+            normals_i_pts.append(normals_i[i, pts_i[i, :, 1].long(), pts_i[i, :, 0].long()])
+        normals_i_pts = torch.stack(normals_i_pts, dim=0).to(pts_i.device)
+    else:
+        normals_i_pts = normals_i[..., pts_i[..., 1].long(), pts_i[..., 0].long(), :]
+
     return F.huber_loss(diff * normals_i_pts, torch.zeros_like(diff), delta=robust_delta)
 
 
@@ -345,7 +358,7 @@ def compute_loss(frames: list[Frame], pose_vec_to_matrix_fn):
 def compute_loss_v2(frames: list[Frame], pose_vec_to_matrix_fn):
     total_loss = 0.0
     n = len(frames)
-    idxs = [(i, j) for i in range(n) for j in range(n) if i != j]
+    idxs = [(i, j) for i in range(n) for j in range(n) if i != j and i < j]
     pose_is = []
     pose_js = []
     pts_is = []
@@ -366,13 +379,16 @@ def compute_loss_v2(frames: list[Frame], pose_vec_to_matrix_fn):
         Ks.append(frame_i.K)
         normals_is.append(frame_i.surface_normals)
 
-    pose_i = torch.stack(pose_is).cuda()
-    pose_j = torch.stack(pose_js).cuda()
-    pts_i = torch.stack(pts_is).cuda()
-    pts_j = torch.stack(pts_js).cuda()
-    z_i = torch.stack(z_is).cuda()
-    z_j = torch.stack(z_js).cuda()
-    K = torch.stack(Ks).cuda()
+    device = "cpu"
+    device = "cuda"
+    pose_i = torch.stack(pose_is).to(device)
+    pose_j = torch.stack(pose_js).to(device)
+    pts_i = torch.stack(pts_is).to(device)
+    pts_j = torch.stack(pts_js).to(device)
+    z_i = torch.stack(z_is).to(device)
+    z_j = torch.stack(z_js).to(device)
+    K = torch.stack(Ks).to(device)
+    normals_i = torch.stack(normals_is).to(device)
 
     loss_f = energy_f(
         pts_i=pts_i,
@@ -397,17 +413,29 @@ def compute_loss_v2(frames: list[Frame], pose_vec_to_matrix_fn):
     return total_loss
 
 
-def optimize(poses, frames, pose_vec_to_matrix_fn, lr=1e-2, num_iterations=100):
+def optimize(poses, frames, pose_vec_to_matrix_fn, lr=1e-3, num_iterations=100):
     optimizer = optim.Adam(poses, lr=lr)
     losses = []
     pbar = tqdm(range(num_iterations), total=num_iterations, leave=False, disable=False)
+    grad_norms = defaultdict(list)
+    total_grad_norms = []
     for it in pbar:
         optimizer.zero_grad()
         loss = compute_loss_v2(frames, pose_vec_to_matrix_fn=pose_vec_to_matrix_fn)
         loss.backward()
+        # print grads
+        total_grad_norm = 0.0
+        for pidx, p in enumerate(poses):
+            if p.grad is None:
+                continue
+            grad_norm = p.grad.norm().item()
+            total_grad_norm += grad_norm
+            grad_norms[pidx].append(grad_norm)
+        # print(f"{it=} | grad norm: {total_grad_norm}")
+        total_grad_norms.append(total_grad_norm)
         optimizer.step()
         # print(f"Iteration {it}: Loss = {loss.item()}")
         loss_val = loss.item()
         losses.append(loss_val)
         pbar.set_postfix({"loss": loss_val})
-    return losses
+    return {"losses": losses, "grad_norms": grad_norms, "total_grad_norms": total_grad_norms}
