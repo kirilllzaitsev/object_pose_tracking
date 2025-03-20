@@ -172,31 +172,6 @@ def backproj_depth_torch(depth, intrinsics, instance_mask=None, do_flip_xy=True)
     return pts, idxs
 
 
-def backproj_2d_to_3d_batch(pts, depth, K):
-    return torch.stack([backproj_2d_to_3d(p, d, k) for p, d, k in zip(pts, depth, K)]).to(pts.device)
-
-
-def backproj_2d_to_3d(pts, depth, K):
-    """
-    Backproject 2D points to 3D points
-    Args:
-        pts: (N, 2) or (2, N)
-        depth: 1D depth values
-    """
-    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
-    lib = pick_library(pts)
-    t_func = get_transpose_func(pts)
-    if pts.shape[-1] != 2:
-        pts = t_func(pts)
-    ones = lib.ones((pts.shape[0], 1))
-    if lib == torch:
-        ones = ones.to(pts.device)
-    pts = lib.hstack((pts, ones))
-    pts = pts * depth[..., None]
-    pts = lib.linalg.inv(K) @ t_func(pts)
-    return t_func(pts)
-
-
 def calibrate_2d_pts_batch(pts, K):
     return torch.stack([calibrate_2d_pts(p, K[i]) for i, p in enumerate(pts)]).to(pts.device)
 
@@ -406,44 +381,29 @@ def render_pts_to_image(cvImg, meshPts, K, openCV_obj_pose, color):
     return cvImg
 
 
-def backproj_2d_pts(pts, K, depth):
+def backproj_2d_pts(pts, depth, K):
     """
     Backproject 2D points to 3D points
     Args:
-        pts: (N, 2) or (2, N)
+        pts: optional (B,) + (N, 2) or (2, N)
         K: 3x3 camera intrinsic matrix
         depth: 1D depth values
     """
-    assert len(pts.shape) == 2, f"pts.shape: {pts.shape}"
-    if pts.shape[1] != 2:
-        pts = pts.T
-    lib = pick_library(pts)
-    pts = lib.hstack((pts, lib.ones((pts.shape[0], 1))))
-    pts = pts * depth.reshape(-1, 1)
-    pts = lib.linalg.inv(K) @ pts.T
-    return pts.T
-
-
-def backproj_2d_pts_batch(pts, K, depth):
-    """
-    Backproject 2D points to 3D points
-    Args:
-        pts: (N, 2) or (2, N)
-        K: 3x3 camera intrinsic matrix
-        depth: 1D depth values
-    """
-    assert len(pts.shape) == 3, f"pts.shape: {pts.shape}"
+    t_func = get_transpose_func(pts)
     if pts.shape[-1] != 2:
-        pts = pts.T
+        pts = t_func(pts)
     lib = pick_library(pts)
-    ones = lib.ones((pts.shape[0], pts.shape[1], 1))
+    ones = lib.ones((*pts.shape[:-1], 1))
     if is_tensor(pts):
         ones = ones.to(pts.device)
-    pts = lib.cat((pts, ones), dim=-1)
-    pts = pts * depth.unsqueeze(-1)
-    pts_T = pts.transpose(-1, -2) if is_tensor(pts) else pts.swapaxes(-1, -2)
+        pts = lib.cat((pts, ones), dim=-1)
+    else:
+        pts = lib.concatenate((pts, ones), axis=-1)
+    depth_broadcast = depth.squeeze()[..., None]
+    pts = pts * depth_broadcast
+    pts_T = t_func(pts)
     pts = lib.linalg.inv(K) @ pts_T
-    return pts.transpose(-1, -2) if is_tensor(pts) else pts.swapaxes(-1, -2)
+    return t_func(pts)
 
 
 def look_at_rotation(point):
@@ -708,10 +668,10 @@ def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):
     t_pred_2d_backproj = []
     for sample_idx in range(len(t_pred)):
         t_pred_2d_backproj.append(
-            backproj_2d_to_3d(
+            backproj_2d_pts(
                 t_pred_2d_denorm[sample_idx][None],
-                depth_pred[sample_idx],
-                intrinsics[sample_idx],
+                depth=depth_pred[sample_idx],
+                K=intrinsics[sample_idx],
             ).squeeze()
         )
     t_pred = torch.stack(t_pred_2d_backproj).to(depth_pred.device)
