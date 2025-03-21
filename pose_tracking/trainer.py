@@ -222,7 +222,7 @@ class Trainer:
             self.train_epoch_count += 1
         running_stats = defaultdict(list)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
-        do_vis = self.do_vis and self.train_epoch_count % self.vis_epoch_freq == 0 and stage == "train"
+        do_vis = self.do_vis and (self.train_epoch_count) % self.vis_epoch_freq == 0 and stage in ["train"]
 
         if self.use_seq_len_curriculum:
             if self.train_epoch_count % self.seq_len_curriculum_step_epoch_freq == 0:
@@ -345,6 +345,7 @@ class Trainer:
         state = None
         do_skip_first_step = False
         prev_kpts = None
+        kpts_key = "bbox_3d_kpts" if self.bbox_num_kpts == 32 else "bbox_3d_kpts_corners"
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -405,7 +406,7 @@ class Trainer:
                         bbox=bbox_2d,
                         state=None,
                         features_rgb=features_rgb,
-                        bbox_kpts=batch_t["bbox_3d_kpts"],
+                        bbox_kpts=batch_t[kpts_key],
                     )
                     state = out["state"]
 
@@ -437,6 +438,9 @@ class Trainer:
                         loss = self.calc_kpt_loss(batch_t, out)["loss"]
                         total_losses.append(loss)
 
+                    if do_vis:
+                        self.extend_vis_data_with_batch_t(vis_batch_idxs, vis_data, batch_t, out=out)
+
                     continue
 
             if self.use_prev_pose_condition and self.do_predict_rel_pose:
@@ -450,7 +454,8 @@ class Trainer:
                 prev_latent=prev_latent,
                 state=state,
                 features_rgb=features_rgb,
-                bbox_kpts=batch_t["bbox_3d_kpts"],
+                bbox_kpts=batch_t[kpts_key],
+                bbox_kpts_prev=batched_seq[t - 1][kpts_key] if t > 0 else None,
             )
 
             # POSTPROCESS OUTPUTS
@@ -484,7 +489,7 @@ class Trainer:
                     prev_visib_kpt_mask = torch.abs(prev_kpts_depth - prev_kpts_depth_actual) < 1e-2
                     prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
                     prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
-                    prev_kpts_3d = backproj_2d_to_3d(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
+                    prev_kpts_3d = backproj_2d_pts(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
                     kpts_2d_denorm = kpts[bidx] * torch.tensor([w, h]).to(self.device)
                     visib_kpt_mask = prev_visib_kpt_mask
                     kpts_2d_denorm_visib = kpts_2d_denorm[visib_kpt_mask]
@@ -679,19 +684,9 @@ class Trainer:
                 save_results(batch_t, pose_mat_pred_abs, preds_dir, gt_pose=pose_mat_gt_abs)
 
             if do_vis:
-                # save inputs to the exp dir
-                vis_keys = ["rgb", "intrinsics"]
-                for k in ["mask", "mesh_bbox", "pts", "depth"]:
-                    if k in batch_t and len(batch_t[k]) > 0:
-                        vis_keys.append(k)
-                for k in vis_keys:
-                    vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
+                self.extend_vis_data_with_batch_t(vis_batch_idxs, vis_data, batch_t, out=out)
                 vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
                 vis_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred[vis_batch_idxs]))
-                vis_data["intrinsics"].append(detach_and_cpu(intrinsics[vis_batch_idxs]))
-                vis_data["out"].append(
-                    ({k: detach_and_cpu(v[vis_batch_idxs]) for k, v in out.items() if k in ["t", "rot"]})
-                )
                 vis_data["t_pred"].append(detach_and_cpu(t_pred[vis_batch_idxs]))
                 vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
@@ -708,8 +703,6 @@ class Trainer:
                 if "priv_decoded" in out:
                     vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
                 vis_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
-                vis_data["pts"].append(detach_and_cpu(pts))
-                vis_data["bbox_3d"].append(detach_and_cpu(batch_t["mesh_bbox"]))
                 vis_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
@@ -723,7 +716,6 @@ class Trainer:
                         vis_data["pose_mat_prev_gt_abs"].append(detach_and_cpu(pose_mat_prev_gt_abs))
                 if self.do_predict_kpts:
                     vis_data["kpts_pred"].append(detach_and_cpu(out["kpts"]))
-                    vis_data["kpts_gt"].append(detach_and_cpu(batch_t["bbox_2d_kpts"]))
                     if self.use_pnp_for_rot_pred:
                         vis_data["prev_kpts"].append(detach_and_cpu(prev_kpts))
 
@@ -797,6 +789,33 @@ class Trainer:
                     else:
                         rot_pred_abs = self.rot_mat_to_vector_converter_fn(rot_mat_pred_abs)
                         loss_rot_abs = self.criterion_rot(rot_pred_abs, rot_gt_abs)
+                    seq_stats["loss_t_abs"].append(loss_t_abs.item())
+                    seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
+
+        if do_vis:
+            os.makedirs(self.vis_dir, exist_ok=True)
+            save_vis_path = (
+                f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}_step_{self.ts_counts_per_stage[stage]}.pt"
+            )
+            torch.save(vis_data, save_vis_path)
+            self.save_vis_paths.append(save_vis_path)
+            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
+
+        return {
+            "losses": seq_stats,
+            "metrics": seq_metrics,
+            "last_step_state": last_step_state,
+        }
+
+    def extend_vis_data_with_batch_t(self, vis_batch_idxs, vis_data, batch_t, out=None):
+        vis_keys = ["rgb", "intrinsics", "pose"]
+        for k in ["mask", "mesh_bbox", "pts", "depth", "bbox_2d_kpts"]:
+            if k in batch_t and len(batch_t[k]) > 0:
+                vis_keys.append(k)
+        for k in vis_keys:
+            vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
+        if out is not None:
+            vis_data["out"].append(detach_and_cpu(out))
                     seq_stats["loss_t_abs"].append(loss_t_abs.item())
                     seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
 
