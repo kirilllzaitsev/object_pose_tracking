@@ -24,6 +24,7 @@ from pose_tracking.dataset.custom import CustomDataset
 from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetCube,
     CustomSimDatasetIkea,
+    CustomSimMultiObjDatasetIkea,
 )
 from pose_tracking.dataset.ho3d import HO3DDataset
 from pose_tracking.dataset.transforms import get_transforms
@@ -608,7 +609,7 @@ def get_datasets(
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
         ds_kwargs_custom = ycbi_kwargs
-    elif ds_name in ["ikea", "custom", "ho3d_v3"]:
+    elif ds_name in ["ikea", "custom", "ho3d_v3", "ikea_multiobj"]:
         ds_kwargs_custom = dict()
     else:
         cube_sim_kwargs = dict(
@@ -798,6 +799,10 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
         )
     elif ds_name == "ikea":
         ds = CustomSimDatasetIkea(
+            **ds_kwargs,
+        )
+    elif ds_name == "ikea_multiobj":
+        ds = CustomSimMultiObjDatasetIkea(
             **ds_kwargs,
         )
     else:
