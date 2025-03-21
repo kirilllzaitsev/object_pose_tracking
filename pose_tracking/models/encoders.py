@@ -1,7 +1,7 @@
-from pose_tracking.models.resnet import resnet50
 import torch
 import torch.nn as nn
 import torchvision
+from pose_tracking.models.resnet import resnet50
 
 
 def get_encoders(
@@ -94,17 +94,13 @@ def get_encoders(
         )
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
-                dropout_layer,
+                nn.LayerNorm(512),
                 nn.Linear(512, out_dim),
             )
     elif model_name == "resnet50":
         weights = torchvision.models.ResNet50_Weights.DEFAULT
-        encoder_rgb = torchvision.models.resnet50(
-            weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth = torchvision.models.resnet50(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
+        encoder_rgb = resnet50(weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer)
+        encoder_depth = resnet50(weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer)
         encoder_depth.conv1 = nn.Conv2d(
             1,
             64,
@@ -115,8 +111,8 @@ def get_encoders(
         )
         for m in [encoder_rgb, encoder_depth]:
             m.fc = nn.Sequential(
-                dropout_layer,
-                nn.Linear(2048, out_dim),
+                nn.LayerNorm(2048),
+                nn.Identity(),
             )
     elif model_name == "dino":
         encoder_rgb = torch.hub.load("facebookresearch/dino:main", "dino_vits8")
