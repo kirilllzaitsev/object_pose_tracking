@@ -28,7 +28,6 @@ from pose_tracking.utils.artifact_utils import save_results, save_results_v2
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
-    backproj_2d_to_3d,
     cam_to_2d,
     convert_2d_t_to_3d,
     convert_3d_t_for_2d,
@@ -164,6 +163,9 @@ class TrainerKeypoints(Trainer):
                         assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                         save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
 
+                    if do_vis:
+                        self.extend_vis_data_with_batch_t(vis_batch_idxs, vis_data, batch_t, out=out)
+
                     continue
 
             if self.use_prev_pose_condition and self.do_predict_rel_pose:
@@ -171,6 +173,7 @@ class TrainerKeypoints(Trainer):
 
             out = self.model(
                 rgb=rgb,
+                rgb_prev=batched_seq[t - 1]["rgb"] if t > 0 else None,
                 depth=depth,
                 bbox=bbox_2d,
                 prev_pose=prev_pose,
@@ -342,6 +345,7 @@ class TrainerKeypoints(Trainer):
                     [0.0015, 0.0026, 0.0039],
                 ]
             ).to(self.device)
+            kpts_mean = 1
             if self.do_predict_rel_pose:
                 kpts_gt_prev = batched_seq[t - 1][kpts_key].float()
                 kpts_gt_delta = kpts_gt - kpts_gt_prev
@@ -428,19 +432,9 @@ class TrainerKeypoints(Trainer):
                 save_results(batch_t, pose_mat_pred_abs, preds_dir, gt_pose=pose_mat_gt_abs)
 
             if do_vis:
-                # save inputs to the exp dir
-                vis_keys = ["rgb", "intrinsics"]
-                for k in ["mask", "mesh_bbox", "pts", "depth"]:
-                    if k in batch_t and len(batch_t[k]) > 0:
-                        vis_keys.append(k)
-                for k in vis_keys:
-                    vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
+                self.extend_vis_data_with_batch_t(vis_batch_idxs, vis_data, batch_t, out=out)
                 vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
                 vis_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred[vis_batch_idxs]))
-                vis_data["intrinsics"].append(detach_and_cpu(intrinsics[vis_batch_idxs]))
-                vis_data["out"].append(
-                    ({k: detach_and_cpu(v[vis_batch_idxs]) for k, v in out.items() if k in ["t", "rot"]})
-                )
                 vis_data["t_pred"].append(detach_and_cpu(t_pred[vis_batch_idxs]))
                 vis_data["rot_pred"].append(detach_and_cpu(rot_pred[vis_batch_idxs]))
                 vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs[vis_batch_idxs]))
@@ -457,9 +451,6 @@ class TrainerKeypoints(Trainer):
                 if "priv_decoded" in out:
                     vis_data["priv_decoded"].append(detach_and_cpu(out["priv_decoded"]))
                 vis_data["pose_prev_pred_abs"].append(detach_and_cpu(pose_prev_pred_abs))
-                vis_data["pts"].append(detach_and_cpu(pts))
-                vis_data["bbox_3d"].append(detach_and_cpu(batch_t["mesh_bbox"]))
-                vis_data["out_prev"].append(detach_and_cpu(out_prev))
                 if self.do_predict_rel_pose:
                     if self.use_pose_loss:
                         vis_data["pose_mat_pred"].append(detach_and_cpu(pose_mat_pred))
