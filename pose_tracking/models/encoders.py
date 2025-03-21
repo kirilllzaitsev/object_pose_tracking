@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torchvision
-from pose_tracking.models.resnet import resnet50
+from timm.models.resnet import resnet18, resnet50
 
 
 def get_encoders(
-    model_name="efficientnet_b1",
+    model_name="resnet50",
     device="cpu",
     weights_rgb="imagenet",
     weights_depth="imagenet",
@@ -15,6 +15,7 @@ def get_encoders(
     out_dim=256,
     ignored_modalities="",
     dropout=0.0,
+    rgb_in_channels=3,
 ):
     if norm_layer_type == "bn":
         print(f"WARN: {norm_layer_type=}")
@@ -39,6 +40,7 @@ def get_encoders(
         "resnet50",
         "dino",
     ], model_name
+    use_pretrained = weights_rgb is not None
 
     if model_name == "regnet_y_800mf":
         weights = torchvision.models.RegNet_Y_800MF_Weights.IMAGENET1K_V2
@@ -81,60 +83,21 @@ def get_encoders(
                 nn.Linear(576, out_dim),
             )
     elif model_name == "resnet18":
-        weights = torchvision.models.ResNet18_Weights.DEFAULT
-        encoder_rgb = torchvision.models.resnet18(weights=weights if weights_rgb == "imagenet" else None)
-        encoder_depth = torchvision.models.resnet18(weights=weights if weights_depth == "imagenet" else None)
-        encoder_depth.conv1 = nn.Conv2d(
-            1,
-            64,
-            kernel_size=encoder_rgb.conv1.kernel_size,
-            stride=encoder_rgb.conv1.stride,
-            padding=encoder_rgb.conv1.padding,
-            bias=False,
+        encoder_rgb = resnet18(
+            pretrained=use_pretrained, in_chans=rgb_in_channels, norm_layer=norm_layer, num_classes=out_dim
         )
-        for m in [encoder_rgb, encoder_depth]:
-            m.fc = nn.Sequential(
-                nn.LayerNorm(512),
-                nn.Linear(512, out_dim),
-            )
+        encoder_depth = resnet18(pretrained=use_pretrained, in_chans=1, norm_layer=norm_layer, num_classes=out_dim)
     elif model_name == "resnet50":
-        weights = torchvision.models.ResNet50_Weights.DEFAULT
-        encoder_rgb = resnet50(weights=weights if weights_rgb == "imagenet" else None, norm_layer=norm_layer)
-        encoder_depth = resnet50(weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer)
-        encoder_depth.conv1 = nn.Conv2d(
-            1,
-            64,
-            kernel_size=encoder_rgb.conv1.kernel_size,
-            stride=encoder_rgb.conv1.stride,
-            padding=encoder_rgb.conv1.padding,
-            bias=False,
+        encoder_rgb = resnet50(
+            pretrained=use_pretrained, in_chans=rgb_in_channels, norm_layer=norm_layer, num_classes=out_dim
         )
-        for m in [encoder_rgb, encoder_depth]:
-            m.fc = nn.Sequential(
-                nn.LayerNorm(2048),
-                nn.Identity(),
-            )
+        encoder_depth = resnet50(pretrained=use_pretrained, in_chans=1, norm_layer=norm_layer, num_classes=out_dim)
     elif model_name == "dino":
         encoder_rgb = torch.hub.load("facebookresearch/dino:main", "dino_vits8")
         for p in encoder_rgb.parameters():
             p.requires_grad = False
         weights = torchvision.models.ResNet50_Weights.DEFAULT
-        encoder_depth = torchvision.models.resnet50(
-            weights=weights if weights_depth == "imagenet" else None, norm_layer=norm_layer
-        )
-        encoder_depth.conv1 = nn.Conv2d(
-            1,
-            64,
-            kernel_size=encoder_depth.conv1.kernel_size,
-            stride=encoder_depth.conv1.stride,
-            padding=encoder_depth.conv1.padding,
-            bias=False,
-        )
-        for m in [encoder_depth]:
-            m.fc = nn.Sequential(
-                dropout_layer,
-                nn.Linear(2048, out_dim),
-            )
+        encoder_depth = resnet50(pretrained=True, in_chans=1, norm_layer=norm_layer, num_classes=out_dim)
     else:
         weights = torchvision.models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
         encoder_rgb = torchvision.models.efficientnet_v2_s(weights=weights if weights_depth == "imagenet" else None)
