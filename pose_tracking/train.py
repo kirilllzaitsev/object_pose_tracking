@@ -330,7 +330,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             patience=args.lrs_patience,
             threshold=args.lrs_delta,
             threshold_mode=args.lrs_threshold_mode,
-            verbose=True,
+            min_lr=args.lrs_min_lr,
         )
 
     logger.info(trainer)
@@ -350,8 +350,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     best_val_loss = np.inf
     history = defaultdict(lambda: defaultdict(list))
     if is_main_process:
-        log_model_stats_epoch_freq = 5
-        steps_per_epoch = len(train_loader) * args.seq_len
+        log_model_stats_epoch_freq = 15 if args.do_overfit else 5
+        steps_per_epoch = len(train_loader) * (1 if args.use_rnn else args.seq_len) * world_size
         watch(model, log_step_interval=steps_per_epoch * log_model_stats_epoch_freq)
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
@@ -369,28 +369,20 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         for k, v in train_stats.items():
             history["train"][k].append(v)
 
-        last_lrs_before = lr_scheduler.get_last_lr()
-        if args.lrs_type == "step" or not args.use_lrs:
-            lr_scheduler.step()
-        else:
-            lr_scheduler.step(history["train"]["loss"][-1])
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
-        last_lrs_after = lr_scheduler.get_last_lr()
-        for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
-            if lr_before != lr_after:
-                logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
-
-        if epoch % args.val_epoch_freq == 0:
+        if (epoch - 1) % args.val_epoch_freq == 0:
             model.eval()
             with torch.no_grad():
                 val_stats = trainer.loader_forward(
                     val_loader,
                     stage="val",
                 )
-                train_as_val_stats = trainer.loader_forward(
-                    train_as_val_loader,
-                    stage="train_as_val",
+                train_as_val_stats = (
+                    {}
+                    if args.do_overfit
+                    else trainer.loader_forward(
+                        train_as_val_loader,
+                        stage="train_as_val",
+                    )
                 )
             if is_main_process:
                 for stage, stats in zip(["val", "train_as_val"], [val_stats, train_as_val_stats]):
@@ -406,6 +398,18 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                 if args.do_save_artifacts and epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
                     log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
                     printer.saved_artifacts(epoch)
+
+                last_lrs_before = lr_scheduler.get_last_lr()
+                if args.lrs_type == "step" or not args.use_lrs:
+                    lr_scheduler.step()
+                else:
+                    lr_scheduler.step(history["val"]["loss"][-1])
+                last_lrs_after = lr_scheduler.get_last_lr()
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
+                for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
+                    if lr_before != lr_after and lr_after > args.lrs_min_lr:
+                        logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
 
         if args.use_es_train and is_main_process:
             early_stopping(loss=history["train"]["loss"][-1])
@@ -424,7 +428,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         return
 
     if is_main_process and args.do_save_artifacts:
-        log_artifacts(artifacts, exp, logdir, epoch, suffix="last")
+        log_artifacts(artifacts, exp, logdir, epoch, suffix="last", do_log_session=True)
         printer.saved_artifacts(epoch)
 
     if logdir is not None:
