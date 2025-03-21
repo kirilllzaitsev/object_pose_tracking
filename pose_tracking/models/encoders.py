@@ -1,3 +1,4 @@
+from pose_tracking.models.resnet import resnet50
 import torch
 import torch.nn as nn
 import torchvision
