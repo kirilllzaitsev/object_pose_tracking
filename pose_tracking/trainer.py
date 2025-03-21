@@ -16,6 +16,7 @@ from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import (
     calc_metrics,
     calc_r_error,
+    calc_rt_errors,
     calc_t_error,
     eval_batch_det,
 )
@@ -26,7 +27,7 @@ from pose_tracking.utils.artifact_utils import save_results, save_results_v2
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
-    backproj_2d_to_3d,
+    backproj_2d_pts,
     cam_to_2d,
     convert_2d_t_to_3d,
     convert_3d_t_for_2d,

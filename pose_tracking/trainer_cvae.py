@@ -15,7 +15,6 @@ from pose_tracking.trainer import Trainer
 from pose_tracking.utils.artifact_utils import save_results
 from pose_tracking.utils.common import detach_and_cpu
 from pose_tracking.utils.geom import (
-    backproj_2d_to_3d,
     convert_2d_t_to_3d,
     convert_3d_t_for_2d,
     egocentric_delta_pose_to_pose,
@@ -221,32 +220,6 @@ class TrainerCVAE(Trainer):
             #     [self.pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
             # )
             pose_mat_pred = torch.stack([convert_r_t_to_rt(r, t) for r, t in zip(rot_pred, t_pred)])
-
-            if self.use_pnp_for_rot_pred:
-                kpts = out["kpts"]
-                rot_mat_pred_bidxs = []
-                for bidx in range(batch_size):
-                    prev_kpts_2d = prev_kpts[bidx]
-                    prev_kpts_2d_denorm = prev_kpts_2d * torch.tensor([w, h]).to(self.device)
-                    prev_depth = batched_seq[t - 1]["depth"][bidx]
-                    prev_kpts_depth_actual = prev_depth[
-                        ..., prev_kpts_2d_denorm[:, 1].long(), prev_kpts_2d_denorm[:, 0].long()
-                    ].double()
-                    prev_kpts_depth = batched_seq[t - 1]["bbox_2d_kpts_depth"][bidx] / 10
-                    prev_visib_kpt_mask = torch.abs(prev_kpts_depth - prev_kpts_depth_actual) < 1e-2
-                    prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
-                    prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
-                    prev_kpts_3d = backproj_2d_to_3d(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
-                    kpts_2d_denorm = kpts[bidx] * torch.tensor([w, h]).to(self.device)
-                    visib_kpt_mask = prev_visib_kpt_mask
-                    kpts_2d_denorm_visib = kpts_2d_denorm[visib_kpt_mask]
-                    pose_from_3d_2d_matches_res = get_pose_from_3d_2d_matches(
-                        prev_kpts_3d, kpts_2d_denorm_visib, intrinsics[bidx]
-                    )
-                    rot_mat_pred_bidx = pose_from_3d_2d_matches_res["R"]
-                    rot_mat_pred_bidxs.append(torch.tensor(rot_mat_pred_bidx))
-
-                pose_mat_pred[:, :3, :3] = torch.stack(rot_mat_pred_bidxs).to(self.device)
 
             rot_mat_pred = pose_mat_pred[:, :3, :3]
 
