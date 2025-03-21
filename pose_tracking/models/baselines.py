@@ -1,6 +1,7 @@
 import torch
 from pose_tracking.models.cnnlstm import MLP
 from pose_tracking.models.cvae import get_encoders
+from pose_tracking.utils.misc import init_params
 from torch import nn
 
 
@@ -278,6 +279,7 @@ class KeypointCNN(nn.Module):
     def forward(
         self,
         rgb,
+        rgb_prev,
         depth=None,
         prev_pose=None,
         latent_rgb=None,
@@ -434,14 +436,14 @@ class KeypointPose(nn.Module):
             )
 
         self.shared_mlp = MLP(
-            in_dim=self.num_kpts * 3,
+            in_dim=self.num_kpts * 3 * 1,
             out_dim=self.encoder_out_dim,
             hidden_dim=hidden_dim,
             num_layers=rt_mlps_num_layers,
             dropout=dropout_heads,
         )
 
-        self.init_params(self)
+        init_params(self)
 
     def forward(
         self,
@@ -580,7 +582,7 @@ class KeypointKeypoint(nn.Module):
             act_out=nn.LeakyReLU(),
         )
 
-        self.init_params(self)
+        init_params(self)
 
     def forward(
         self,
@@ -594,7 +596,8 @@ class KeypointKeypoint(nn.Module):
         bs, n, _ = bbox_kpts.size()
         if prev_bbox_kpts is None:
             prev_bbox_kpts = torch.zeros_like(bbox_kpts)
-        shared_in = torch.cat([bbox_kpts.view(bs, -1), prev_bbox_kpts.view(bs, -1)], dim=1)
+
+        shared_in = torch.cat([bbox_kpts, prev_bbox_kpts], dim=1).view(bs, -1)
         latent = self.shared_mlp(shared_in)
 
         res = {}

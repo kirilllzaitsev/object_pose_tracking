@@ -172,7 +172,7 @@ def match_module_by_name(n, name_keywords):
     if isinstance(name_keywords, str):
         name_keywords = [name_keywords]
     for b in name_keywords:
-        if b in n.split("."):
+        if b in n.split(".") or ("." in b and b in n):
             out = True
             break
     return out

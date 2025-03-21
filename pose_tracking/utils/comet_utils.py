@@ -173,7 +173,7 @@ def load_artifacts_from_comet(
     if args_file_path is not None:
         results["args_path"] = args_file_path
         args = load_args_from_file(args_file_path)
-        if os.path.exists(model_checkpoint_path):
+        if do_load_model and os.path.exists(model_checkpoint_path):
             args.ckpt_path = model_checkpoint_path
         results["args"] = args
     if include_session:

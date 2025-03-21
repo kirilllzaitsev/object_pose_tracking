@@ -19,8 +19,7 @@ from pose_tracking.models.pos_encoding import (
     sinusoidal_embedding,
 )
 from pose_tracking.utils.geom import (
-    backproj_2d_to_3d,
-    backproj_2d_to_3d_batch,
+    backproj_2d_pts,
     calibrate_2d_pts_batch,
 )
 from pose_tracking.utils.kpt_utils import (
@@ -640,7 +639,7 @@ class KeypointDETR(DETRBase):
             K_norm[..., 1, 2] /= h
             if self.do_backproj_kpts_to_3d:
                 assert depth is not None
-                kpts = backproj_2d_to_3d_batch(kpts, depth=depth_1d, K=K_norm)
+                kpts = backproj_2d_pts(kpts, depth=depth_1d, K=K_norm)
             elif self.do_calibrate_kpt:
                 kpts = calibrate_2d_pts_batch(kpts, K=K_norm)
 
