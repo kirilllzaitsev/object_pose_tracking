@@ -54,7 +54,11 @@ class VideoDataset(Dataset):
             self.num_samples = 1 if self.seq_step else self.max_random_seq_step - 1  # because of the fixed start idx
         else:
             # not very meaningful. can sample much more different subsequences given random seq_step/seq_start
-            self.num_samples = max(1, len(ds) // self.seq_len) if num_samples is None else num_samples
+            self.num_samples = (
+                max(1, len(ds) // (self.seq_len * (seq_step if seq_step > 0 else max_random_seq_step)))
+                if num_samples is None
+                else num_samples
+            )
         self.transforms_rgb = get_transforms_video(transforms_rgb) if transforms_rgb is not None else None
 
         if do_preload:
