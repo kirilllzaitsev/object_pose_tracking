@@ -51,6 +51,7 @@ class TrackingDataset(Dataset):
         include_pose=True,
         include_bbox_2d=False,
         include_bbox_3d=True,
+        include_nocs=False,
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
@@ -69,6 +70,7 @@ class TrackingDataset(Dataset):
         rot_repr="quaternion",
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
+        use_mask_for_bbox_2d=True,
         bbox_num_kpts=32,
         dino_features_folder_name=None,
         num_objs=1,
@@ -88,6 +90,8 @@ class TrackingDataset(Dataset):
         self.do_normalize_depth = do_normalize_depth
         self.do_subtract_bg = do_subtract_bg
         self.use_allocentric_pose = use_allocentric_pose
+        self.include_nocs = include_nocs
+        self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -170,6 +174,9 @@ class TrackingDataset(Dataset):
             if self.include_depth:
                 sample["depth"] = sample["depth"] * sample["mask"]
 
+        if self.include_nocs:
+            ...
+
         if self.do_load_dino_features:
             features_path = f"{self.video_dir}/{self.dino_features_folder_name}/{self.id_strs[i]}.pt"
             assert os.path.exists(features_path), f"Could not find features at {features_path}"
@@ -203,39 +210,46 @@ class TrackingDataset(Dataset):
             bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
 
         if self.include_bbox_2d:
-            if not self.include_mask:
-                mask = self.get_mask(i)
-                if self.do_erode_mask:
-                    mask = mask_morph(mask, kernel_size=11)
-            if self.num_objs > 1:
-                colors = [x for x in np.unique(mask.reshape(-1, mask.shape[2]), axis=0) if x.sum() > 0]
-                bin_masks = [np.all(mask == c, axis=-1) for c in colors]
+            if self.use_mask_for_bbox_2d:
+                bbox_2ds = []
+                if not self.include_mask:
+                    mask = self.get_mask(i)
+                    if self.do_erode_mask:
+                        mask = mask_morph(mask, kernel_size=11)
+                if self.num_objs > 1:
+                    colors = [x for x in np.unique(mask.reshape(-1, mask.shape[2]), axis=0) if x.sum() > 0]
+                    bin_masks = [np.all(mask == c, axis=-1) for c in colors]
+                else:
+                    bin_masks = [mask]
+                for bin_mask in bin_masks:
+                    bbox_2d = infer_bounding_box(bin_mask)
+                    if bbox_2d is None:
+                        print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
+                        return None
+                    bbox_2ds.append(bbox_2d)
             else:
-                bin_masks = [mask]
-            bbox_2ds = []
-            for bin_mask in bin_masks:
-                bbox_2d = infer_bounding_box(bin_mask)
-                if bbox_2d is None:
-                    print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
-                    return None
+                bbox_2ds = list(
+                    convert_3d_bbox_to_2d(
+                        self.mesh_bbox, sample["intrinsics"].numpy(), hw=(self.h, self.w), pose=sample["pose"]
+                    )
+                )
+            for idx, bbox_2d in enumerate(bbox_2ds):
                 bbox_2d = bbox_2d.astype(np.float32)
                 if self.do_normalize_bbox:
                     bbox_2d[..., 0] /= self.w
                     bbox_2d[..., 1] /= self.h
                 if self.bbox_format == "xyxy":
                     bbox_2d = bbox_2d.reshape(1, -1)
-                    bbox_2ds.append(bbox_2d)
+                    bbox_2ds[idx] = bbox_2d
                 elif self.bbox_format == "cxcywh":
                     bbox_2d = bbox_2d.reshape(-1)
-                    bbox_2ds.append(
-                        np.array(
-                            [
-                                (bbox_2d[0] + bbox_2d[2]) / 2,
-                                (bbox_2d[1] + bbox_2d[3]) / 2,
-                                bbox_2d[2] - bbox_2d[0],
-                                bbox_2d[3] - bbox_2d[1],
-                            ]
-                        )
+                    bbox_2ds[idx] = np.array(
+                        [
+                            (bbox_2d[0] + bbox_2d[2]) / 2,
+                            (bbox_2d[1] + bbox_2d[3]) / 2,
+                            bbox_2d[2] - bbox_2d[0],
+                            bbox_2d[3] - bbox_2d[1],
+                        ]
                     )
             sample["bbox_2d"] = np.stack(bbox_2ds)
 
