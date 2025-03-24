@@ -111,8 +111,15 @@ def load_artifacts_from_comet(
     os.makedirs(exp_dir, exist_ok=True)
     args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
     model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
+    alternative_model_artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
+    alternative_model_checkpoint_path = f"{exp_dir}/{alternative_model_artifact_name}.pth"
+    weights_not_exist = False
+    if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path, alternative_model_checkpoint_path]):
+        weights_not_exist = True
+    elif os.path.exists(alternative_model_checkpoint_path) and not os.path.exists(model_checkpoint_path):
+        print(f"Using {Path(alternative_model_checkpoint_path).stem=}")
+        model_checkpoint_path = alternative_model_checkpoint_path
     args_not_exist = not os.path.exists(args_file_path)
-    weights_not_exist = not os.path.exists(model_checkpoint_path) and do_load_model
 
     if any([args_not_exist, weights_not_exist]):
         os.makedirs(exp_dir, exist_ok=True)
@@ -141,18 +148,20 @@ def load_artifacts_from_comet(
         if weights_not_exist or include_session:
             if use_epoch and epoch is None:
                 epoch = get_latest_ckpt_epoch(exp_name)
-                artifact_name = f"{model_artifact_name}_{epoch}"
+                alternative_model_artifact_name = f"{model_artifact_name}_{epoch}"
             else:
-                artifact_name = model_artifact_name
+                alternative_model_artifact_name = model_artifact_name
             logged_models = exp_api.get_model_asset_list("ckpt")
             sorted_assets = sorted(logged_models, key=lambda x: x["step"], reverse=True)
-            model_assets = [x for x in sorted_assets if artifact_name in x["fileName"]]
+            model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
             if len(model_assets) == 0:
-                print(f"WARN: No model found with name {artifact_name}. Trying the alternative")
-                artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
-                model_assets = [x for x in sorted_assets if artifact_name in x["fileName"]]
-                assert len(model_assets) > 0, f"No model found with name {artifact_name}"
+                print(f"WARN: No model found with name {alternative_model_artifact_name}. Trying the alternative")
+                alternative_model_artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
+                model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
+                assert len(model_assets) > 0, f"No model found with name {alternative_model_artifact_name}"
+                model_artifact_name = alternative_model_artifact_name
             model_asset = model_assets[0]
+            print(f"Loading the model from step {model_asset['step']}")
             load_asset(exp_api, model_asset["assetId"], model_checkpoint_path)
             weights_not_exist = False
             if include_session:
