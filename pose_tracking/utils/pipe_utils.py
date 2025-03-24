@@ -13,12 +13,14 @@ from pose_tracking.config import (
     DATA_DIR,
     HO3D_ROOT,
     MEMOTR_DIR,
+    NOCS_SCENE_DIR,
     PROJ_DIR,
     PROJ_NAME,
     RELATED_DIR,
     TF_DIR,
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
+    YCBV_SCENE_DIR,
 )
 from pose_tracking.dataset.custom import CustomDataset
 from pose_tracking.dataset.custom_sim_ds import (
@@ -35,6 +37,12 @@ from pose_tracking.dataset.video_ds import (
 )
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
+from pose_tracking.models.baselines import (
+    CNN,
+    KeypointCNN,
+    KeypointKeypoint,
+    KeypointPose,
+)
 from pose_tracking.models.cnnlstm import (
     RecurrentCNN,
     RecurrentCNNDouble,
@@ -42,7 +50,6 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNVanilla,
 )
 from pose_tracking.models.cvae import CVAE
-from pose_tracking.models.baselines import CNN, KeypointCNN, KeypointKeypoint, KeypointPose
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
@@ -397,9 +404,9 @@ def get_trainer(
     args, model, device="cuda", writer=None, world_size=1, logger=None, do_vis=False, exp_dir=None, num_classes=None
 ):
     from pose_tracking.trainer import Trainer
-    from pose_tracking.trainer_kpt import TrainerKeypoints
     from pose_tracking.trainer_cvae import TrainerCVAE
     from pose_tracking.trainer_detr import TrainerDeformableDETR, TrainerTrackformer
+    from pose_tracking.trainer_kpt import TrainerKeypoints
     from pose_tracking.trainer_others import TrainerPizza, TrainerVideopose
 
     criterion_trans = get_t_loss(args.t_loss_name)
@@ -722,6 +729,7 @@ def get_datasets(
             max_videos=max_test_videos,
             max_random_seq_step=max_random_seq_step,
             do_predict_rel_pose=do_predict_rel_pose,
+            end_frame_idx=end_frame_idx,
         )
         res["test"] = test_dataset
 
@@ -811,15 +819,23 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
 
 
 def get_ds_dirs(args):
-    if args.ds_name in ["ikea", "cube", "custom"]:
+    if args.ds_name in ["ikea", "cube", "custom", "ikea_multiobj"]:
         ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
         ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
     elif args.ds_name in ["ho3d_v3"]:
         ds_video_dir_train = HO3D_ROOT / args.ds_folder_name_train
         ds_video_dir_val = HO3D_ROOT / args.ds_folder_name_val
-    else:
+    elif args.ds_name == "ycbi":
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
+    elif args.ds_name == "ycbv":
+        ds_video_dir_train = YCBV_SCENE_DIR
+        ds_video_dir_val = YCBV_SCENE_DIR
+    elif args.ds_name == "nocs":
+        ds_video_dir_train = NOCS_SCENE_DIR
+        ds_video_dir_val = NOCS_SCENE_DIR
+    else:
+        raise NotImplementedError(f"Unknown dataset name {args.ds_name}")
 
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
