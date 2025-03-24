@@ -29,7 +29,6 @@ from pose_tracking.utils.artifact_utils import save_results, save_results_v2
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
-    backproj_2d_to_3d,
     cam_to_2d,
     convert_2d_t_to_3d,
     egocentric_delta_pose_to_pose,
@@ -352,6 +351,9 @@ class TrainerDeformableDETR(Trainer):
                     pose_mat_pred_metrics = pose_mat_pred_abs
                     pose_mat_gt_metrics = pose_mat_gt_abs
 
+                if any(x > 1 for x in batch_t["num_objs"]):
+                    for k in ["mesh_pts", "mesh_bbox", "mesh_diameter"]:
+                        batch_t[k] = batch_t[k].flatten(0, 1)
                 m_batch_avg = self.calc_metrics_batch(
                     batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
                 )

@@ -1,5 +1,6 @@
 import functools
 
+from pose_tracking.metrics import normalize_rotation_matrix
 import torch
 from pose_tracking.utils.geom import rotate_pts_batch, transform_pts_batch
 from pose_tracking.utils.misc import pick_library
@@ -54,9 +55,9 @@ def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts, dist_loss="mse"):
 
 def videopose_loss(pred_quat, true_quat, eps=1e-8):
     # https://github.com/ApoorvaBeedu/VideoPose/models/loss.py
-    pred_quat = normalize_quaternion(pred_quat, eps=eps)
+    pred_quat_norm = normalize_quaternion(pred_quat, eps=eps)
     true_quat = normalize_quaternion(true_quat, eps=eps)
-    inn_prod = torch.mm(pred_quat, true_quat.t())
+    inn_prod = torch.mm(pred_quat_norm, true_quat.t())
     inn_prod = inn_prod.diag()
 
     quat_loss = 1 - (inn_prod).abs().mean()
@@ -66,7 +67,7 @@ def videopose_loss(pred_quat, true_quat, eps=1e-8):
 
 
 def geodesic_loss_mat(pred_rot, true_rot):
-    R_diffs = pred_rot @ true_rot.permute(0, 2, 1)
+    R_diffs = normalize_rotation_matrix(pred_rot) @ true_rot.permute(0, 2, 1)
     traces = R_diffs.diagonal(dim1=-2, dim2=-1).sum(-1)
     dists = torch.acos(torch.clamp((traces - 1) / 2, -1, 1))
     return torch.mean(dists)

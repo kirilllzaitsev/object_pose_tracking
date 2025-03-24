@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -170,6 +171,14 @@ def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
     """
     pred_rt = cast_to_numpy(pred_rt)
     gt_rt = cast_to_numpy(gt_rt)
+
+    if len(pred_rt.shape) == 3:
+        errors = defaultdict(list)
+        for i in range(pred_rt.shape[0]):
+            error = calc_rt_errors(pred_rt[i], gt_rt[i], handle_visibility, class_name)
+            for k, v in error.items():
+                errors[k].append(v)
+        return {k: np.mean(v) for k, v in errors.items()}
 
     T1 = pred_rt[:3, 3]
     T2 = gt_rt[:3, 3]

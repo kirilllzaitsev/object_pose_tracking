@@ -131,6 +131,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             logger.info(f"{num_classes=}")
         elif args.ds_name in ["ycbi", "ho3d_v3"]:
             num_classes = len(YCBV_OBJ_NAME_TO_ID)
+        elif args.ds_name in ["ikea_multiobj"]:
+            num_classes = 3
         else:
             num_classes = None
         args.num_classes = num_classes
