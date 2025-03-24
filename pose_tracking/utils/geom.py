@@ -898,3 +898,18 @@ def allo_to_ego_mat_torch(translation, rot_allo, eps=1e-4):
     # Apply quaternion for transformation from allocentric to egocentric.
     rot_ego = torch.matmul(rot_allo_to_ego, rot_allo)
     return rot_ego
+
+
+def bbox_from_corners(corners):  # corners [[3], [3]] or [Bs, 2, 3]
+    if not isinstance(corners, np.ndarray):
+        corners = np.array(corners)
+
+    # bbox = np.zeros((8, 3))
+    bbox_shape = corners.shape[:-2] + (8, 3)  # [Bs, 8, 3]
+    bbox = np.zeros(bbox_shape)
+    for i in range(8):
+        x, y, z = (i % 4) // 2, i // 4, i % 2
+        bbox[..., i, 0] = corners[..., x, 0]
+        bbox[..., i, 1] = corners[..., y, 1]
+        bbox[..., i, 2] = corners[..., z, 2]
+    return bbox

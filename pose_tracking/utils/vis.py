@@ -808,6 +808,18 @@ def plot_sample_pose_dict(sample, scale=0.05, bbox=None, ax=None):
     return plot_pose(color, pose, K, bbox=bbox, ax=ax, scale=scale)
 
 
+def vis_pose_pred(pose_pred, pose_gt=None, *args, **kwargs):
+    use_gt = pose_gt is not None
+    if use_gt:
+        kwargs["bbox_color"] = (255, 255, 0)
+    img = vis_pose(*args, pose=pose_pred, **kwargs)
+    if use_gt:
+        kwargs["bbox_color"] = (0, 255, 0)
+        kwargs["color"] = img
+        img = vis_pose(pose=pose_gt, **kwargs)
+    return img
+
+
 def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
     color = adjust_img_for_plt(color)
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=bbox_color, scale=scale)
