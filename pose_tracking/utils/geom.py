@@ -60,6 +60,8 @@ def world_to_2d_pt_homo(pt, K, rt):
 
 
 def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
+    if len(bbox.shape) == 3:
+        return np.stack([convert_3d_bbox_to_2d(b, intrinsics, hw, pose=pose if pose is None else pose[i]) for i, b in enumerate(bbox)])
     pose = np.eye(4) if pose is None else pose
     bbox_2d = world_to_2d(bbox, intrinsics, rt=pose)
     u, v = bbox_2d[:, 0].astype(int), bbox_2d[:, 1].astype(int)

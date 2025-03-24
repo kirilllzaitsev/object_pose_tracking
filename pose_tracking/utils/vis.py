@@ -230,7 +230,7 @@ def vis_bbox_2d(
     img = adjust_img_for_plt(img) if final_frame is None else final_frame
     bbox = cast_to_numpy(bbox).squeeze()
 
-    if len(bbox.shape) == 2:
+    if len(bbox.shape) == 2 and bbox.shape[-1] == 4:
         final_frame = None
         for idx in range(len(bbox)):
             final_frame = vis_bbox_2d(
@@ -246,8 +246,6 @@ def vis_bbox_2d(
                 final_frame=final_frame,
             )
         return final_frame
-
-    assert len(bbox.shape) == 1, f"{bbox.shape=}"
 
     img = np.ascontiguousarray(img)
     if bbox.shape == (4, 2):

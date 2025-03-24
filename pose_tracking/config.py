@@ -23,6 +23,8 @@ MEMOTR_DIR = RELATED_DIR / "obj_det/MeMOTR/memotr"
 ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"
 YCBINEOAT_SCENE_DIR = DATA_DIR / "ycbineoat"
+YCBV_SCENE_DIR = DATA_DIR / "ycbv"
+NOCS_SCENE_DIR = DATA_DIR / "nocs"
 
 YCB_MESHES_DIR = DATA_DIR / "ycb/models"
 HO3D_ROOT = DATA_DIR / "ho3d_v3"
