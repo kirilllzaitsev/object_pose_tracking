@@ -26,7 +26,10 @@ def postprocess_detr_outputs(outputs, target_sizes, is_focal_loss=True):
         scores, labels = prob[..., :-1].max(-1)
         scores_no_object = prob[..., -1]
 
-    boxes = box_cxcywh_to_xyxy(out_bbox)
+    if out_bbox is None:
+        boxes = torch.zeros((out_logits.shape[0], out_logits.shape[1], 4), device=out_logits.device)
+    else:
+        boxes = box_cxcywh_to_xyxy(out_bbox)
 
     # and from relative [0, 1] to absolute [0, height] coordinates
     img_h, img_w = target_sizes.unbind(1)
