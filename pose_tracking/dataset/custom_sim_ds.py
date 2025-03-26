@@ -269,7 +269,7 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
 
     def __init__(
         self,
-        obj_names=["object_0"],
+        obj_names=["object_0", "object_1", "object_2"],
         obj_ids=None,
         cam_init_rot=(0.0, 1.0, 0.0, 0.0),
         do_load_bbox_from_metadata=True,
@@ -286,14 +286,14 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
             **kwargs,
         )
 
-        self.mesh_paths_orig = [x["usd_path"] for x in self.metadata]
+        self.mesh_paths_orig = [x["usd_path"] for x in self.metadata_obj]
         if do_load_bbox_from_metadata:
-            assert self.metadata is not None, f"metadata not found at {self.metadata_path}"
+            assert self.metadata_obj is not None, f"metadata_obj not found at {self.metadata_path}"
             self.mesh_bbox = np.stack(
-                [bbox_to_8_point_centered(bbox=self.metadata[oidx]["bbox"]) for oidx in self.obj_ids]
+                [bbox_to_8_point_centered(bbox=self.metadata_obj[oidx]["bbox"]) for oidx in self.obj_ids]
             )
             self.mesh_diameter = [compute_pts_span(self.mesh_bbox[oidx]) for oidx in self.obj_ids]
 
     def augment_sample(self, sample, idx):
-        sample["class_id"] = [self.metadata[oidx].get("class_id", 0) for oidx in self.obj_ids]
+        sample["class_id"] = [self.metadata_obj[oidx].get("class_id", 0) for oidx in self.obj_ids]
         return sample
