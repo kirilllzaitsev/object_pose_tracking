@@ -59,7 +59,7 @@ def create_ycbvineoat_videos(ds_name, model_name, obj_names=None):
         save_video(images, save_path, frame_height, frame_width, fps, live_preview=False)
 
 
-def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=None, fps=10, include_det=False):
+def load_preds(preds_dir, include_det=False):
     poses_pred = []
     poses_gt = []
     rgbs = []
@@ -67,8 +67,11 @@ def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=N
     labels = []
 
     preds_dir = Path(preds_dir)
-    if intrinsics is None:
-        intrinsics = np.loadtxt(preds_dir / "intrinsics.txt")
+    intrinsics_path = preds_dir / "intrinsics.txt"
+    if intrinsics_path.exists():
+        intrinsics = np.loadtxt(intrinsics_path)
+    else:
+        intrinsics = None
     paths = sorted(glob(str(preds_dir / "rgb" / "*.png")))
     for path in tqdm(paths, leave=True, desc="Paths"):
         rgb = load_color(path)
@@ -85,6 +88,26 @@ def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=N
                     det = json.load(f)
                     boxes.append(det["bbox"])
                     labels.append(det["labels"])
+    res = {
+        "rgbs": rgbs,
+        "poses_pred": poses_pred,
+        "poses_gt": poses_gt,
+        "intrinsics": intrinsics,
+        "boxes": boxes,
+        "labels": labels,
+    }
+    return res
+
+
+def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=None, fps=10, include_det=False):
+
+    res = load_preds(preds_dir, include_det=include_det)
+    rgbs = res["rgbs"]
+    poses_pred = res["poses_pred"]
+    poses_gt = res["poses_gt"]
+    intrinsics = res["intrinsics"] if intrinsics is None else intrinsics
+    boxes = res["boxes"]
+    labels = res["labels"]
 
     rgb_bbox = draw_poses_on_video(
         rgbs,
@@ -102,7 +125,7 @@ def save_videos_for_obj(preds_dir, video_save_path=None, intrinsics=None, bbox=N
     save_video(rgb_bbox, video_save_path, frame_height, frame_width, fps)
 
     if include_det:
-        if not det_path.exists():
+        if len(boxes) == 0:
             logger.error(f"No detections found in {preds_dir}")
         else:
             imgs_det = []
