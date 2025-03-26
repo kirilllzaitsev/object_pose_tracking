@@ -213,16 +213,37 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
         **kwargs,
     ):
 
-        self.obj_ids = obj_ids
         self.obj_names = obj_names
 
         self.metadata_path = f"{kwargs['video_dir']}/metadata.json"
         assert os.path.exists(self.metadata_path)
         self.metadata = json.load(open(self.metadata_path))
-        self.obj_ids = list(range(len(self.metadata))) if obj_ids is None else obj_ids
-        self.segm_labels_to_id = self.metadata[0]["sim_meta"]["segm_labels_to_id"]
+        if isinstance(self.metadata, dict):
+            self.metadata_obj = self.metadata["objects"]
+            segm_labels_to_id = self.metadata["segm_labels_to_id"]
+        else:
+            for oidx, ometa in enumerate(self.metadata):
+                ometa["class_id"] = 0
+                self.metadata[oidx] = ometa
+            self.metadata_obj = self.metadata
+            segm_labels_to_id = self.metadata_obj[0]["sim_meta"]["segm_labels_to_id"]
+        self.obj_ids = list(range(len(self.metadata_obj))) if obj_ids is None else obj_ids
+        self.obj_names = [f"object_{i}" for i in range(len(self.metadata_obj))] if obj_names is None else obj_names
+        assert len(self.obj_ids) == len(self.obj_names), (self.obj_ids, self.obj_names)
 
-        super().__init__(*args, obj_ids=self.obj_ids, obj_names=obj_names, **kwargs)
+        super().__init__(
+            *args, obj_ids=self.obj_ids, obj_names=obj_names, segm_labels_to_id=segm_labels_to_id, **kwargs
+        )
+
+        if "object_0" in self.obj_names and "object_0" not in self.segm_labels_to_id:
+            mask = self.get_mask(0)
+            other_colors = [
+                c
+                for c in np.unique(mask.reshape(-1, mask.shape[2]), axis=0).tolist()
+                if c not in self.segm_labels_to_id.values()
+            ]
+            assert len(other_colors) == 1, other_colors
+            self.segm_labels_to_id["object_0"] = other_colors[0]
 
         if mesh_path is None:
             mesh_path = f"{self.video_dir}/mesh"
