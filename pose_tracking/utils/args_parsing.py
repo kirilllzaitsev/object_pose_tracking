@@ -483,6 +483,8 @@ def fix_outdated_args(args):
             args.state_dim = args.hidden_dim
         if not hasattr(args, "rt_hidden_dim"):
             args.rt_hidden_dim = args.hidden_dim
+    if noattr("use_mask_for_bbox_2d"):
+        args.use_mask_for_bbox_2d = True
 
     # for all args present in parser but not in args, set them to their default values
     for group in parser._action_groups:
