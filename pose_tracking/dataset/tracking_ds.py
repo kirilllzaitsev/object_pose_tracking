@@ -74,6 +74,7 @@ class TrackingDataset(Dataset):
         bbox_num_kpts=32,
         dino_features_folder_name=None,
         num_objs=1,
+        min_pixels_for_visibility=20 * 20,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -110,6 +111,7 @@ class TrackingDataset(Dataset):
         self.bbox_num_kpts = bbox_num_kpts
         self.dino_features_folder_name = dino_features_folder_name
         self.num_objs = num_objs
+        self.min_pixels_for_visibility = min_pixels_for_visibility
 
         self.do_load_dino_features = dino_features_folder_name is not None
 
@@ -217,15 +219,16 @@ class TrackingDataset(Dataset):
                 bbox_2ds = []
                 if not self.include_mask:
                     mask = self.get_mask(i)
-                    if self.do_erode_mask:
-                        mask = mask_morph(mask, kernel_size=11)
                 if self.num_objs > 1:
-                    colors = [x for x in np.unique(mask.reshape(-1, mask.shape[2]), axis=0) if x.sum() > 0]
+                    colors = [v for k, v in self.segm_labels_to_id.items() if k in self.obj_names]
                     bin_masks = [np.all(mask == c, axis=-1) for c in colors]
                 else:
                     bin_masks = [mask]
-                for bin_mask in bin_masks:
-                    bbox_2d = infer_bounding_box(bin_mask)
+                for is_visib, bin_mask in zip(sample["is_visible"], bin_masks):
+                    if is_visib:
+                        bbox_2d = infer_bounding_box(bin_mask)
+                    else:
+                        bbox_2d = np.array([[0, 0], [0, 0]])
                     if bbox_2d is None:
                         print(f"ERROR: Could not infer bbox for {self.color_files[i]}")
                         return None
