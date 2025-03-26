@@ -130,7 +130,18 @@ def dict_collate_fn(batch):
         if k in ["class_id", "bbox_2d", "xyz_map"]:
             continue
         if isinstance(v[0], torch.Tensor):
-            new_b[k] = torch.stack(v)
+            try:
+                v = torch.stack(v)
+            except RuntimeError:
+                pass
+            except TypeError:
+                pass
+            except Exception as e:
+                print(f"{batch=}")
+                print(f'{k=}')
+                print(f'{v=}')
+                raise e
+            new_b[k] = v
     return new_b
 
 
@@ -165,7 +176,11 @@ def convert_seq_batch_to_batch_seq(batch, keys=None):
     for bidx in range(len(batch[img_key][0])):
         news = []
         for sidx in range(len(batch[img_key])):
-            news.append({k: v[sidx][bidx] for k, v in batch.items() if len(v) > 0 if k in keys})
+            new_dict = {}
+            for k, v in batch.items():
+                if sidx < len(v) and k in keys:
+                    new_dict[k] = v[sidx][bidx]
+            news.append(new_dict)
         res.append(news)
     return res
 
