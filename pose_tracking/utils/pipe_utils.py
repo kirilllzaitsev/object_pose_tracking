@@ -563,6 +563,10 @@ def get_datasets(
     include_mask=False,
     include_depth=False,
     include_bbox_2d=False,
+    do_predict_rel_pose=False,
+    use_entire_seq_in_train=False,
+    do_normalize_depth=False,
+    use_mask_for_bbox_2d=True,
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
@@ -571,12 +575,9 @@ def get_datasets(
     rot_repr="quaternion",
     t_repr="3d",
     max_random_seq_step=4,
-    do_predict_rel_pose=False,
     seq_len_max_train=100,
     seq_len_max_val=200,
     max_depth_m=10,
-    use_entire_seq_in_train=False,
-    do_normalize_depth=False,
     dino_features_folder_name=None,
     bbox_num_kpts=32,
 ):
@@ -610,6 +611,7 @@ def get_datasets(
         do_subtract_bg=do_subtract_bg,
         bbox_num_kpts=bbox_num_kpts,
         dino_features_folder_name=dino_features_folder_name,
+        use_mask_for_bbox_2d=use_mask_for_bbox_2d,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(

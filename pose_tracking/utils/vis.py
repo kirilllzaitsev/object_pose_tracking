@@ -818,8 +818,10 @@ def vis_pose_pred(pose_pred, pose_gt=None, *args, **kwargs):
     return img
 
 
-def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
+def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), rot_repr="quaternion"):
     color = adjust_img_for_plt(color)
+    if pose.shape[-2:] != (4, 4):
+        pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=bbox_color, scale=scale)
     return color_with_pose
 

@@ -307,6 +307,9 @@ def get_parser():
         "--use_seq_len_curriculum", action="store_true", help="Gradually increase seq_len during training"
     )
     data_args.add_argument(
+        "--use_mask_for_bbox_2d", action="store_true", help="Use bin mask to get 2d bbox"
+    )
+    data_args.add_argument(
         "--val_split_share",
         type=float,
         default=0.1,
