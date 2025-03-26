@@ -156,11 +156,14 @@ class TrackingDataset(Dataset):
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
 
-        if self.include_mask:
+        if self.include_mask or self.num_objs > 1:
             mask = self.get_mask(i)
-            if self.do_erode_mask:
-                mask = mask_morph(mask, kernel_size=11)
-            sample["mask"] = mask
+            is_visible = self.get_visibility(mask)
+            sample["is_visible"] = is_visible if self.num_objs > 1 else [is_visible]
+            if self.include_mask:
+                sample["mask"] = mask
+        else:
+            sample["is_visible"] = [True]
 
         if self.include_depth:
             depth = self.get_depth(i)
@@ -283,7 +286,10 @@ class TrackingDataset(Dataset):
         return load_color(self.color_files[i], wh=(self.w, self.h))
 
     def get_mask(self, i):
-        return load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
+        mask = load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
+        if self.do_erode_mask:
+            mask = mask_morph(mask, kernel_size=11)
+        return mask
 
     def get_depth(self, i):
         return load_depth(
@@ -295,6 +301,9 @@ class TrackingDataset(Dataset):
 
     def get_pose(self, idx):
         return load_pose(self.pose_files[idx])
+
+    def get_visibility(self, mask):
+        return mask.sum() > self.min_pixels_for_visibility
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False):
         load_res = load_mesh(mesh_path, is_mm=is_mm)
@@ -324,9 +333,12 @@ class TrackingDataset(Dataset):
 
 class TrackingMultiObjDataset(TrackingDataset):
 
-    def __init__(self, *args, obj_ids=None, obj_names=None, **kwargs):
+    def __init__(self, *args, segm_labels_to_id, obj_ids=None, obj_names=None, **kwargs):
+        self.segm_labels_to_id = segm_labels_to_id
+
         self.obj_ids = obj_ids or []
         self.obj_names = obj_names or []
+
         super().__init__(*args, **kwargs, num_objs=max(len(self.obj_ids), len(self.obj_names)))
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False):
@@ -352,7 +364,15 @@ class TrackingMultiObjDataset(TrackingDataset):
         self.mesh_diameter = mesh_diameter
         self.mesh_pts = torch.stack(mesh_pts)
         self.mesh_path = mesh_paths
-        self.mesh_path_orig = mesh_paths_orig
+        # TODO
+        self.mesh_path_orig = mesh_paths_orig[0]
+
+    def get_visibility(self, mask):
+        visibilities = []
+        for oname in self.obj_names:
+            ocolor = self.segm_labels_to_id[oname]
+            visibilities.append((mask == ocolor).all(axis=-1).sum() > self.min_pixels_for_visibility)
+        return visibilities
 
 
 class TrackingDatasetEval:
