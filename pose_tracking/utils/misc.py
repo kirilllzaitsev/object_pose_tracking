@@ -1,5 +1,6 @@
 import gc
 import random
+import sys
 import typing as t
 
 import numpy as np
@@ -38,6 +39,8 @@ def pick_library(x: TensorOrArr) -> t.Any:
 
 
 def to(x: torch.Tensor, device: DeviceType) -> torch.Tensor:
+    if isinstance(x, list):
+        return [to(xx, device) for xx in x]
     return x.to(device, non_blocking=True)
 
 
@@ -207,3 +210,25 @@ def init_params(module, excluded_names=None, included_names=None):
             torch.nn.init.kaiming_normal_(m.weight.data)
             if m.bias is not None:
                 m.bias.data.zero_()
+
+
+def print_error_locals():
+    # Get exception info: type, value, and traceback
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    if exc_tb is None:
+        return
+
+    # Walk to the last traceback frame where the exception occurred.
+    tb_last = exc_tb
+    while tb_last.tb_next is not None:
+        tb_last = tb_last.tb_next
+
+    frame = tb_last.tb_frame
+    print("=== Exception occurred in function: {} ===".format(frame.f_code.co_name))
+    print("Local variables at the point of error:")
+    for var, val in frame.f_locals.items():
+        try:
+            print(f"  {var} = {val}")
+        except Exception as e:
+            print(f"  {var} = <unprintable: {e}>")
+    print("========================================")
