@@ -61,7 +61,12 @@ def world_to_2d_pt_homo(pt, K, rt):
 
 def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     if len(bbox.shape) == 3:
-        return np.stack([convert_3d_bbox_to_2d(b, intrinsics, hw, pose=pose if pose is None else pose[i]) for i, b in enumerate(bbox)])
+        return np.stack(
+            [
+                convert_3d_bbox_to_2d(b, intrinsics, hw, pose=pose if pose is None else pose[i])
+                for i, b in enumerate(bbox)
+            ]
+        )
     pose = np.eye(4) if pose is None else pose
     bbox_2d = world_to_2d(bbox, intrinsics, rt=pose)
     u, v = bbox_2d[:, 0].astype(int), bbox_2d[:, 1].astype(int)
@@ -211,8 +216,26 @@ def pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat):
     return trans_delta, rot_mat_delta
 
 
-def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_couple_rot_t=False):
+def pose_to_egocentric_delta_pose_mat(prev_pose_mat, cur_pose_mat):
+    t, rot = pose_to_egocentric_delta_pose(prev_pose_mat, cur_pose_mat)
+    lib = pick_library(t)
+    pose = lib.eye(4)
+    if len(t.shape) == 2:
+        pose = pose[None].repeat(len(t), 1, 1)
+    pose[..., :3, :3] = rot
+    pose[..., :3, 3] = t
+    return pose
+
+
+def egocentric_delta_pose_to_pose(
+    prev_pose_mat, trans_delta=None, rot_mat_delta=None, pose_delta=None, do_couple_rot_t=False
+):
     """Infer a new pose from a pose and deltas"""
+    assert (trans_delta is not None and rot_mat_delta is not None) or pose_delta is not None, pose_delta
+    if pose_delta is not None:
+        assert trans_delta is None and rot_mat_delta is None
+        trans_delta = pose_delta[..., :3, 3]
+        rot_mat_delta = pose_delta[..., :3, :3]
     cur_pose_mat = (
         torch.eye(4, dtype=torch.float, device=prev_pose_mat.device) if is_tensor(prev_pose_mat) else np.eye(4)
     )
@@ -227,6 +250,12 @@ def egocentric_delta_pose_to_pose(prev_pose_mat, trans_delta, rot_mat_delta, do_
         cur_pose_mat[..., :3, 3] = prev_pose_mat[..., :3, 3] + trans_delta
     cur_pose_mat[..., :3, :3] = rot_mat_delta @ prev_pose_mat[..., :3, :3]
     return cur_pose_mat
+
+
+def convert_rt_to_r_t(rt):
+    r = rt[..., :3, :3]
+    t = rt[..., :3, 3]
+    return r, t
 
 
 def to_homo(pts):
