@@ -351,9 +351,7 @@ class TrainerDeformableDETR(Trainer):
                     pose_mat_pred_metrics = pose_mat_pred_abs
                     pose_mat_gt_metrics = pose_mat_gt_abs
 
-                if any(x > 1 for x in batch_t["num_objs"]):
-                    for k in ["mesh_pts", "mesh_bbox", "mesh_diameter"]:
-                        batch_t[k] = batch_t[k].flatten(0, 1)
+                batch_t = self.prepare_batch_t_for_metrics_mot(batch_t)
                 m_batch_avg = self.calc_metrics_batch(
                     batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
                 )
@@ -512,6 +510,13 @@ class TrainerDeformableDETR(Trainer):
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
+
+    def prepare_batch_t_for_metrics_mot(self, batch_t):
+        batch_t = batch_t.copy()
+        if any(x > 1 for x in batch_t["num_objs"]):
+            for k in ["mesh_pts", "mesh_bbox", "mesh_diameter"]:
+                batch_t[k] = batch_t[k].flatten(0, 1) if is_tensor(batch_t[k]) else torch.cat(batch_t[k])
+        return batch_t
 
     def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, use_prev_image=False, **kwargs):
         def get_prev_data(key):
