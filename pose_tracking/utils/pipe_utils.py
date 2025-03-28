@@ -22,7 +22,7 @@ from pose_tracking.config import (
     YCBINEOAT_SCENE_DIR,
     YCBV_SCENE_DIR,
 )
-from pose_tracking.dataset.custom import CustomDataset
+from pose_tracking.dataset.custom import CustomDataset, CustomDatasetTest
 from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetCube,
     CustomSimDatasetIkea,
@@ -618,7 +618,7 @@ def get_datasets(
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
         ds_kwargs_custom = ycbi_kwargs
-    elif ds_name in ["ikea", "custom", "ho3d_v3", "ikea_multiobj"]:
+    elif ds_name in ["ikea", "custom", "custom_test", "ho3d_v3", "ikea_multiobj"]:
         ds_kwargs_custom = dict()
     else:
         cube_sim_kwargs = dict(
@@ -801,7 +801,10 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     elif ds_name == "custom":
         ds = CustomDataset(
             **ds_kwargs,
-            mesh_path=None,
+        )
+    elif ds_name == "custom_test":
+        ds = CustomDatasetTest(
+            **ds_kwargs,
         )
     elif ds_name == "ho3d_v3":
         ds = HO3DDataset(
@@ -821,7 +824,7 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
 
 
 def get_ds_dirs(args):
-    if args.ds_name in ["ikea", "cube", "custom", "ikea_multiobj"]:
+    if args.ds_name in ["ikea", "cube", "custom", "custom_test", "ikea_multiobj"]:
         ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
         ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
     elif args.ds_name in ["ho3d_v3"]:
@@ -845,6 +848,9 @@ def get_ds_dirs(args):
     elif args.ds_name in ["custom"]:
         ds_video_subdirs_train = ["cube_data"]
         ds_video_subdirs_val = ["cube_data"]
+    elif args.ds_name in ["custom_test"]:
+        ds_video_subdirs_train = args.obj_names
+        ds_video_subdirs_val = args.obj_names_val
     elif args.ds_name in ["ho3d_v3"]:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
