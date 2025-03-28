@@ -12,7 +12,7 @@ def postprocess_detr_outputs(outputs, target_sizes, is_focal_loss=True):
                       For evaluation, this must be the original image size (before any data augmentation)
                       For visualization, this should be the image size after data augment, but before padding
     """
-    out_logits, out_bbox = outputs["pred_logits"], outputs["pred_boxes"]
+    out_logits, out_bbox = outputs["pred_logits"], outputs.get("pred_boxes", outputs.get("pred_bboxes"))
 
     # assert len(out_logits) == len(target_sizes)
     assert target_sizes.ndim == 1 or target_sizes.shape[1] == 2

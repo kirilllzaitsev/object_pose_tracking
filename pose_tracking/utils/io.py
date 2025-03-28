@@ -162,8 +162,11 @@ def load_semantic_mask(path, wh=None, ignored_colors=None):
     return mask
 
 
-def save_depth(path, im):
-    im_mm = im * 1e3
+def save_depth(path, im, is_m=True):
+    if is_m:
+        im_mm = im * 1e3
+    else:
+        im_mm = im
     save_depth_16bit(path, im_mm)
 
 

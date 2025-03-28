@@ -42,6 +42,11 @@ def world_to_cam(pts, rt):
     return t_func(new_pts)
 
 
+def backproj_2d_pts_world(pts, depth, K, rt):
+    pts_cam = backproj_2d_pts(pts, depth, K)
+    return world_to_cam(pts_cam, rt)
+
+
 def get_transpose_func(x, dim0=-1, dim1=-2):
     if is_tensor(x):
         t_func = functools.partial(torch.transpose, dim0=dim0, dim1=dim1)
@@ -789,6 +794,7 @@ def allocentric_to_egocentric(allo_pose, src_type="mat", dst_type="mat", cam_ray
 
 def egocentric_to_allocentric(ego_pose, src_type="mat", dst_type="mat", cam_ray=(0, 0, 1.0)):
     # Compute rotation between ray to object centroid and optical center ray
+    assert ego_pose.ndim == 1, ego_pose
     cam_ray = np.asarray(cam_ray)
     if src_type == "mat":
         trans = ego_pose[:3, 3]
