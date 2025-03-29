@@ -187,16 +187,20 @@ class CustomSimDatasetIkea(CustomSimDataset):
         metadata_path = f"{self.video_dir}/metadata.json"
         assert os.path.exists(metadata_path)
         self.metadata = json.load(open(metadata_path))
-        self.mesh_path_orig = self.metadata[0]["usd_path"]
+        if isinstance(self.metadata, dict):
+            self.metadata_obj = self.metadata["objects"][0]
+            assert len(self.metadata["objects"]) == 1, self.metadata["objects"]
+        else:
+            self.metadata_obj = self.metadata[0]
+        self.mesh_path_orig = self.metadata_obj["usd_path"]
 
         if do_load_bbox_from_metadata:
             assert self.metadata is not None, f"metadata not found at {metadata_path}"
-            assert len(self.metadata) == 1, len(self.metadata)
-            self.mesh_bbox = bbox_to_8_point_centered(bbox=self.metadata[0]["bbox"])
+            self.mesh_bbox = bbox_to_8_point_centered(bbox=self.metadata_obj["bbox"])
             self.mesh_diameter = compute_pts_span(self.mesh_bbox)
 
     def augment_sample(self, sample, idx):
-        sample["class_id"] = [self.metadata[self.obj_id].get("class_id", 0)]
+        sample["class_id"] = [self.metadata_obj.get("class_id", 0)]
         return sample
 
 
@@ -292,8 +296,6 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
         self,
         obj_names=["object_0", "object_1", "object_2"],
         obj_ids=None,
-        cam_init_rot=(0.0, 1.0, 0.0, 0.0),
-        do_load_bbox_from_metadata=True,
         *args,
         **kwargs,
     ):
@@ -301,14 +303,12 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
         super().__init__(
             obj_names=obj_names,
             obj_ids=obj_ids,
-            cam_init_rot=cam_init_rot,
-            do_load_bbox_from_metadata=do_load_bbox_from_metadata,
             *args,
             **kwargs,
         )
 
         self.mesh_paths_orig = [x["usd_path"] for x in self.metadata_obj]
-        if do_load_bbox_from_metadata:
+        if self.do_load_bbox_from_metadata:
             assert self.metadata_obj is not None, f"metadata_obj not found at {self.metadata_path}"
             self.mesh_bbox = np.stack(
                 [bbox_to_8_point_centered(bbox=self.metadata_obj[oidx]["bbox"]) for oidx in self.obj_ids]
