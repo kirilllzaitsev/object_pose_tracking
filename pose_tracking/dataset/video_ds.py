@@ -143,7 +143,7 @@ class VideoDatasetTracking(VideoDataset):
         if seq_start is None:
             seq_start = torch.randint(
                 seq_step,
-                max(seq_step, len(self.ds) - 1 - (timesteps - 1) * seq_step),
+                max(seq_step + 1, len(self.ds) - 1 - (timesteps - 1) * seq_step),
                 (1,),
             ).item()
         else:

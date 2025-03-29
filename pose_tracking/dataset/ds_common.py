@@ -51,7 +51,8 @@ def get_ds_sample(
         t = pose[..., :3, 3]
         if t_repr == "2d":
             hw = rgb.shape[-2:]
-            t_2d_norm, center_depth = convert_3d_t_for_2d(cast_to_torch(t), cast_to_torch(intrinsics), hw)
+            t_torch = cast_to_torch(t)
+            t_2d_norm, center_depth = convert_3d_t_for_2d(t_torch, cast_to_torch(intrinsics).to(t_torch.dtype), hw)
             sample["center_depth"] = center_depth[None]
             if math.isfinite(max_depth_m):
                 sample["center_depth"] = sample["center_depth"] / max_depth_m
@@ -138,8 +139,8 @@ def dict_collate_fn(batch):
                 pass
             except Exception as e:
                 print(f"{batch=}")
-                print(f'{k=}')
-                print(f'{v=}')
+                print(f"{k=}")
+                print(f"{v=}")
                 raise e
             new_b[k] = v
     return new_b

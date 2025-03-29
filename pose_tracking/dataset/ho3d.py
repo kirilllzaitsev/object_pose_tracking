@@ -26,6 +26,11 @@ class HO3DDataset(TrackingDataset):
         do_load_mesh=True,
         **kwargs,
     ):
+
+        # no obj in the frame
+        if "GSF12" in str(video_dir):
+            kwargs["start_frame_idx"] = 100
+
         self.do_load_mesh = do_load_mesh
         self.include_occ_mask = include_occ_mask
         self.use_xmem_masks = os.path.exists(f"{video_dir}/masks_XMem")
