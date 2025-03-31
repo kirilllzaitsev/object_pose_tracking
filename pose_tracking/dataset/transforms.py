@@ -1,9 +1,12 @@
 import copy
 
 import albumentations as A
+import cv2
 import numpy as np
+import torch
 from albumentations import Compose, Normalize
 from albumentations.pytorch.transforms import ToTensorV2
+from pose_tracking.utils.segm_utils import infer_bounding_box
 from scipy.spatial.transform import Rotation
 
 
@@ -69,3 +72,107 @@ def noisify_pose(pose, angle_mean=0, angle_std=3, t_mean=0, t_std=0.01):
     delta_pose_noise[:3, 3] += t_noise
     delta_pose_noise[:3, :3] = delta_pose_noise[:3, :3] @ rot_noise
     return delta_pose_noise
+
+
+def generate_random_mask_on_obj(obj_mask, bbox=None, num_vertices=5):
+    from pose_tracking.utils.vis import convert_bbox_to_min_max_corners
+    if bbox is None:
+        bbox = infer_bounding_box(obj_mask)
+    bbox_xy_ul, bbox_xy_br = convert_bbox_to_min_max_corners(bbox)
+
+
+    h, w = obj_mask.shape[:2]
+    mask = np.ones((h, w), dtype=np.uint8) * 255
+
+    shape_type = np.random.choice(["polygon", "circle", "ellipse", "rectangle"])
+    shape_type = "ellipse"
+
+    def sample_pts(num_vertices):
+        x_candidates = torch.arange(bbox_xy_ul[0], bbox_xy_br[0] + 1)
+        y_candidates = torch.arange(bbox_xy_ul[1], bbox_xy_br[1] + 1)
+
+        center_x = (bbox_xy_ul[0] + bbox_xy_br[0]) / 2.0
+        center_y = (bbox_xy_ul[1] + bbox_xy_br[1]) / 2.0
+
+        sigma_x = (bbox_xy_br[0] - bbox_xy_ul[0]) / 3.0
+        sigma_y = (bbox_xy_br[1] - bbox_xy_ul[1]) / 3.0
+
+        weights_x = torch.exp(-0.5 * ((x_candidates - center_x) / sigma_x) ** 2)
+        weights_y = torch.exp(-0.5 * ((y_candidates - center_y) / sigma_y) ** 2)
+
+        weights_x /= weights_x.sum()
+        weights_y /= weights_y.sum()
+        weights_x = weights_x.numpy()
+        weights_y = weights_y.numpy()
+
+        pts = []
+        for _ in range(num_vertices):
+            x = np.random.choice(x_candidates, p=weights_x)
+            y = np.random.choice(y_candidates, p=weights_y)
+            pts.append([x, y])
+        pts = np.array(pts, dtype=np.int32)
+        return pts
+
+    if shape_type == "polygon":
+        pts = sample_pts(num_vertices)[:, None]
+        cv2.fillPoly(mask, [pts], 0)
+
+    elif shape_type == "circle":
+        cx = np.random.randint(bbox_xy_ul[0], bbox_xy_br[0])
+        cy = np.random.randint(bbox_xy_ul[1], bbox_xy_br[1])
+        max_radius = min(bbox_xy_br[0] - bbox_xy_ul[0], bbox_xy_br[1] - bbox_xy_ul[1]) // 3
+        radius = np.random.randint(max_radius // 2, max_radius)
+        cv2.circle(mask, (cx, cy), radius, 0, thickness=-1)
+
+    elif shape_type == "ellipse":
+        cx = np.random.randint(bbox_xy_ul[0], bbox_xy_br[0])
+        cy = np.random.randint(bbox_xy_ul[1], bbox_xy_br[1])
+        axis1 = np.random.randint((bbox_xy_br[0] - bbox_xy_ul[0]) // 5, (bbox_xy_br[0] - bbox_xy_ul[0]) // 3)
+        axis2 = np.random.randint((bbox_xy_br[1] - bbox_xy_ul[1]) // 5, (bbox_xy_br[1] - bbox_xy_ul[1]) // 3)
+        angle = np.random.randint(0, 360)
+        cv2.ellipse(mask, (cx, cy), (axis1, axis2), angle, 0, 360, 0, thickness=-1)
+
+    elif shape_type == "rectangle":
+        pts = sample_pts(2)
+        x_ur, y_ur = np.min(pts[:, 0]), np.min(pts[:, 1])
+        x_lr, y_lr = np.max(pts[:, 0]), np.max(pts[:, 1])
+        cv2.rectangle(mask, (x_ur, y_ur), (x_lr, y_lr), 0, thickness=-1)
+
+    mask = cv2.GaussianBlur(mask, (5, 5), 0)
+
+    return mask > 0
+
+
+class RandomPolygonMask:
+    def __init__(self, num_vertices=5, always_apply=False, p=0.5):
+        """
+        num_vertices: number of vertices of the polygon mask.
+        p: probability of applying the transform.
+        """
+        self.num_vertices = num_vertices
+        self.always_apply = always_apply
+        self.p = p
+
+    def apply(self, img, **params):
+        if np.random.rand() > self.p:
+            return img
+        obj_mask = params["mask"]
+        bbox = infer_bounding_box(obj_mask)
+        if bbox is not None:
+            bbox_xy_ul, bbox_xy_br = bbox
+            if bbox_xy_br[0] <= bbox_xy_ul[0] or bbox_xy_br[1] <= bbox_xy_ul[1]:
+                return img
+        try:
+            mask = generate_random_mask_on_obj(obj_mask, bbox=bbox, num_vertices=self.num_vertices)
+        except Exception as e:
+            print(f"Error generating mask: {e}")
+            return img
+        if img.ndim == 3:
+            obj_mask = obj_mask[..., None]
+            mask = mask[..., None]
+        fill_value = np.random.randint(0, 255, size=(3,), dtype=np.uint8)
+        img = np.where(np.bitwise_and(obj_mask > 0, mask == 0), fill_value, img)
+        return img
+
+    def get_transform_init_args_names(self):
+        return "num_vertices"
