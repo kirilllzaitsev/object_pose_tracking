@@ -24,15 +24,18 @@ class PIZZA(nn.Module):
         super(PIZZA, self).__init__()
         # RGB image encoder
         self.encoder = get_encoders(
-            model_name=backbone, out_dim=img_feature_dim, weights_rgb="imagenet", norm_layer_type="frozen_bn"
+            model_name=backbone, out_dim=img_feature_dim, weights_rgb="imagenet", norm_layer_type="bn"
         )[0]
         # MLP for rotation
         self.MLP_rotation = nn.Sequential(
             nn.Linear(img_feature_dim + img_feature_dim, 800),
+            nn.BatchNorm1d(800),
             nn.ReLU(inplace=True),
             nn.Linear(800, 400),
+            nn.BatchNorm1d(400),
             nn.ReLU(inplace=True),
             nn.Linear(400, 200),
+            nn.BatchNorm1d(200),
             nn.ReLU(inplace=True),
             nn.Linear(200, 3),
         )
@@ -41,10 +44,13 @@ class PIZZA(nn.Module):
             # MLP for translation
             self.MLP_translation = nn.Sequential(
                 nn.Linear(img_feature_dim + img_feature_dim, 800),
+                nn.BatchNorm1d(800),
                 nn.ReLU(inplace=True),
                 nn.Linear(800, 400),
+                nn.BatchNorm1d(400),
                 nn.ReLU(inplace=True),
                 nn.Linear(400, 200),
+                nn.BatchNorm1d(200),
                 nn.ReLU(inplace=True),
                 # nn.Sigmoid(),
             )
