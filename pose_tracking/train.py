@@ -76,6 +76,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             world_size=world_size,
             init_method="env://",
             rank=rank,
+            timeout=dt.timedelta(seconds=1800),
         )
         if args.use_cuda:
             torch.cuda.set_device(local_rank)

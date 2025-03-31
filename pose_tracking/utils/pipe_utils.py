@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from pose_tracking.dataset.ycbv_ds import YCBvDataset
 import torch
 import yaml
 from pose_tracking.config import (
@@ -616,12 +617,12 @@ def get_datasets(
         use_occlusion_augm="occlusion" in transform_names if transform_names else False,
         do_load_mesh_in_memory=do_load_mesh_in_memory,
     )
-    if ds_name == "ycbi":
+    if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
             ycb_meshes_dir=YCB_MESHES_DIR,
         )
         ds_kwargs_custom = ycbi_kwargs
-    elif ds_name in ["ikea", "custom", "custom_test", "ho3d_v3", "ikea_multiobj"]:
+    elif ds_name in ["ikea", "custom", "custom_test", "ho3d_v3", "ikea_multiobj", "ycbv"]:
         ds_kwargs_custom = dict()
     else:
         cube_sim_kwargs = dict(
@@ -799,29 +800,19 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
             ds_cls = YCBineoatDataset
         ds = ds_cls(**ds_kwargs)
     elif ds_name == "cube_sim":
-        ds = CustomSimDatasetCube(
-            **ds_kwargs,
-        )
+        ds = CustomSimDatasetCube(**ds_kwargs)
     elif ds_name == "custom":
-        ds = CustomDataset(
-            **ds_kwargs,
-        )
+        ds = CustomDataset(**ds_kwargs)
     elif ds_name == "custom_test":
-        ds = CustomDatasetTest(
-            **ds_kwargs,
-        )
+        ds = CustomDatasetTest(**ds_kwargs)
     elif ds_name == "ho3d_v3":
-        ds = HO3DDataset(
-            **ds_kwargs,
-        )
+        ds = HO3DDataset(**ds_kwargs)
+    elif ds_name == "ycbv":
+        ds = YCBvDataset(**ds_kwargs)
     elif ds_name == "ikea":
-        ds = CustomSimDatasetIkea(
-            **ds_kwargs,
-        )
+        ds = CustomSimDatasetIkea(**ds_kwargs)
     elif ds_name == "ikea_multiobj":
-        ds = CustomSimMultiObjDatasetIkea(
-            **ds_kwargs,
-        )
+        ds = CustomSimMultiObjDatasetIkea(**ds_kwargs)
     else:
         raise NotImplementedError(f"Unknown dataset name {ds_name}")
     return ds
@@ -838,8 +829,8 @@ def get_ds_dirs(args):
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
     elif args.ds_name == "ycbv":
-        ds_video_dir_train = YCBV_SCENE_DIR
-        ds_video_dir_val = YCBV_SCENE_DIR
+        ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
+        ds_video_dir_val = YCBV_SCENE_DIR / "test"
     elif args.ds_name == "nocs":
         ds_video_dir_train = NOCS_SCENE_DIR
         ds_video_dir_val = NOCS_SCENE_DIR
@@ -855,7 +846,7 @@ def get_ds_dirs(args):
     elif args.ds_name in ["custom_test"]:
         ds_video_subdirs_train = args.obj_names
         ds_video_subdirs_val = args.obj_names_val
-    elif args.ds_name in ["ho3d_v3"]:
+    elif args.ds_name in ["ho3d_v3", "ycbv"]:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
     else:
