@@ -6,28 +6,28 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from pose_tracking.config import YCBV_SCENE_DIR
 from pose_tracking.dataset.ds_meta import (
     YCBINEOAT_VIDEONAME_TO_OBJ,
     YCBV_OBJ_ID_TO_NAME,
+    YCBV_OBJ_NAME_TO_COLOR,
     YCBV_OBJ_NAME_TO_ID,
     get_ycb_class_id_from_obj_name,
 )
-from pose_tracking.dataset.tracking_ds import TrackingDataset
+from pose_tracking.dataset.tracking_ds import TrackingDataset, TrackingMultiObjDataset
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.geom import backproj_depth
 from pose_tracking.utils.io import load_mask, load_pose
 
 
-class YCBvDataset(TrackingDataset):
+class YCBvDataset(TrackingMultiObjDataset):
 
     ds_name = "ycbv"
 
     def __init__(
         self,
         *args,
-        include_xyz_map=False,
-        include_occ_mask=False,
-        ycb_meshes_dir="/media/master/t7/msc_studies/pose_estimation/object_pose_tracking/data/ycbv/models",
+        ycb_meshes_dir=f"{YCBV_SCENE_DIR}/models",
         **kwargs,
     ):
         self.resize = 1
@@ -39,58 +39,74 @@ class YCBvDataset(TrackingDataset):
             self.K_table[f"{int(k):06d}"] = np.array(info[k]["cam_K"]).reshape(3, 3)
             self.bop_depth_scale = info[k]["depth_scale"]
 
-        super().__init__(*args, pose_dirname="annotated_poses", **kwargs)
         if os.path.exists(f"{video_dir}/scene_gt.json"):
             with open(f"{video_dir}/scene_gt.json", "r") as ff:
                 self.scene_gt = json.load(ff)
             self.scene_gt = copy.deepcopy(self.scene_gt)  # Release file handle to be pickle-able by joblib
-            assert len(self.scene_gt) == len(self.color_files)
         else:
             self.scene_gt = None
+        self.color_files = [f"{video_dir}/rgb/{1:06d}.png"]
         self.ycb_meshes_dir = ycb_meshes_dir
 
-        self.ob_id_to_names = {}
+        self.obj_id_to_names = {}
         self.name_to_ob_id = {}
-        # self.ob_ids = np.arange(1, 22).astype(int).tolist()
-        # TODO
-        self.ob_ids = self.get_instance_ids_in_image(0)[:1]
-        names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.ob_ids]
-        for i, ob_id in enumerate(self.ob_ids):
-            self.ob_id_to_names[ob_id] = names[i]
-            self.name_to_ob_id[names[i]] = ob_id
+        self.obj_ids = self.get_instance_ids_in_image(0)
+        self.obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.obj_ids]
+        for i, ob_id in enumerate(self.obj_ids):
+            self.obj_id_to_names[ob_id] = self.obj_names[i]
+            self.name_to_ob_id[self.obj_names[i]] = ob_id
 
-        self.obj_name = names[0]
-        self.class_id = self.ob_ids[0]
+        super().__init__(
+            *args,
+            obj_ids=self.obj_ids,
+            obj_names=self.obj_names,
+            segm_labels_to_color=YCBV_OBJ_NAME_TO_COLOR,
+            pose_dirname="annotated_poses",
+            **kwargs,
+        )
+        self.scene_gt = {k: v for k, v in self.scene_gt.items() if self.start_frame_idx < int(k) <= self.end_frame_idx}
 
         if ycb_meshes_dir is not None:
-            mesh_path = f"{ycb_meshes_dir}/obj_{self.class_id:06d}.ply"
-            self.set_up_obj_mesh(mesh_path, is_mm=True)
+            mesh_paths_obj = [f"{ycb_meshes_dir}/obj_{oid:06d}.ply" for oid in self.obj_ids]
+            self.set_up_obj_mesh(mesh_paths_obj, is_mm=True)
 
     def augment_sample(self, sample, idx):
-        sample["class_id"] = [self.class_id]
+        # todo: ensure obj_id=class_id
+        sample["class_id"] = self.obj_ids
 
         return sample
 
     def get_mask(self, i):
-        # TODO: npy  for masks
-        return load_mask(self.color_files[i].replace("rgb", "mask").replace(".png", "_000000.png"), wh=(self.w, self.h))
+        mask_path_template = self.color_files[i].replace("rgb", "mask").replace(".png", "_{i:06d}.png")
+        annot_idx_to_obj_name = {}
+        mask_paths = []
+        gt = self.scene_gt[str(i + 1)]
+        for i_k, k in enumerate(gt):
+            annot_idx_to_obj_name[i_k] = self.obj_id_to_names[k["obj_id"]]
+            mask_paths.append((i_k, mask_path_template.format(i=i_k)))
+        mask = np.zeros((self.h, self.w, 3))
+        for i_k, mask_path in mask_paths:
+            mask_bin = load_mask(mask_path, wh=(self.w, self.h))
+            color = self.segm_labels_to_color[annot_idx_to_obj_name[i_k]]
+            mask_obj = mask_bin[..., None].repeat(3, axis=-1) * color
+            mask += mask_obj
+        mask = mask.astype(np.uint8)
+        return mask
 
-    def get_gt_poses(self, i_frame, ob_id):
+    def get_gt_poses(self, i_frame):
         gt_poses = []
         name = int(self.id_strs[i_frame])
         for i_k, k in enumerate(self.scene_gt[str(name)]):
-            if k["obj_id"] == ob_id:
-                cur = np.eye(4)
-                cur[:3, :3] = np.array(k["cam_R_m2c"]).reshape(3, 3)
-                cur[:3, 3] = np.array(k["cam_t_m2c"]) / 1e3
-                gt_poses.append(cur)
+            cur = np.eye(4)
+            cur[:3, :3] = np.array(k["cam_R_m2c"]).reshape(3, 3)
+            cur[:3, 3] = np.array(k["cam_t_m2c"]) / 1e3
+            gt_poses.append(cur)
         return np.asarray(gt_poses).reshape(-1, 4, 4)
 
     def get_pose(self, idx):
-        i_frame = idx
-        return self.get_gt_pose(i_frame, self.ob_ids[0])
+        return self.get_gt_poses(idx)
 
-    def get_gt_pose(self, i_frame: int, ob_id, mask=None, use_my_correction=False):
+    def get_gt_pose(self, i_frame: int, ob_id, mask=None):
         ob_in_cam = np.eye(4)
         best_iou = -np.inf
         best_gt_mask = None
