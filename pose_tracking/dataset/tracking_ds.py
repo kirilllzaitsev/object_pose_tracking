@@ -75,6 +75,7 @@ class TrackingDataset(Dataset):
         dino_features_folder_name=None,
         num_objs=1,
         min_pixels_for_visibility=20 * 20,
+        target_hw=None,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -93,6 +94,7 @@ class TrackingDataset(Dataset):
         self.use_allocentric_pose = use_allocentric_pose
         self.include_nocs = include_nocs
         self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
+        self.do_load_mesh_in_memory = do_load_mesh_in_memory
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -110,9 +112,11 @@ class TrackingDataset(Dataset):
         self.t_repr = t_repr
         self.bbox_num_kpts = bbox_num_kpts
         self.dino_features_folder_name = dino_features_folder_name
-        self.num_objs = num_objs
+        self.max_num_objs = max_num_objs
         self.min_pixels_for_visibility = min_pixels_for_visibility
+        self.target_size = target_hw
 
+        self.use_occlusion_augm = use_occlusion_augm and not is_val
         self.do_load_dino_features = dino_features_folder_name is not None
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
@@ -142,13 +146,21 @@ class TrackingDataset(Dataset):
         self.h = int(self.h * self.downscale)
         self.w = int(self.w * self.downscale)
 
+        if target_hw is not None:
+            img_res_scaler = (target_hw[0] / self.h, target_hw[1] / self.w)
+            self.h, self.w = target_hw
+
         if is_intrinsics_for_all_samples:
             intrinsics_path = f"{video_dir}/cam_K.txt"
             if not os.path.exists(intrinsics_path):
                 intrinsics_path = f"{video_dir}/intrinsics.txt"
             if os.path.exists(intrinsics_path):
                 self.K = torch.tensor(np.loadtxt(intrinsics_path).reshape(3, 3))
-                self.K[:2] *= self.downscale
+                if target_hw is not None:
+                    self.K[0] *= img_res_scaler[1]
+                    self.K[1] *= img_res_scaler[0]
+                else:
+                    self.K[:2] *= self.downscale
             else:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
 
