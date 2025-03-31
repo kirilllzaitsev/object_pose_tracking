@@ -224,30 +224,30 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
         self.metadata = json.load(open(self.metadata_path))
         if isinstance(self.metadata, dict):
             self.metadata_obj = self.metadata["objects"]
-            segm_labels_to_id = self.metadata["segm_labels_to_id"]
+            segm_labels_to_color = self.metadata["segm_labels_to_id"]
         else:
             for oidx, ometa in enumerate(self.metadata):
                 ometa["class_id"] = 0
                 self.metadata[oidx] = ometa
             self.metadata_obj = self.metadata
-            segm_labels_to_id = self.metadata_obj[0]["sim_meta"]["segm_labels_to_id"]
+            segm_labels_to_color = self.metadata_obj[0]["sim_meta"]["segm_labels_to_id"]
         self.obj_ids = list(range(len(self.metadata_obj))) if obj_ids is None else obj_ids
         self.obj_names = [f"object_{i}" for i in range(len(self.metadata_obj))] if obj_names is None else obj_names
         assert len(self.obj_ids) == len(self.obj_names), (self.obj_ids, self.obj_names)
 
         super().__init__(
-            *args, obj_ids=self.obj_ids, obj_names=obj_names, segm_labels_to_id=segm_labels_to_id, **kwargs
+            *args, obj_ids=self.obj_ids, obj_names=obj_names, segm_labels_to_color=segm_labels_to_color, **kwargs
         )
 
-        if "object_0" in self.obj_names and "object_0" not in self.segm_labels_to_id:
+        if "object_0" in self.obj_names and "object_0" not in self.segm_labels_to_color:
             mask = self.get_mask(0)
             other_colors = [
                 c
                 for c in np.unique(mask.reshape(-1, mask.shape[2]), axis=0).tolist()
-                if c not in self.segm_labels_to_id.values()
+                if c not in self.segm_labels_to_color.values()
             ]
             assert len(other_colors) == 1, other_colors
-            self.segm_labels_to_id["object_0"] = other_colors[0]
+            self.segm_labels_to_color["object_0"] = other_colors[0]
 
         if mesh_path is None:
             mesh_path = f"{self.video_dir}/mesh"
@@ -255,7 +255,8 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
                 print(f"WARNING: {mesh_path} not found")
                 mesh_path = None
         if mesh_path is not None:
-            self.set_up_obj_mesh(mesh_path)
+            mesh_paths_obj = [f"{mesh_path}/{obj_name}/mesh.obj" for obj_name in self.obj_names]
+            self.set_up_obj_mesh(mesh_paths_obj)
 
     def get_pose(self, idx):
         pose = load_pose(self.pose_files[idx])
@@ -278,9 +279,9 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
 
     def get_mask(self, i):
         ignored_colors = (
-            self.segm_labels_to_id["background"],
-            self.segm_labels_to_id["ground"],
-            self.segm_labels_to_id["table"],
+            self.segm_labels_to_color["background"],
+            self.segm_labels_to_color["ground"],
+            self.segm_labels_to_color["table"],
         )
         return load_semantic_mask(
             self.color_files[i].replace("rgb", "semantic_segmentation"),

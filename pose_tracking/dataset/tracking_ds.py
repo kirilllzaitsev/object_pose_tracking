@@ -251,7 +251,7 @@ class TrackingDataset(Dataset):
                 if not self.include_mask:
                     mask = self.get_mask(i)
                 if self.max_num_objs > 1:
-                    colors = [v for k, v in self.segm_labels_to_id.items() if k in self.obj_names]
+                    colors = [v for k, v in self.segm_labels_to_color.items() if k in self.obj_names]
                     bin_masks = [np.all(mask == c, axis=-1) for c in colors]
                 else:
                     bin_masks = [mask]
@@ -370,11 +370,11 @@ class TrackingDataset(Dataset):
 
 class TrackingMultiObjDataset(TrackingDataset):
 
-    def __init__(self, *args, segm_labels_to_id, obj_ids=None, obj_names=None, **kwargs):
-        self.segm_labels_to_id = segm_labels_to_id
+    def __init__(self, *args, segm_labels_to_color, obj_ids=None, obj_names=None, **kwargs):
+        self.segm_labels_to_color = segm_labels_to_color
 
-        self.obj_ids = obj_ids or []
-        self.obj_names = obj_names or []
+        self.obj_ids = [] if obj_ids is None else obj_ids
+        self.obj_names = [] if obj_names is None else obj_names
 
         super().__init__(*args, **kwargs, max_num_objs=max(len(self.obj_ids), len(self.obj_names)))
 
@@ -383,22 +383,19 @@ class TrackingMultiObjDataset(TrackingDataset):
         mesh_bbox = []
         mesh_diameter = []
         mesh_pts = []
-        mesh_paths = []
-        mesh_paths_orig = []
+        mesh_paths = copy.deepcopy(mesh_path)
+        mesh_paths_orig = copy.deepcopy(mesh_path)
 
-        for obj_name in self.obj_names:
-            obj_mesh_dir = f"{mesh_path}/{obj_name}"
-            load_res = load_mesh(f"{obj_mesh_dir}/mesh.obj", is_mm=is_mm)
+        for mesh_path_obj in mesh_path:
+            load_res = load_mesh(f"{mesh_path_obj}", is_mm=is_mm)
             mesh = load_res["mesh"]
             meshes.append(mesh)
-            mesh_bbox.append(copy.deepcopy(np.asarray(load_res["bbox"])))
+            mesh_bbox.append((copy.deepcopy(np.asarray(load_res["bbox"]))))
             mesh_diameter.append(load_res["diameter"])
             mesh_pts.append(torch.tensor(trimesh.sample.sample_surface(mesh, self.num_mesh_pts)[0]).float())
-            mesh_paths.append(mesh_path)
-            mesh_paths_orig.append(mesh_path)
         if self.do_load_mesh_in_memory:
             self.mesh = meshes
-        self.mesh_bbox = mesh_bbox
+        self.mesh_bbox = np.stack(mesh_bbox)
         self.mesh_diameter = mesh_diameter
         self.mesh_pts = torch.stack(mesh_pts)
         self.mesh_path = mesh_paths
@@ -408,7 +405,7 @@ class TrackingMultiObjDataset(TrackingDataset):
     def get_visibility(self, mask):
         visibilities = []
         for oname in self.obj_names:
-            ocolor = self.segm_labels_to_id[oname]
+            ocolor = self.segm_labels_to_color[oname]
             visibilities.append((mask == ocolor).all(axis=-1).sum() > self.min_pixels_for_visibility)
         return visibilities
 
