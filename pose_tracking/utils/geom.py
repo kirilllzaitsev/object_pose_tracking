@@ -74,6 +74,7 @@ def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
         )
     pose = np.eye(4) if pose is None else pose
     bbox_2d = world_to_2d(bbox, intrinsics, rt=pose)
+    bbox_2d = cast_to_numpy(bbox_2d)
     u, v = bbox_2d[:, 0].astype(int), bbox_2d[:, 1].astype(int)
     h, w = hw
     x_min, y_min = np.min(u), np.min(v)

@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sys
+import traceback
 import typing as t
 from collections import defaultdict
 from datetime import timedelta
@@ -36,7 +37,7 @@ from pose_tracking.utils.artifact_utils import (
 )
 from pose_tracking.utils.comet_utils import log_params_to_exp
 from pose_tracking.utils.common import get_ordered_paths, print_args
-from pose_tracking.utils.misc import set_seed
+from pose_tracking.utils.misc import print_error_locals, set_seed
 from pose_tracking.utils.pipe_utils import (
     Printer,
     create_tools,
@@ -122,7 +123,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     ds_video_subdirs_val = ds_dirs["ds_video_subdirs_val"]
 
     if args.num_classes is None:
-        if args.ds_name == "ikea":
+        if "ikea" in args.ds_name:
             metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
             if args.ds_alias == "cube_large":
                 num_classes = 1
@@ -131,8 +132,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             logger.info(f"{num_classes=}")
         elif args.ds_name in ["ycbi", "ho3d_v3"]:
             num_classes = len(YCBV_OBJ_NAME_TO_ID)
-        elif args.ds_name in ["ikea_multiobj"]:
-            num_classes = 1
         else:
             num_classes = None
         args.num_classes = num_classes
@@ -323,7 +322,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             optimizer,
             step_size=args.lrs_step_size if args.use_lrs else 1000,
             gamma=args.lrs_gamma,
-            verbose=args.use_lrs,
         )
     else:
         lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -467,4 +465,9 @@ if __name__ == "__main__":
         now = dt.datetime.now()
         profile_func(run, f"{PROJ_DIR}/profiling/{now.strftime('%Y%m%d_%H%M%S')}.prof")
     else:
-        run()
+        try:
+            run()
+        except Exception as e:
+            print_error_locals()
+            traceback.print_exc()
+            raise e

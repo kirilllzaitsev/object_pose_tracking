@@ -580,6 +580,7 @@ def get_datasets(
     max_depth_m=10,
     dino_features_folder_name=None,
     bbox_num_kpts=32,
+    do_load_mesh_in_memory=False,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -612,6 +613,8 @@ def get_datasets(
         bbox_num_kpts=bbox_num_kpts,
         dino_features_folder_name=dino_features_folder_name,
         use_mask_for_bbox_2d=use_mask_for_bbox_2d,
+        use_occlusion_augm="occlusion" in transform_names if transform_names else False,
+        do_load_mesh_in_memory=do_load_mesh_in_memory,
     )
     if ds_name == "ycbi":
         ycbi_kwargs = dict(
@@ -635,6 +638,7 @@ def get_datasets(
     train_ds_kwargs = copy.deepcopy(ds_kwargs)
     if "train" in ds_types:
         train_ds_kwargs["video_dir"] = Path(ds_video_dir_train)
+        train_ds_kwargs["is_val"] = False
         train_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_train,
             ds_name=ds_name,

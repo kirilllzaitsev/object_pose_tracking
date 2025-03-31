@@ -88,6 +88,7 @@ def load_artifacts_from_comet(
     epoch: t.Optional[int] = None,
     use_epoch: bool = False,
     do_load_model: bool = True,
+    do_force_download=False,
 ) -> dict:
     """Downloads artifacts from comet.ml if they don't exist locally and returns the paths to them.
     Args:
@@ -113,7 +114,7 @@ def load_artifacts_from_comet(
     model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
     alternative_model_artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
     alternative_model_checkpoint_path = f"{exp_dir}/{alternative_model_artifact_name}.pth"
-    weights_not_exist = False
+    weights_not_exist = False or do_force_download
     if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path, alternative_model_checkpoint_path]):
         weights_not_exist = True
     elif os.path.exists(alternative_model_checkpoint_path) and not os.path.exists(model_checkpoint_path):

@@ -368,7 +368,7 @@ def get_parser():
         nargs="*",
         default=[],
         help="List of transform names to use",
-        choices=["jitter", "iso", "brightness", "blur", "motion_blur", "gamma", "hue", "norm"],
+        choices=["jitter", "iso", "brightness", "blur", "motion_blur", "gamma", "hue", "norm", "occlusion"],
     )
     data_args.add_argument("--transform_prob", type=float, default=0.0, help="Probability of applying the transforms")
     return parser

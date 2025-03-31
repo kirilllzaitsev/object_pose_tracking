@@ -152,7 +152,15 @@ def draw_posed_3d_box(img, rt, K, bbox, line_color=(0, 255, 0), linewidth=2):
 
 
 def draw_poses_on_video(
-    rgbs, intrinsics, poses_pred, poses_gt=None, bbox=None, bbox_color=(255, 255, 0), scale=0.05, take_n=None
+    rgbs,
+    intrinsics,
+    poses_pred,
+    poses_gt=None,
+    bbox=None,
+    bbox_color=(255, 255, 0),
+    bbox_color_gt=(0, 255, 0),
+    scale=0.05,
+    take_n=None,
 ):
     """
     Given a list of rgb images, camera intrinsics, CAD bounding box, and poses, draw the poses and object axes on the images. The args have to be numpy arrays.
@@ -176,7 +184,14 @@ def draw_poses_on_video(
         else:
             pose_gt = None
         rgb_with_pose = draw_pose_on_img(
-            rgb, K, pose_pred, bbox=bbox, bbox_color=bbox_color, scale=scale, pose_gt=pose_gt
+            rgb,
+            K,
+            pose_pred,
+            bbox=bbox,
+            bbox_color=bbox_color,
+            scale=scale,
+            pose_gt=pose_gt,
+            bbox_color_gt=bbox_color_gt,
         )
         images.append(rgb_with_pose)
     images = np.array(images)
@@ -184,7 +199,15 @@ def draw_poses_on_video(
 
 
 def draw_pose_on_img(
-    rgb, K, pose_pred, bbox=None, bbox_color=(255, 255, 0), scale=50.0, pose_gt=None, final_frame=None
+    rgb,
+    K,
+    pose_pred,
+    bbox=None,
+    bbox_color=(255, 255, 0),
+    bbox_color_gt=(0, 255, 0),
+    scale=50.0,
+    pose_gt=None,
+    final_frame=None,
 ):
     if len(pose_pred.shape) == 3:
         final_frame = None
@@ -211,7 +234,7 @@ def draw_pose_on_img(
         final_frame = draw_posed_3d_box(final_frame, rt=pose_pred, K=K, bbox=bbox, line_color=bbox_color)
         if pose_gt is not None:
             pose_gt = cast_to_numpy(pose_gt)
-            final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=K, bbox=bbox, line_color=(0, 255, 0))
+            final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=K, bbox=bbox, line_color=bbox_color_gt)
     return final_frame
 
 
@@ -248,20 +271,7 @@ def vis_bbox_2d(
         return final_frame
 
     img = np.ascontiguousarray(img)
-    if bbox.shape == (4, 2):
-        bbox_xy_ul = bbox[0]
-        bbox_xy_br = bbox[2]
-    elif bbox.shape == (2, 2):
-        bbox_xy_ul = bbox[0]
-        bbox_xy_br = bbox[1]
-    elif format == "cxcywh":
-        bbox_xyxy = box_cxcywh_to_xyxy(cast_to_torch(bbox))
-        bbox_xyxy = cast_to_numpy(bbox_xyxy)
-        bbox_xy_ul = bbox_xyxy[:2]
-        bbox_xy_br = bbox_xyxy[2:]
-    else:
-        bbox_xy_ul = bbox[:2]
-        bbox_xy_br = bbox[2:]
+    bbox_xy_ul, bbox_xy_br = convert_bbox_to_min_max_corners(bbox, format)
 
     if is_normalized:
         h, w = img.shape[:2]
@@ -293,6 +303,25 @@ def vis_bbox_2d(
             cv2.LINE_AA,
         )
     return img
+
+
+def convert_bbox_to_min_max_corners(bbox, format="xyxy"):
+    if bbox.shape == (4, 2):
+        bbox_xy_ul = bbox[0]
+        bbox_xy_br = bbox[2]
+    elif bbox.shape == (2, 2):
+        bbox_xy_ul = bbox[0]
+        bbox_xy_br = bbox[1]
+    elif format == "cxcywh":
+        bbox_xyxy = box_cxcywh_to_xyxy(cast_to_torch(bbox))
+        bbox_xyxy = cast_to_numpy(bbox_xyxy)
+        bbox_xy_ul = bbox_xyxy[:2]
+        bbox_xy_br = bbox_xyxy[2:]
+    else:
+        bbox = bbox.squeeze(0) if bbox.ndim > 1 else bbox
+        bbox_xy_ul = bbox[:2]
+        bbox_xy_br = bbox[2:]
+    return bbox_xy_ul, bbox_xy_br
 
 
 def box_cxcywh_to_xyxy(x):
