@@ -58,6 +58,7 @@ class TrackingDataset(Dataset):
         do_subtract_bg=False,
         do_normalize_depth=False,
         use_allocentric_pose=False,
+        use_occlusion_augm=False,
         max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
@@ -70,12 +71,14 @@ class TrackingDataset(Dataset):
         rot_repr="quaternion",
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
-        use_mask_for_bbox_2d=True,
+        use_mask_for_bbox_2d=False,
         bbox_num_kpts=32,
         dino_features_folder_name=None,
-        num_objs=1,
+        max_num_objs=1,
         min_pixels_for_visibility=20 * 20,
         target_hw=None,
+        do_load_mesh_in_memory=True,
+        is_val=True,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -164,6 +167,12 @@ class TrackingDataset(Dataset):
             else:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
 
+        if use_occlusion_augm:
+            assert self.max_num_objs == 1
+            from pose_tracking.dataset.transforms import RandomPolygonMask
+
+            self.transform_occlusion = RandomPolygonMask(num_vertices=5, p=0.5)
+
     def __len__(self):
         return self.num_frames
 
@@ -173,14 +182,21 @@ class TrackingDataset(Dataset):
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
 
-        if self.include_mask or self.num_objs > 1:
+        if self.include_mask or self.max_num_objs > 1 or self.use_occlusion_augm:
             mask = self.get_mask(i)
             is_visible = self.get_visibility(mask)
-            sample["is_visible"] = is_visible if self.num_objs > 1 else [is_visible]
+            sample["is_visible"] = is_visible if self.max_num_objs > 1 else [is_visible]
             if self.include_mask:
                 sample["mask"] = mask
         else:
             sample["is_visible"] = [True]
+
+        if self.max_num_objs == 1 and sample["is_visible"][0] == False:
+            print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
+            return None
+
+        if self.use_occlusion_augm:
+            sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=mask)
 
         if self.include_depth:
             depth = self.get_depth(i)
