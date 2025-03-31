@@ -74,6 +74,7 @@ class TrainerMemotr(TrainerDeformableDETR):
             t_out_dim=self.config["t_out_dim"],
             WITH_BOX_REFINE=self.config["WITH_BOX_REFINE"],
         )
+        self.criterion.log = {}
         self.criterion.init_a_clip(
             batch=batched_seq,
             hidden_dim=self.model_without_ddp.hidden_dim,
@@ -87,12 +88,6 @@ class TrainerMemotr(TrainerDeformableDETR):
 
         seq_length = len(batched_seq["image"][0])
         batch_size = len(batched_seq["image"])
-        if self.do_debug:
-            for batch_t in batched_seq:
-                for k, v in batch_t.items():
-                    if k not in ["image", "intrinsics", "mesh_bbox", "bbox_2d", "class_id"]:
-                        continue
-                    self.processed_data[k].append(v)
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
         seq_stats = defaultdict(list)
@@ -113,10 +108,17 @@ class TrainerMemotr(TrainerDeformableDETR):
         do_skip_first_step = False
 
         for t in ts_pbar:
-            batch_t = {k: v[:, t] if not is_empty(v) and not isinstance(v, list) else v for k, v in batched_seq.items()}
+            batch_t = {}
+            for k, v in batched_seq.items():
+                if not is_empty(v):
+                    if isinstance(v, list):
+                        batch_t[k] = [x[t] for x in v]
+                    else:
+                        batch_t[k] = v[:, t]
+
             rgb = batch_t["image"]
-            targets = [x[t] for x in batch_t["target"]]
-            pose_gt_abs = torch.stack([x["pose"] for x in targets])
+            targets = batch_t["target"]
+            # pose_gt_abs = torch.stack([x["pose"] for x in targets])
             intrinsics = [x["intrinsics"] for x in targets]
             pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
@@ -143,7 +145,9 @@ class TrainerMemotr(TrainerDeformableDETR):
                     )
             else:
                 # raise RuntimeError
-                tracks = self.model_without_ddp.postprocess_single_frame(previous_tracks, new_tracks, None)
+                tracks: list[TrackInstances] = self.model_without_ddp.postprocess_single_frame(
+                    previous_tracks, new_tracks, None
+                )
                 # tracks_result = tracks[0].to(torch.device("cpu"))
                 # tracks_result = filter_by_score(tracks_result, thresh=self.result_score_thresh)
                 # TODO: proper eval?
@@ -187,22 +191,20 @@ class TrainerMemotr(TrainerDeformableDETR):
             # METRICS
 
             if self.use_pose:
-                # idx = self.criterion._get_src_permutation_idx(indices)
                 matched_idx_tgt = [track.matched_idx[track.matched_idx >= 0] for track in tracks]
+                matched_idx_pred = [torch.nonzero(track.matched_idx >= 0, as_tuple=True)[0] for track in tracks]
                 target_rts = torch.cat(
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, i in zip(targets, matched_idx_tgt)], dim=0
                 )
+                pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
 
                 if len(target_rts) == 0:
                     ...
                 else:
 
-                    pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
-                    # t_pred = out["t"][idx]
-                    # rot_pred = out["rot"][idx]
-                    t_pred = torch.cat([track.ts[matched_idx_tgt[tidx]] for tidx, track in enumerate(tracks)], dim=0)
+                    t_pred = torch.cat([track.ts[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0)
                     rot_pred = torch.cat(
-                        [track.rots[matched_idx_tgt[tidx]] for tidx, track in enumerate(tracks)], dim=0
+                        [track.rots[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0
                     )
 
                     if self.do_predict_2d_t:
@@ -247,6 +249,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                         pose_mat_pred_metrics = pose_mat_pred_abs
                         pose_mat_gt_metrics = pose_mat_gt_abs
 
+                    batch_t = self.prepare_batch_t_for_metrics_mot(batch_t)
                     m_batch_avg = self.calc_metrics_batch(
                         batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
                     )
