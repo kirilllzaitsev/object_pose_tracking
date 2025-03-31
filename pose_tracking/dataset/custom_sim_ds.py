@@ -296,6 +296,8 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
         self,
         obj_names=["object_0", "object_1", "object_2"],
         obj_ids=None,
+        cam_init_rot=(0.0, 1.0, 0.0, 0.0),
+        do_load_bbox_from_metadata=True,
         *args,
         **kwargs,
     ):
@@ -303,6 +305,8 @@ class CustomSimMultiObjDatasetIkea(CustomSimMultiObjDataset):
         super().__init__(
             obj_names=obj_names,
             obj_ids=obj_ids,
+            cam_init_rot=cam_init_rot,
+            do_load_bbox_from_metadata=do_load_bbox_from_metadata,
             *args,
             **kwargs,
         )

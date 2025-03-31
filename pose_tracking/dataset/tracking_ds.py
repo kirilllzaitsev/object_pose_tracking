@@ -129,6 +129,9 @@ class TrackingDataset(Dataset):
         self.num_frames = len(self.color_files)
 
         self.mesh = None
+        self.mesh_bbox = None
+        self.mesh_diameter = None
+        self.mesh_pts = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
         self.t_dim = 3 if t_repr == "3d" else 2
@@ -197,7 +200,7 @@ class TrackingDataset(Dataset):
         sample["intrinsics"] = self.get_intrinsics(i)
         sample["obj_name"] = self.obj_name
 
-        if self.mesh is not None:
+        if self.mesh_pts is not None:
             sample["mesh_pts"] = self.mesh_pts
             sample["mesh_bbox"] = self.mesh_bbox
             sample["mesh_diameter"] = self.mesh_diameter
@@ -206,7 +209,7 @@ class TrackingDataset(Dataset):
             ibbs_res = interpolate_bbox_edges(copy.deepcopy(self.mesh_bbox), num_points=24)
             sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
             bbox_3d_kpts = ibbs_res["all_points"]
-            if self.include_bbox_3d:
+            if self.include_bbox_3d and self.include_pose:
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts_corners"] = world_to_cam(self.mesh_bbox, sample["pose"]).astype(np.float32)
@@ -219,7 +222,7 @@ class TrackingDataset(Dataset):
                 bbox_2ds = []
                 if not self.include_mask:
                     mask = self.get_mask(i)
-                if self.num_objs > 1:
+                if self.max_num_objs > 1:
                     colors = [v for k, v in self.segm_labels_to_id.items() if k in self.obj_names]
                     bin_masks = [np.all(mask == c, axis=-1) for c in colors]
                 else:
@@ -234,11 +237,13 @@ class TrackingDataset(Dataset):
                         return None
                     bbox_2ds.append(bbox_2d)
             else:
-                bbox_2ds = list(
-                    convert_3d_bbox_to_2d(
-                        self.mesh_bbox, sample["intrinsics"].numpy(), hw=(self.h, self.w), pose=sample["pose"]
-                    )
+                bbox_2ds = convert_3d_bbox_to_2d(
+                    self.mesh_bbox, sample["intrinsics"], hw=(self.h, self.w), pose=sample["pose"]
                 )
+                if self.max_num_objs == 1:
+                    bbox_2ds = [bbox_2ds]
+                else:
+                    bbox_2ds = list(bbox_2ds)
             for idx, bbox_2d in enumerate(bbox_2ds):
                 bbox_2d = bbox_2d.astype(np.float32)
                 if self.do_normalize_bbox:
@@ -310,10 +315,11 @@ class TrackingDataset(Dataset):
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False):
         load_res = load_mesh(mesh_path, is_mm=is_mm)
-        self.mesh = load_res["mesh"]
+        if self.do_load_mesh_in_memory:
+            self.mesh = load_res["mesh"]
         self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
         self.mesh_diameter = load_res["diameter"]
-        self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(self.mesh, self.num_mesh_pts)[0]).float()
+        self.mesh_pts = torch.tensor(trimesh.sample.sample_surface(load_res["mesh"], self.num_mesh_pts)[0]).float()
         self.mesh_path = mesh_path
         self.mesh_path_orig = mesh_path
 
@@ -342,7 +348,7 @@ class TrackingMultiObjDataset(TrackingDataset):
         self.obj_ids = obj_ids or []
         self.obj_names = obj_names or []
 
-        super().__init__(*args, **kwargs, num_objs=max(len(self.obj_ids), len(self.obj_names)))
+        super().__init__(*args, **kwargs, max_num_objs=max(len(self.obj_ids), len(self.obj_names)))
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False):
         meshes = []
@@ -362,7 +368,8 @@ class TrackingMultiObjDataset(TrackingDataset):
             mesh_pts.append(torch.tensor(trimesh.sample.sample_surface(mesh, self.num_mesh_pts)[0]).float())
             mesh_paths.append(mesh_path)
             mesh_paths_orig.append(mesh_path)
-        self.mesh = meshes
+        if self.do_load_mesh_in_memory:
+            self.mesh = meshes
         self.mesh_bbox = mesh_bbox
         self.mesh_diameter = mesh_diameter
         self.mesh_pts = torch.stack(mesh_pts)

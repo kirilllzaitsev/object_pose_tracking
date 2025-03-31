@@ -54,7 +54,6 @@ class CustomDatasetTest(CustomDataset):
 
     def __init__(self, *args, **kwargs):
         kwargs["include_pose"] = False
-        kwargs["include_depth"] = False
         kwargs["include_mask"] = False
         kwargs["include_bbox_2d"] = False
         kwargs["target_size"] = (480, 640)
