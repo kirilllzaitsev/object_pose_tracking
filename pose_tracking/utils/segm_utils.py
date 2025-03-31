@@ -46,6 +46,17 @@ def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_l
         plt.show()
 
 
+def show_points(coords, labels, ax, marker_size=375):
+    pos_points = coords[labels == 1]
+    neg_points = coords[labels == 0]
+    ax.scatter(
+        pos_points[:, 0], pos_points[:, 1], color="green", marker="*", s=marker_size, edgecolor="white", linewidth=1.25
+    )
+    ax.scatter(
+        neg_points[:, 0], neg_points[:, 1], color="red", marker="*", s=marker_size, edgecolor="white", linewidth=1.25
+    )
+
+
 def convert_mask_to_xyxy_box(mask, offset=20):
     h, w = mask.shape
     y, x = np.where(mask)
