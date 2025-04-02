@@ -4,6 +4,8 @@ import random
 import sys
 import typing as t
 
+from tqdm import tqdm
+
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -235,12 +237,12 @@ def print_error_locals():
     print("========================================")
 
 
-def wrap_with_futures(arr, func, use_threads=True):
+def wrap_with_futures(arr, func, use_threads=True, max_workers=None):
     if use_threads:
         executor_cls = concurrent.futures.ThreadPoolExecutor
     else:
         executor_cls = concurrent.futures.ProcessPoolExecutor
-    with executor_cls() as executor:
-        res = executor.map(func, arr)
+    with executor_cls(max_workers=max_workers) as executor:
+        res = list(tqdm(executor.map(func, arr), total=len(arr)))
         res = [x for x in res if x is not None]
     return res
