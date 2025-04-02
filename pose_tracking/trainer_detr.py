@@ -511,15 +511,6 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
-    def prepare_batch_t_for_metrics_mot(self, batch_t, matched_idxs=None):
-        batch_t = batch_t.copy()
-        for k in ["mesh_pts", "mesh_bbox", "mesh_diameter"]:
-            if any(x > 1 for x in batch_t["num_objs"]):
-                batch_t[k] = batch_t[k].flatten(0, 1) if is_tensor(batch_t[k]) else torch.cat(batch_t[k])
-            if matched_idxs is not None:
-                batch_t[k] = [x for i, x in enumerate(batch_t[k]) if i in matched_idxs]
-        return batch_t
-
     def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, use_prev_image=False, **kwargs):
         def get_prev_data(key):
             if key not in batch_t["target"][0]:
