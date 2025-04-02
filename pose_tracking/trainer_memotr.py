@@ -182,6 +182,8 @@ class TrainerMemotr(TrainerDeformableDETR):
             loss_dict_reduced_scaled["loss_bbox"] = loss_dict_reduced_scaled.pop("box_l1_loss")
             loss_dict_reduced_scaled["loss_giou"] = loss_dict_reduced_scaled.pop("box_giou_loss")
             loss_dict_reduced_scaled["loss_ce"] = loss_dict_reduced_scaled.pop("label_focal_loss")
+            loss_dict_reduced_scaled["loss_rot"] = loss_dict_reduced_scaled.pop("rot_loss")
+            loss_dict_reduced_scaled["loss_t"] = loss_dict_reduced_scaled.pop("t_loss")
             losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
             # optim
@@ -207,16 +209,22 @@ class TrainerMemotr(TrainerDeformableDETR):
                 target_rts = torch.cat(
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, i in zip(targets, matched_idx_tgt)], dim=0
                 )
-                pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
 
                 if len(target_rts) == 0:
-                    ...
+                    pose_mat_gt_abs = torch.empty(0, 4, 4).to(self.device)
+                    pose_mat_pred_abs = torch.empty(0, 4, 4).to(self.device)
                 else:
-
+                    pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
                     t_pred = torch.cat([track.ts[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0)
                     rot_pred = torch.cat(
                         [track.rots[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0
                     )
+                    other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
+                    other_values_for_metrics = {}
+                    for k in other_values_for_metrics_keys:
+                        other_values_for_metrics[k] = torch.cat(
+                            [t[k][i] for t, (i) in zip(targets, matched_idx_tgt)], dim=0
+                        )
 
                     if self.do_predict_2d_t:
                         center_depth_pred = out["center_depth"][idx]
