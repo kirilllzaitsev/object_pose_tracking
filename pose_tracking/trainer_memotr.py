@@ -46,6 +46,9 @@ class TrainerMemotr(TrainerDeformableDETR):
         self.det_score_thresh = 0.5
         self.track_score_thresh = 0.5
 
+        TrackInstances.rot_out_dim = self.config["rot_out_dim"]
+        TrackInstances.t_out_dim = self.config["t_out_dim"]
+
     def get_param_dicts(self):
         from memotr.train_engine import get_param_groups
 
@@ -64,31 +67,12 @@ class TrainerMemotr(TrainerDeformableDETR):
         last_step_state=None,
     ):
 
-        tracks = TrackInstances.init_tracks(
-            batch=batched_seq,
-            hidden_dim=self.model_without_ddp.hidden_dim,
-            num_classes=self.model_without_ddp.num_classes,
-            device=self.device,
-            use_dab=self.config["USE_DAB"],
-            rot_out_dim=self.config["rot_out_dim"],
-            t_out_dim=self.config["t_out_dim"],
-            WITH_BOX_REFINE=self.config["WITH_BOX_REFINE"],
-        )
-        self.criterion.log = {}
-        self.criterion.init_a_clip(
-            batch=batched_seq,
-            hidden_dim=self.model_without_ddp.hidden_dim,
-            num_classes=self.model_without_ddp.num_classes,
-            device=self.device,
-        )
-
         is_train = optimizer is not None
         do_opt_every_ts = is_train and self.use_optim_every_ts
         do_opt_in_the_end = is_train and not self.use_optim_every_ts
 
         seq_length = len(batched_seq["image"][0])
         batch_size = len(batched_seq["image"])
-        batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
         seq_stats = defaultdict(list)
         seq_metrics = defaultdict(list)
@@ -107,6 +91,25 @@ class TrainerMemotr(TrainerDeformableDETR):
         nan_count = 0
         do_skip_first_step = False
 
+        tracks = TrackInstances.init_tracks(
+            batch=batched_seq,
+            hidden_dim=self.model_without_ddp.hidden_dim,
+            num_classes=self.model_without_ddp.num_classes,
+            device=self.device,
+            use_dab=self.config["USE_DAB"],
+            rot_out_dim=self.config["rot_out_dim"],
+            t_out_dim=self.config["t_out_dim"],
+            WITH_BOX_REFINE=self.config["WITH_BOX_REFINE"],
+        )
+        self.criterion.log = {}
+        self.criterion.init_a_clip(
+            batch=batched_seq,
+            hidden_dim=self.model_without_ddp.hidden_dim,
+            num_classes=self.model_without_ddp.num_classes,
+            device=self.device,
+        )
+        batched_seq = transfer_batch_to_device(batched_seq, self.device)
+
         for t in ts_pbar:
             batch_t = {}
             for k, v in batched_seq.items():
@@ -116,11 +119,11 @@ class TrainerMemotr(TrainerDeformableDETR):
                     else:
                         batch_t[k] = v[:, t]
 
+            # print(f"{batch_t['rgb_path']}")
             rgb = batch_t["image"]
             targets = batch_t["target"]
             # pose_gt_abs = torch.stack([x["pose"] for x in targets])
             intrinsics = [x["intrinsics"] for x in targets]
-            pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
 
             model_forward_res = self.model_forward(
@@ -129,9 +132,17 @@ class TrainerMemotr(TrainerDeformableDETR):
             )
             out = model_forward_res["out"]
 
-            criterion_res = self.criterion.process_single_frame(
-                model_outputs=out, tracked_instances=tracks, frame_idx=t
-            )
+            try:
+                criterion_res = self.criterion.process_single_frame(
+                    model_outputs=out, tracked_instances=tracks, frame_idx=t
+                )
+            except Exception as e:
+                print(f"Error in process_single_frame: {e}")
+                print(f"{out=}")
+                print(f"{tracks=}")
+                print(f"{t=}")
+                print(f"{batch_t=}")
+                raise e
             previous_tracks, new_tracks, unmatched_dets, indices = (
                 criterion_res["tracked_instances"],
                 criterion_res["new_trackinstances"],
@@ -345,20 +356,14 @@ class TrainerMemotr(TrainerDeformableDETR):
                 for k in vis_keys:
                     if len(batch_t.get(k, [])) == 0:
                         continue
-                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
-                vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
+                    vis_data[k].append(detach_and_cpu(batch_t[k]))
+                vis_data["targets"].append(detach_and_cpu(targets))
                 vis_data["out"].append(
-                    extract_idxs(
-                        detach_and_cpu({k: v for k, v in out.items() if k not in ["det_query_embed"]}),
-                        vis_batch_idxs,
-                        do_extract_dict_contents=True,
-                    )
+                    detach_and_cpu({k: v for k, v in out.items() if k not in ["det_query_embed"]}),
                 )
-                if self.model_name == "detr_kpt":
-                    vis_data["kpts"].append(extract_idxs(out["kpts"], vis_batch_idxs))
-                    vis_data["descriptors"].append(extract_idxs(out["descriptors"], vis_batch_idxs))
-                if self.use_pose:
-                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
+                if self.use_pose and len(pose_mat_pred_abs) > 0:
+                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs))
+                    vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs))
 
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
@@ -386,7 +391,7 @@ class TrainerMemotr(TrainerDeformableDETR):
 
         if self.use_pose and self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
-            metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
+            metrics_abs = self.calc_metrics_batch_mot(pose_mat_pred_abs, pose_mat_gt_abs, **other_values_for_metrics)
             for k, v in metrics_abs.items():
                 seq_metrics[f"{k}_abs"].append(v)
             if not self.include_abs_pose_loss_for_rel:
