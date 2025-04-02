@@ -35,11 +35,7 @@ def cam_to_2d(pts, K):
 
 def world_to_cam(pts, rt):
     # returns (B x) N x 3 pts in camera frame
-    t_func = get_transpose_func(pts)
-    if pts.shape[-1] == 3:
-        pts = t_func(pts)
-    new_pts = rt[..., :3, :3] @ pts + rt[..., :3, 3][..., None]
-    return t_func(new_pts)
+    return transform_pts(pts, rt=rt)
 
 
 def backproj_2d_pts_world(pts, depth, K, rt):
@@ -80,6 +76,7 @@ def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     x_min, y_min = np.min(u), np.min(v)
     x_max, y_max = np.max(u), np.max(v)
     x_min, y_min, x_max, y_max = max(0, x_min), max(0, y_min), min(w, x_max), min(h, y_max)
+    x_max, y_max = max(0, x_max), max(0, y_max)
     bbox_2d = np.array([[x_min, y_min], [x_max, y_max]])
     return bbox_2d
 
@@ -461,24 +458,10 @@ def transform_pts_batch(pose: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
         pose: (bsz, 4, 4) or (bsz, dim2, 4, 4)
         pts: (bsz, n_pts, 3)
     """
-    bsz = pose.shape[0]
-    n_pts = pts.shape[1]
-    assert pts.shape == (bsz, n_pts, 3)
-    pose_dim = len(pose.shape)
-    if pose_dim == 4:
-        pts = pts[:, None]
-        assert pose.shape[-2:] == (4, 4)
-    elif pose_dim == 3:
-        assert pose.shape == (bsz, 4, 4)
-    else:
-        raise ValueError("Unsupported shape for T", pose.shape)
-    pts = pts[..., None]
-    pose = pose[None] if pose_dim == 4 else pose[:, None]
-    pts_transformed = pose[..., :3, :3] @ pts + pose[..., :3, [-1]]
-    return pts_transformed.squeeze(-1)
+    return transform_pts(pts, rt=pose)
 
 
-def transform_pts(pts, r=None, t=None, pose=None):
+def transform_pts(pts, r=None, t=None, rt=None):
     """
     Applies a rigid transformation to 3D points.
 
@@ -489,22 +472,14 @@ def transform_pts(pts, r=None, t=None, pose=None):
     Returns:
         nx3 ndarray with transformed 3D points.
     """
-    assert (r is not None and t is not None) or pose is not None, "Either r and t or pose should be provided"
-    assert pts.shape[1] == 3
-    if pose is not None:
-        r = pose[:3, :3]
-        t = pose[:3, 3]
-    pts_t = r @ pts.T + t.reshape((3, 1))
-    return pts_t.T
-
-
-def transform_pts_batch(pts, r=None, t=None, pose=None):
-    assert len(pts.shape) == 3, f"pts.shape: {pts.shape}"
-    if pose is not None:
-        r = pose[..., :3, :3]
-        t = pose[..., :3, 3]
-    pts_t = r @ pts.transpose(-1, -2) + t.unsqueeze(-1)
-    return pts_t.transpose(-1, -2)
+    if rt is not None:
+        r = rt[..., :3, :3]
+        t = rt[..., :3, 3]
+    t_func = get_transpose_func(pts)
+    if pts.shape[-1] == 3:
+        pts = t_func(pts)
+    new_pts = r @ pts + t[..., None]
+    return t_func(new_pts)
 
 
 def rotate_pts_batch(R, pts):
