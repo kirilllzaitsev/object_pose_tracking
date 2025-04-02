@@ -72,7 +72,7 @@ def cast_to_torch(x, device=None, include_top_list=False):
         return res
     elif isinstance(x, dict):
         return {k: cast_to_torch(v, device=device) for k, v in x.items()}
-    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)):
+    elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex, bool, np.bool_)):
         return torch.tensor(x, device=device)
     return x.to(device)
 

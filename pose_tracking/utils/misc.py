@@ -1,3 +1,4 @@
+import concurrent
 import gc
 import random
 import sys
@@ -232,3 +233,14 @@ def print_error_locals():
         except Exception as e:
             print(f"  {var} = <unprintable: {e}>")
     print("========================================")
+
+
+def wrap_with_futures(arr, func, use_threads=True):
+    if use_threads:
+        executor_cls = concurrent.futures.ThreadPoolExecutor
+    else:
+        executor_cls = concurrent.futures.ProcessPoolExecutor
+    with executor_cls() as executor:
+        res = executor.map(func, arr)
+        res = [x for x in res if x is not None]
+    return res

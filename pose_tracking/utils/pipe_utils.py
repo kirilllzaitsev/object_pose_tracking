@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from pose_tracking.dataset.ycbv_ds import YCBvDataset
 import torch
 import yaml
 from pose_tracking.config import (
@@ -37,6 +36,7 @@ from pose_tracking.dataset.video_ds import (
     VideoDatasetTracking,
 )
 from pose_tracking.dataset.ycbineoat import YCBineoatDataset, YCBineoatDatasetPizza
+from pose_tracking.dataset.ycbv_ds import YCBvDataset
 from pose_tracking.losses import compute_add_loss, get_rot_loss, get_t_loss
 from pose_tracking.models.baselines import (
     CNN,
@@ -192,6 +192,7 @@ def get_model(args, num_classes=None):
             t_out_dim=args.t_out_dim,
             head_num_layers=args.rt_mlps_num_layers,
             head_hidden_dim=args.rt_hidden_dim or 256,
+            factors=args.factors,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -391,6 +392,7 @@ def get_trackformer_args(args):
     tf_args.depth_loss_coef = args.tf_depth_loss_coef
 
     tf_args.opt_only = args.opt_only
+    tf_args.factors = args.factors
 
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
@@ -503,6 +505,7 @@ def get_trainer(
         do_predict_abs_pose=args.do_predict_abs_pose,
         use_pnp_for_rot_pred=args.use_pnp_for_rot_pred,
         bbox_num_kpts=args.bbox_num_kpts,
+        use_factors=args.use_factors,
         **extra_kwargs,
     )
 
@@ -582,6 +585,7 @@ def get_datasets(
     dino_features_folder_name=None,
     bbox_num_kpts=32,
     do_load_mesh_in_memory=False,
+    factors=None,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -616,6 +620,7 @@ def get_datasets(
         use_mask_for_bbox_2d=use_mask_for_bbox_2d,
         use_occlusion_augm="occlusion" in transform_names if transform_names else False,
         do_load_mesh_in_memory=do_load_mesh_in_memory,
+        factors=factors,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -852,6 +857,9 @@ def get_ds_dirs(args):
     else:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "env_*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "env_*")]
+    # ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x in ['env_443']]
+    if "cube_500_random_realsense" in str(ds_video_dir_train):
+        ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_16"]]
 
     if args.do_split_train_for_val:
         assert args.val_split_share > 0

@@ -209,6 +209,8 @@ def draw_pose_on_img(
     pose_gt=None,
     final_frame=None,
 ):
+    if pose_pred.shape[0] == 1 and bbox is not None and bbox.ndim < pose_pred.ndim:
+        bbox = bbox[None]
     if len(pose_pred.shape) == 3:
         final_frame = None
         if bbox is not None:
@@ -640,6 +642,9 @@ def plot_seq(
                 )
             elif "pose" in key:
                 pose = img
+                if len(pose) == 0:
+                    print(f"WARNING: no pose for {sidx=}")
+                    continue
                 if pose.shape[-2:] != (4, 4):
                     pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
 

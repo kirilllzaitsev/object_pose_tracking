@@ -231,6 +231,8 @@ def get_parser():
     model_args.add_argument("--use_obs_belief", action="store_true", help="Use observation belief encoder-decoder")
     model_args.add_argument("--use_crop_for_rot", action="store_true", help="Crop inputs for rot branch")
     model_args.add_argument("--use_belief_decoder", action="store_true")
+    model_args.add_argument("--use_factors", action="store_true")
+    model_args.add_argument("--factors", nargs="*", choices=["scale", "occlusion", "texture", "lighting", "symmetry"])
     model_args.add_argument(
         "--model_name",
         type=str,
@@ -306,9 +308,7 @@ def get_parser():
     data_args.add_argument(
         "--use_seq_len_curriculum", action="store_true", help="Gradually increase seq_len during training"
     )
-    data_args.add_argument(
-        "--use_mask_for_bbox_2d", action="store_true", help="Use bin mask to get 2d bbox"
-    )
+    data_args.add_argument("--use_mask_for_bbox_2d", action="store_true", help="Use bin mask to get 2d bbox")
     data_args.add_argument(
         "--val_split_share",
         type=float,
