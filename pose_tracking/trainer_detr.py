@@ -37,6 +37,7 @@ from pose_tracking.utils.geom import (
     rotate_pts_batch,
 )
 from pose_tracking.utils.misc import (
+    is_tensor,
     match_module_by_name,
     print_cls,
     reduce_dict,
@@ -91,7 +92,7 @@ class TrainerDeformableDETR(Trainer):
         if self.is_memotr:
             from memotr.models.criterion import build as build_criterion
 
-            self.criterion = build_criterion(config=self.config)
+            self.criterion = build_criterion(config=self.config, num_classes=num_classes)
             self.criterion.set_device(self.device)
         else:
             from trackformer.models import build_criterion
@@ -221,20 +222,20 @@ class TrainerDeformableDETR(Trainer):
         prev_tokens = None
         nan_count = 0
         do_skip_first_step = False
+        prev_idx = None
 
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
                 optimizer.zero_grad()
             rgb = batch_t["image"]
             targets = batch_t["target"]
-            pose_gt_abs = torch.stack([x["pose"] for x in targets])
             intrinsics = [x["intrinsics"] for x in targets]
             pts = batch_t["mesh_pts"]
             h, w = rgb.shape[-2:]
 
             if self.do_predict_rel_pose and t == 0:
-                pose_prev_gt_abs = torch.stack([x["prev_target"]["pose"] for x in targets])
-                pose_prev_pred_abs = {"t": pose_prev_gt_abs[:, :3], "rot": pose_prev_gt_abs[:, 3:]}
+                pose_prev_gt_abs = torch.cat([x["prev_target"]["pose"] for x in targets])
+                pose_prev_pred_abs = {"t": pose_prev_gt_abs[..., :3], "rot": pose_prev_gt_abs[..., 3:]}
 
                 if "detr" in self.model_name:
                     # trackformer concats t-1, t in forward, while std detr could use t-1,t tokens from the outer scope
@@ -302,63 +303,92 @@ class TrainerDeformableDETR(Trainer):
             # METRICS
 
             if self.use_pose:
-                idx = self.criterion._get_src_permutation_idx(indices)
+                idx = self.criterion._get_src_permutation_idx(indices)  # (batch_idx, query_idx)
                 target_rts = torch.cat(
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
                 )
-
-                pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
-                t_pred = out["t"][idx]
-
-                if self.do_predict_2d_t:
-                    center_depth_pred = out["center_depth"][idx]
-                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics, hw=(h, w))
-                    t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
-
-                rot_pred = out["rot"][idx]
-                pred_rts = torch.cat([t_pred, rot_pred], dim=1)
-                pose_mat_pred = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
-
-                if self.do_predict_rel_pose:
-                    pose_mat_prev_pred_abs = torch.stack(
-                        [
-                            self.pose_to_mat_converter_fn(rt)
-                            for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
-                        ]
-                    )
-                    pose_mat_pred_abs = egocentric_delta_pose_to_pose(
-                        pose_mat_prev_pred_abs,
-                        trans_delta=pose_mat_pred[:, :3, 3],
-                        rot_mat_delta=pose_mat_pred[:, :3, :3],
-                        do_couple_rot_t=False,
-                    )
+                if len(target_rts) == 0:
+                    ...
                 else:
-                    pose_mat_pred_abs = pose_mat_pred
-                t_pred_abs = pose_mat_pred_abs[:, :3, 3]
-                rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
+                    other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
+                    other_values_for_metrics = {}
+                    for k in other_values_for_metrics_keys:
+                        other_values_for_metrics[k] = torch.cat(
+                            [t["mesh_pts"][i] for t, (_, i) in zip(targets, indices)], dim=0
+                        )
 
-                # since only pair seq for now
-                if self.do_predict_rel_pose:
-                    pose_mat_pred_metrics = pose_mat_pred
-                    # TODO: multi-object case
-                    pose_mat_gt_rel = torch.stack(
-                        [self.pose_to_mat_converter_fn(target["pose_rel"][0]) for target in targets]
+                    pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
+                    t_pred = out["t"][idx]
+
+                    if self.do_predict_2d_t:
+                        center_depth_pred = out["center_depth"][idx]
+                        convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                            t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                        )
+                        t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
+
+                    rot_pred = out["rot"][idx]
+                    pred_rts = torch.cat([t_pred, rot_pred], dim=1)
+                    pose_mat_pred = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pred_rts])
+
+                    if self.do_predict_rel_pose:
+                        pose_mat_prev_pred_abs = torch.stack(
+                            [
+                                self.pose_to_mat_converter_fn(rt)
+                                for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
+                            ]
+                        )
+                        cur_bidx = idx[0]
+                        if len(cur_bidx) > pose_mat_prev_pred_abs.shape[0]:
+                            # reappears. use gt to fill in (TODO)
+                            new_idx = [i for i in cur_bidx if i not in prev_idx[0]]
+                            pose_mat_prev_pred_abs = torch.cat(
+                                [pose_mat_prev_pred_abs, pose_mat_gt_abs[new_idx]], dim=0
+                            )
+                        elif len(cur_bidx) < pose_mat_prev_pred_abs.shape[0]:
+                            # disappears
+                            pose_mat_prev_pred_abs = pose_mat_prev_pred_abs[cur_bidx]
+                        pose_mat_pred_abs = egocentric_delta_pose_to_pose(
+                            pose_mat_prev_pred_abs,
+                            trans_delta=pose_mat_pred[:, :3, 3],
+                            rot_mat_delta=pose_mat_pred[:, :3, :3],
+                            do_couple_rot_t=False,
+                        )
+                    else:
+                        pose_mat_pred_abs = pose_mat_pred
+                    t_pred_abs = pose_mat_pred_abs[:, :3, 3]
+                    rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
+
+                    # since only pair seq for now
+                    if self.do_predict_rel_pose:
+                        # rel pose is undefined when obj is occluded at t-1 or t
+                        pose_mat_pred_metrics = pose_mat_pred
+                        pose_mat_gt_rel = torch.cat(
+                            [
+                                self.pose_to_mat_converter_fn(t["pose_rel"][i])
+                                for t, (_, i) in zip(targets, indices)
+                                if len(t["pose_rel"]) > 0
+                            ],
+                            dim=0,
+                        )
+                        rot_mat_gt_rel = pose_mat_gt_rel[:, :3, :3]
+                        t_gt_rel = pose_mat_gt_rel[:, :3, 3]
+                        pose_mat_gt_metrics = convert_r_t_to_rt(rot_mat_gt_rel, t_gt_rel)
+                    else:
+                        pose_mat_pred_metrics = pose_mat_pred_abs
+                        pose_mat_gt_metrics = pose_mat_gt_abs
+
+                    m_batch_avg = self.calc_metrics_batch_mot(
+                        pose_mat_pred_metrics=pose_mat_pred_metrics,
+                        pose_mat_gt_metrics=pose_mat_gt_metrics,
+                        **other_values_for_metrics,
                     )
-                    rot_mat_gt_rel = pose_mat_gt_rel[:, :3, :3]
-                    t_gt_rel = pose_mat_gt_rel[:, :3, 3]
-                    pose_mat_gt_metrics = convert_r_t_to_rt(rot_mat_gt_rel, t_gt_rel)
-                else:
-                    pose_mat_pred_metrics = pose_mat_pred_abs
-                    pose_mat_gt_metrics = pose_mat_gt_abs
+                    for k, v in m_batch_avg.items():
+                        if "classes" in k:
+                            continue
+                        seq_metrics[k].append(v)
 
-                batch_t = self.prepare_batch_t_for_metrics_mot(batch_t)
-                m_batch_avg = self.calc_metrics_batch(
-                    batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
-                )
-                for k, v in m_batch_avg.items():
-                    if "classes" in k:
-                        continue
-                    seq_metrics[k].append(v)
+                prev_idx = idx
 
             # UPDATE VARS
 
@@ -446,14 +476,14 @@ class TrainerDeformableDETR(Trainer):
                 for k in vis_keys:
                     if len(batch_t.get(k, [])) == 0:
                         continue
-                    vis_data[k].append([batch_t[k][i].cpu() for i in vis_batch_idxs])
-                vis_data["targets"].append(extract_idxs(targets, vis_batch_idxs))
-                vis_data["out"].append(extract_idxs(out, vis_batch_idxs, do_extract_dict_contents=True))
+                    vis_data[k].append(detach_and_cpu(batch_t[k]))
+                vis_data["targets"].append(detach_and_cpu(targets))
+                vis_data["out"].append(detach_and_cpu(out))
                 if self.model_name == "detr_kpt":
-                    vis_data["kpts"].append(extract_idxs(out["kpts"], vis_batch_idxs))
-                    vis_data["descriptors"].append(extract_idxs(out["descriptors"], vis_batch_idxs))
+                    vis_data["kpts"].append(detach_and_cpu(out["kpts"]))
+                    vis_data["descriptors"].append(detach_and_cpu(out["descriptors"]))
                 if self.use_pose:
-                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs[vis_batch_idxs]))
+                    vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs))
 
                 # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
                 # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
@@ -481,7 +511,7 @@ class TrainerDeformableDETR(Trainer):
 
         if self.use_pose and self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
-            metrics_abs = self.calc_metrics_batch(batch_t, pose_mat_pred_abs, pose_mat_gt_abs)
+            metrics_abs = self.calc_metrics_batch_mot(pose_mat_pred_abs, pose_mat_gt_abs, **other_values_for_metrics)
             for k, v in metrics_abs.items():
                 seq_metrics[f"{k}_abs"].append(v)
             if not self.include_abs_pose_loss_for_rel:
