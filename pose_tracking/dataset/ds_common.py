@@ -117,7 +117,10 @@ def process_raw_sample(sample, **kwargs):
     for k, v in sample.items():
         if k not in ds_sample:
             if v is not None and not any(x in k for x in ("name", "path")) and not isinstance(v, torch.Tensor):
-                v = torch.tensor(v)
+                if isinstance(v, dict):
+                    v = cast_to_torch(v)
+                else:
+                    v = torch.tensor(v)
             ds_sample[k] = v
     return ds_sample
 

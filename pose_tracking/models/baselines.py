@@ -204,7 +204,7 @@ class CNN(nn.Module):
 class KeypointCNN(nn.Module):
     def __init__(
         self,
-        num_kpts=32,
+        bbox_num_kpts=32,
         hidden_dim=512,
         rt_mlps_num_layers=1,
         encoder_out_dim=512,
@@ -235,7 +235,7 @@ class KeypointCNN(nn.Module):
         self.encoder_img_weights = encoder_img_weights
         self.norm_layer_type = norm_layer_type
         self.rt_hidden_dim = rt_hidden_dim
-        self.num_kpts = num_kpts
+        self.num_kpts = bbox_num_kpts
 
         self.do_predict_2d_t = do_predict_2d_t
         self.do_predict_6d_rot = do_predict_6d_rot
@@ -257,6 +257,7 @@ class KeypointCNN(nn.Module):
             weights_rgb=encoder_img_weights,
             norm_layer_type=norm_layer_type,
             out_dim=encoder_out_dim,
+            rgb_in_channels=3,
         )
 
         if not self.use_depth:
@@ -269,7 +270,7 @@ class KeypointCNN(nn.Module):
 
         self.t_mlp = MLP(
             in_dim=self.t_mlp_in_dim,
-            out_dim=num_kpts * 3,
+            out_dim=bbox_num_kpts * 3,
             hidden_dim=self.rt_hidden_dim,
             num_layers=rt_mlps_num_layers,
             act_out=None,
@@ -346,6 +347,7 @@ class KeypointPose(nn.Module):
         rt_hidden_dim=512,
         use_mlp_for_prev_pose=False,
         use_depth=False,
+        use_both_kpts_as_input=False,
         **kwargs,
     ):
         super().__init__()
@@ -369,6 +371,7 @@ class KeypointPose(nn.Module):
         self.do_predict_t = do_predict_t
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
         self.use_depth = use_depth
+        self.use_both_kpts_as_input = use_both_kpts_as_input
 
         self.input_dim = encoder_out_dim
 
@@ -436,7 +439,7 @@ class KeypointPose(nn.Module):
             )
 
         self.shared_mlp = MLP(
-            in_dim=self.num_kpts * 3 * 1,
+            in_dim=self.num_kpts * 3 * (2 if use_both_kpts_as_input else 1),
             out_dim=self.encoder_out_dim,
             hidden_dim=hidden_dim,
             num_layers=rt_mlps_num_layers,
@@ -448,13 +451,18 @@ class KeypointPose(nn.Module):
     def forward(
         self,
         bbox_kpts,
+        prev_bbox_kpts=None,
         prev_pose=None,
         prev_latent=None,
         **kwargs,
     ):
 
         bs, n, _ = bbox_kpts.size()
-        latent = self.shared_mlp(bbox_kpts.view(bs, -1))
+        if prev_bbox_kpts is None and not self.use_both_kpts_as_input:
+            shared_mlp_in = bbox_kpts
+        else:
+            shared_mlp_in = torch.cat([bbox_kpts, prev_bbox_kpts], dim=1)
+        latent = self.shared_mlp(shared_mlp_in.view(bs, -1))
 
         res = {}
         res["latent"] = latent

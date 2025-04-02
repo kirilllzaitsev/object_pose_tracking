@@ -91,6 +91,7 @@ def get_encoders(
         encoder_rgb = resnet50(
             pretrained=use_pretrained, in_chans=rgb_in_channels, norm_layer=norm_layer, num_classes=out_dim
         )
+        # encoder_rgb.fc=nn.Sequential(nn.Identity(), encoder_rgb.fc)
         encoder_depth = resnet50(pretrained=use_pretrained, in_chans=1, norm_layer=norm_layer, num_classes=out_dim)
     elif model_name == "dino":
         encoder_rgb = torch.hub.load("facebookresearch/dino:main", "dino_vits8")
