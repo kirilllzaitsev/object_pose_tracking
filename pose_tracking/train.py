@@ -131,8 +131,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             else:
                 num_classes = metadata["num_classes"]
             logger.info(f"{num_classes=}")
-        elif args.ds_name in ["ycbi", "ho3d_v3"]:
-            num_classes = len(YCBV_OBJ_NAME_TO_ID)
+        elif args.ds_name in ["ycbi", "ycbv", "ho3d_v3"]:
+            num_classes = len(YCBV_OBJ_NAME_TO_ID) + 1
         else:
             num_classes = None
         args.num_classes = num_classes
@@ -185,6 +185,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         bbox_num_kpts=args.bbox_num_kpts,
         dino_features_folder_name=args.dino_features_folder_name,
         use_mask_for_bbox_2d=args.use_mask_for_bbox_2d,
+        factors=args.factors,
     )
 
     train_dataset, val_dataset, train_as_val_dataset = (
