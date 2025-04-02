@@ -566,6 +566,26 @@ class TrainerDeformableDETR(Trainer):
 
         return {"out": out, "loss_dict": loss_dict}
 
+    def calc_metrics_batch_mot(self, pose_mat_pred_metrics, pose_mat_gt_metrics, mesh_pts, mesh_bbox, mesh_diameter):
+        m_batch = defaultdict(list)
+        for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_metrics, pose_mat_gt_metrics)):
+            m_sample = calc_metrics(
+                pred_rt=pred_rt,
+                gt_rt=gt_rt,
+                pts=mesh_pts[sample_idx],
+                class_name=None,
+                use_miou=True,
+                bbox_3d=mesh_bbox[sample_idx],
+                diameter=mesh_diameter[sample_idx],
+                is_meters=True,
+                log_fn=print if self.logger is None else self.logger.warning,
+            )
+            for k, v in m_sample.items():
+                m_batch[k].append(v)
+
+        m_batch_avg = {k: np.mean(v) for k, v in m_batch.items()}
+        return m_batch_avg
+
 
 class TrainerTrackformer(TrainerDeformableDETR):
 
