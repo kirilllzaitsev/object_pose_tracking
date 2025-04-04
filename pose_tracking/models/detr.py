@@ -320,6 +320,7 @@ class DETRBase(nn.Module):
                 self.scale_factor_mlp = get_clones(
                     MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
                 )
+                # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
@@ -472,10 +473,22 @@ class DETRBase(nn.Module):
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
             if self.use_factors:
+                assert rgb is not None
+                hw = rgb.shape[-2:]
+                pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
+                rgb_crop = get_crops(
+                    rgb,
+                    pred_boxes_xyxy,
+                    hw=hw,
+                )
+                crop_feats = self.crop_cnn(rgb_crop)
                 factors = {}
                 if "scale" in self.factors:
-                    pred_scale = self.scale_factor_mlp[layer_idx](o)
+                    pred_scale = self.scale_factor_mlp[layer_idx](crop_feats)
                     factors["scale"] = pred_scale
+                b = pred_boxes_xyxy.shape[0]
+                for k, v in factors.items():
+                    factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
                 out["factors"] = factors
 
             out["pose_token"] = pose_token
