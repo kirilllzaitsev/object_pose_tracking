@@ -18,10 +18,7 @@ from pose_tracking.models.pos_encoding import (
     SpatialPosEncoding,
     sinusoidal_embedding,
 )
-from pose_tracking.utils.geom import (
-    backproj_2d_pts,
-    calibrate_2d_pts_batch,
-)
+from pose_tracking.utils.geom import backproj_2d_pts, calibrate_2d_pts_batch
 from pose_tracking.utils.kpt_utils import (
     extract_kpts,
     get_kpt_within_mask_indicator,
@@ -58,6 +55,7 @@ class DETRPretrained(nn.Module):
         super().__init__()
 
         self.use_pretrained_backbone = use_pretrained_backbone
+
         self.rot_out_dim = rot_out_dim
         self.t_out_dim = t_out_dim
         self.opt_only = opt_only
@@ -154,6 +152,7 @@ class DETRBase(nn.Module):
         use_depth=False,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
+        factors=None,
     ):
         super().__init__()
 
@@ -180,11 +179,14 @@ class DETRBase(nn.Module):
         self.head_num_layers = head_num_layers
         self.pose_token_time_encoding = pose_token_time_encoding
         self.final_feature_dim = final_feature_dim
+        self.factors = factors
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
         self.use_boxes = not opt_only or (opt_only and "boxes" in opt_only)
         self.do_predict_2d_t = t_out_dim == 2
+        self.use_factors = factors is not None
+
         self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens)
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -293,6 +295,12 @@ class DETRBase(nn.Module):
                 nn.ReLU(),
                 nn.AdaptiveAvgPool2d((1, 1)),
             )
+
+        if self.use_factors:
+            if "scale" in factors:
+                self.scale_factor_mlp = get_clones(
+                    MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
+                )
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
@@ -436,6 +444,12 @@ class DETRBase(nn.Module):
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
+            if self.use_factors:
+                factors = {}
+                if "scale" in self.factors:
+                    pred_scale = self.scale_factor_mlp[layer_idx](o)
+                    factors["scale"] = pred_scale
+                out["factors"] = factors
 
             out["pose_token"] = pose_token
             outs.append(out)
@@ -453,6 +467,8 @@ class DETRBase(nn.Module):
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
+        if self.use_factors:
+            res["factors"] = last_out["factors"]
         res["tokens"] = tokens_enc
 
         return res
