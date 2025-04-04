@@ -18,6 +18,7 @@ from pose_tracking.models.pos_encoding import (
     SpatialPosEncoding,
     sinusoidal_embedding,
 )
+from pose_tracking.utils.detr_utils import get_crops
 from pose_tracking.utils.geom import backproj_2d_pts, calibrate_2d_pts_batch
 from pose_tracking.utils.kpt_utils import (
     extract_kpts,
@@ -26,6 +27,7 @@ from pose_tracking.utils.kpt_utils import (
 )
 from pose_tracking.utils.misc import print_cls
 from pose_tracking.utils.segm_utils import mask_morph
+from timm.models.resnet import resnet18, resnet50
 from torchvision.models import resnet18, resnet50, resnet101
 from torchvision.ops import roi_align
 
@@ -35,6 +37,22 @@ def get_hook(outs, name):
         outs[name] = output
 
     return hook
+
+
+class CNNFeatureExtractor(nn.Module):
+    def __init__(self, out_dim=256, model_name="resnet18"):
+        super().__init__()
+        if model_name == "resnet18":
+            self.model = resnet18(pretrained=True)
+            fc_in_dim = 512
+        elif model_name == "resnet50":
+            self.model = resnet50(pretrained=True)
+            fc_in_dim = 2048
+        self.model.fc = nn.Linear(fc_in_dim, out_dim)
+
+    def forward(self, x):
+        x = self.model(x)
+        return x
 
 
 class DETRPretrained(nn.Module):
@@ -297,6 +315,7 @@ class DETRBase(nn.Module):
             )
 
         if self.use_factors:
+            self.crop_cnn = CNNFeatureExtractor(out_dim=d_model, model_name="resnet18")
             if "scale" in factors:
                 self.scale_factor_mlp = get_clones(
                     MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
@@ -333,10 +352,18 @@ class DETRBase(nn.Module):
             prev_pose_tokens=pose_tokens,
             prev_tokens=prev_tokens,
             img_features=extract_res.get("img_features"),
+            rgb=x,
         )
 
     def forward_tokens(
-        self, tokens, pos_enc, memory_key_padding_mask=None, prev_pose_tokens=None, prev_tokens=None, img_features=None
+        self,
+        tokens,
+        pos_enc,
+        memory_key_padding_mask=None,
+        prev_pose_tokens=None,
+        prev_tokens=None,
+        img_features=None,
+        rgb=None,
     ):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
