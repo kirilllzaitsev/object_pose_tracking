@@ -303,6 +303,8 @@ class TrainerDeformableDETR(Trainer):
             # METRICS
 
             if self.use_pose:
+                if self.do_predict_rel_pose:
+                    indices = self.criterion.filter_out_idxs_for_rel_pose(targets, indices)
                 idx = self.criterion._get_src_permutation_idx(indices)  # (batch_idx, query_idx)
                 target_rts = torch.cat(
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
@@ -310,12 +312,7 @@ class TrainerDeformableDETR(Trainer):
                 if len(target_rts) == 0:
                     ...
                 else:
-                    other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
-                    other_values_for_metrics = {}
-                    for k in other_values_for_metrics_keys:
-                        other_values_for_metrics[k] = torch.cat(
-                            [t["mesh_pts"][i] for t, (_, i) in zip(targets, indices)], dim=0
-                        )
+                    other_values_for_metrics = self.get_req_target_values_for_metrics(targets, [i[1] for i in indices])
 
                     pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
                     t_pred = out["t"][idx]
@@ -541,6 +538,14 @@ class TrainerDeformableDETR(Trainer):
             "metrics": seq_metrics,
         }
 
+    def get_req_target_values_for_metrics(self, targets, indices):
+        other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
+        other_values_for_metrics = {}
+        for k in other_values_for_metrics_keys:
+            other_values_for_metrics[k] = torch.cat([t[k][i] for t, i in zip(targets, indices)], dim=0)
+
+        return other_values_for_metrics
+
     def model_forward(self, batch_t, pose_tokens=None, prev_tokens=None, use_prev_image=False, **kwargs):
         def get_prev_data(key):
             if key not in batch_t["target"][0]:
@@ -585,7 +590,13 @@ class TrainerDeformableDETR(Trainer):
         if use_prev_image:
             loss_dict = {}
         else:
-            loss_dict = self.criterion(out, targets)
+            try:
+                loss_dict = self.criterion(out, targets)
+            except:
+                self.logger.error(f"Loss calculation failed for batch {batch_t=}")
+                self.logger.error(f"{out=}")
+                self.logger.error(f"{targets=}")
+                raise
 
         return {"out": out, "loss_dict": loss_dict}
 

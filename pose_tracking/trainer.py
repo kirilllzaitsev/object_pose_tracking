@@ -106,6 +106,7 @@ class Trainer:
         use_seq_len_curriculum=False,
         use_pnp_for_rot_pred=False,
         do_predict_abs_pose=False,
+        use_factors=False,
         seq_len_max=None,
         seq_len_curriculum_step_epoch_freq=10,
         bbox_num_kpts=32,
@@ -136,6 +137,7 @@ class Trainer:
         self.use_seq_len_curriculum = use_seq_len_curriculum
         self.do_predict_abs_pose = do_predict_abs_pose
         self.use_pnp_for_rot_pred = use_pnp_for_rot_pred
+        self.use_factors = use_factors
 
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
@@ -233,6 +235,10 @@ class Trainer:
             seq_len = self.seq_len
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
+
+            if len(batched_seq) == 0:
+                self.logger.warning(f"Empty batch at seq_pack_idx {seq_pack_idx}, skipping...")
+                continue
 
             if self.do_reset_state:
                 batch_size = len(batched_seq[0]["rgb"])
@@ -886,7 +892,7 @@ class Trainer:
 
     def get_grad_info(self):
         grad_norms = [(n, p.grad.norm().item()) for n, p in self.model.named_parameters() if p.grad is not None]
-        grad_norm = sum([x[1] for x in grad_norms]) / len(grad_norms)
+        grad_norm = sum([x[1] for x in grad_norms]) / max(len(grad_norms), 1)
         if self.do_debug:
             self.processed_data["grad_norm"].append(grad_norm)
             self.processed_data["grad_norms"].append(grad_norms)
