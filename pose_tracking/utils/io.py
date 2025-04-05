@@ -88,6 +88,10 @@ def load_pose(path, num_trials=3):
     if num_trials == 0:
         raise RuntimeError(f"failed to read {path=} in allocated num_trials")
     path = str(path)
+    if path.endswith(".npy") and not os.path.exists(path):
+        path = path.replace(".npy", ".txt")
+    if path.endswith(".txt") and not os.path.exists(path):
+        path = path.replace(".txt", ".npy")
     try:
         if path.endswith(".npy"):
             pose = np.load(path)

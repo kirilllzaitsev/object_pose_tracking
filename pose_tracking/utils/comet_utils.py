@@ -121,7 +121,7 @@ def load_artifacts_from_comet(
         model_checkpoint_path = alternative_model_checkpoint_path
     args_not_exist = not os.path.exists(args_file_path)
     session_checkpoint_path = f"{exp_dir}/{session_artifact_name}"
-    session_not_exist = os.path.exists(session_checkpoint_path)
+    session_not_exist = not os.path.exists(session_checkpoint_path)
 
     if any([args_not_exist, (weights_not_exist and do_load_model), (session_not_exist and do_load_session)]):
         os.makedirs(exp_dir, exist_ok=True)

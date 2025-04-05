@@ -290,7 +290,7 @@ def get_parser():
     model_args.add_argument(
         "--r_num_layers_inc", type=int, default=0, help="Number of layers to add to the rotation MLP"
     )
-    model_args.add_argument("--bbox_num_kpts", type=int, default=8 + 24, help="Number of kpts to predict by the model")
+    model_args.add_argument("--bbox_num_kpts", type=int, default=8, help="Number of 3d kpts to predict by the model")
     model_args.add_argument("--dropout", type=float, default=0.0, help="Dropout rate for the model")
     model_args.add_argument("--dropout_heads", type=float, default=0.0, help="Dropout rate for rot/t/bbox/clf MLPs")
 

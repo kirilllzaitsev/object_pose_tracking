@@ -59,6 +59,10 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+logging.getLogger("trimesh").setLevel(logging.ERROR)
+logging.getLogger("timm").setLevel(logging.ERROR)
+logging.getLogger("OpenGL.acceleratesupport").setLevel(logging.ERROR)
+
 
 def get_model(args, num_classes=None):
     # num_classes excluding bg
@@ -824,23 +828,9 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
 
 
 def get_ds_dirs(args):
-    if args.ds_name in ["ikea", "cube", "custom", "custom_test", "ikea_multiobj"]:
-        ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
-        ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
-    elif args.ds_name in ["ho3d_v3"]:
-        ds_video_dir_train = HO3D_ROOT / args.ds_folder_name_train
-        ds_video_dir_val = HO3D_ROOT / args.ds_folder_name_val
-    elif args.ds_name == "ycbi":
-        ds_video_dir_train = YCBINEOAT_SCENE_DIR
-        ds_video_dir_val = YCBINEOAT_SCENE_DIR
-    elif args.ds_name == "ycbv":
-        ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
-        ds_video_dir_val = YCBV_SCENE_DIR / "test"
-    elif args.ds_name == "nocs":
-        ds_video_dir_train = NOCS_SCENE_DIR
-        ds_video_dir_val = NOCS_SCENE_DIR
-    else:
-        raise NotImplementedError(f"Unknown dataset name {args.ds_name}")
+    get_ds_root_dirs_res = get_ds_root_dirs(args)
+    ds_video_dir_train = get_ds_root_dirs_res["ds_video_dir_train"]
+    ds_video_dir_val = get_ds_root_dirs_res["ds_video_dir_val"]
 
     if args.ds_name in ["ycbi", "cube"]:
         ds_video_subdirs_train = args.obj_names
@@ -860,6 +850,8 @@ def get_ds_dirs(args):
     # ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x in ['env_443']]
     if "cube_500_random_realsense" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_16"]]
+    if "cube_500_random_v3" in str(ds_video_dir_train):
+        ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
 
     if args.do_split_train_for_val:
         assert args.val_split_share > 0
@@ -881,6 +873,30 @@ def get_ds_dirs(args):
         "ds_video_dir_val": ds_video_dir_val,
         "ds_video_subdirs_train": ds_video_subdirs_train,
         "ds_video_subdirs_val": ds_video_subdirs_val,
+    }
+
+
+def get_ds_root_dirs(args):
+    if args.ds_name in ["ikea", "cube", "custom", "custom_test", "ikea_multiobj"]:
+        ds_video_dir_train = DATA_DIR / args.ds_folder_name_train
+        ds_video_dir_val = DATA_DIR / args.ds_folder_name_val
+    elif args.ds_name in ["ho3d_v3"]:
+        ds_video_dir_train = HO3D_ROOT / args.ds_folder_name_train
+        ds_video_dir_val = HO3D_ROOT / args.ds_folder_name_val
+    elif args.ds_name == "ycbi":
+        ds_video_dir_train = YCBINEOAT_SCENE_DIR
+        ds_video_dir_val = YCBINEOAT_SCENE_DIR
+    elif args.ds_name == "ycbv":
+        ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
+        ds_video_dir_val = YCBV_SCENE_DIR / "test"
+    elif args.ds_name == "nocs":
+        ds_video_dir_train = NOCS_SCENE_DIR
+        ds_video_dir_val = NOCS_SCENE_DIR
+    else:
+        raise NotImplementedError(f"Unknown dataset name {args.ds_name}")
+    return {
+        "ds_video_dir_train": ds_video_dir_train,
+        "ds_video_dir_val": ds_video_dir_val,
     }
 
 
