@@ -335,6 +335,15 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             threshold_mode=args.lrs_threshold_mode,
             min_lr=args.lrs_min_lr,
         )
+    if args.ckpt_exp_name is not None:
+        download_res = load_artifacts_from_comet(exp_name=args.ckpt_exp_name, do_load_session=True)
+        if download_res["session_checkpoint_path"] is None:
+            logger.warning(f"Checkpoint not found for {args.ckpt_exp_name}")
+        else:
+            opt_state = torch.load(download_res["session_checkpoint_path"])
+            optimizer.load_state_dict(opt_state["optimizer"])
+            lr_scheduler.load_state_dict(opt_state["scheduler"])
+            logger.warning(f"Loaded optimizer state from {args.ckpt_exp_name}")
 
     logger.info(trainer)
     if logdir is not None:
