@@ -171,6 +171,8 @@ class VideoDatasetTracking(VideoDataset):
             if sample_prev is None:
                 return None
             obj_visibility_mask = sample["is_visible"]
+            if len(obj_visibility_mask) > 1:
+                assert sample["bbox_2d"] is not None, "need boxes to compute matches for >1 obj"
             prev_obj_visibility_mask = sample_prev["is_visible"]
             num_objs = sum(obj_visibility_mask)
             num_objs_prev = sum(prev_obj_visibility_mask)
@@ -193,6 +195,11 @@ class VideoDatasetTracking(VideoDataset):
 
             pose_all_objs = sample["pose"]
             prev_pose_all_objs = sample_prev["pose"]
+
+            sample = self.rm_invisible_obj(sample, obj_visibility_mask)
+            sample_prev = self.rm_invisible_obj(sample_prev, prev_obj_visibility_mask)
+
+
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
             new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
             # rename rgb->image bbox_2d->boxes class_id->labels
@@ -316,6 +323,15 @@ class VideoDatasetTracking(VideoDataset):
         seq = seq[:-1]  # the last one does not have a pair
 
         return seq
+
+    def rm_invisible_obj(self, s, visible_obj_mask):
+        # if len(visible_obj_idxs) == 1:
+        #     return s
+        s = s.copy()
+        for k, v in s.items():
+            if k in ["pose", "class_id"] or "mesh_" in k or "bbox_" in k:
+                s[k] = v[visible_obj_mask]
+        return s
 
 
 class MultiVideoDataset(Dataset):
