@@ -9,7 +9,7 @@ from pose_tracking.dataset.transforms import (
 )
 from pose_tracking.utils.common import adjust_img_for_plt
 from pose_tracking.utils.geom import convert_3d_t_for_2d, pose_to_egocentric_delta_pose
-from pose_tracking.utils.misc import print_cls
+from pose_tracking.utils.misc import is_empty, print_cls
 from pose_tracking.utils.pose import (
     convert_pose_matrix_to_vector,
     convert_pose_vector_to_matrix,
@@ -99,7 +99,7 @@ class VideoDataset(Dataset):
         idxs = [seq_start + t * seq_step for t in range(timesteps)]
         if self.do_preload:
             seq = [self.seq[idx] for idx in idxs]
-        elif timesteps > 10:
+        elif timesteps > 2:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             for t in range(timesteps):
@@ -151,13 +151,14 @@ class VideoDatasetTracking(VideoDataset):
             timesteps = min(timesteps, (len(self.ds) - seq_start) // seq_step)
         seq_start = max(seq_start, seq_step)
 
+        assert seq_start < len(self.ds), f"{seq_start=}"
         assert seq_step > 0, f"{seq_step=}"
 
         idxs = [seq_start - seq_step] + [seq_start + t * seq_step for t in range(timesteps)]
 
         if self.do_preload:
             seq = [self.seq[idx] for idx in idxs]
-        elif timesteps > 10:
+        elif timesteps > 2:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             seq = [self.ds[idx] for idx in idxs]
@@ -169,6 +170,29 @@ class VideoDatasetTracking(VideoDataset):
                 return None
             if sample_prev is None:
                 return None
+            obj_visibility_mask = sample["is_visible"]
+            prev_obj_visibility_mask = sample_prev["is_visible"]
+            num_objs = sum(obj_visibility_mask)
+            num_objs_prev = sum(prev_obj_visibility_mask)
+            if self.ds.max_num_objs == 1:
+                for s in [sample_prev, sample]:
+                    for k, v in s.items():
+                        if (
+                            (
+                                k
+                                in [
+                                    "pose",
+                                ]
+                                and v.ndim == 1
+                            )
+                            or (("mesh_" in k or ("bbox_" in k and k not in ["bbox_2d"])) and v.ndim == 2)
+                            or (hasattr(v, "ndim") and v.ndim == 0 and not isinstance(v, str))
+                        ):
+                            v = v[None]
+                        s[k] = v
+
+            pose_all_objs = sample["pose"]
+            prev_pose_all_objs = sample_prev["pose"]
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
             new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
             # rename rgb->image bbox_2d->boxes class_id->labels
@@ -176,7 +200,10 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["class_id"] = sample["class_id"]
             new_sample["intrinsics"] = sample["intrinsics"]
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
-            pose = sample["pose"]
+            pose = pose_all_objs
+            if pose.ndim == 1:
+                pose = pose[None]
+
             new_sample["pose"] = pose
             # pose is always in (3d t, rot) format
             new_sample["t"] = pose[..., :3]
@@ -188,7 +215,9 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
             new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
 
-            prev_pose = sample_prev["pose"]
+            prev_pose = prev_pose_all_objs
+            if prev_pose.ndim == 1:
+                prev_pose = prev_pose[None]
             new_sample["prev_pose"] = prev_pose
             new_sample["prev_t"] = prev_pose[..., :3]
             new_sample["prev_rot"] = prev_pose[..., 3:]
