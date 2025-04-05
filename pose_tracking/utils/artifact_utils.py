@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import typing as t
@@ -55,18 +56,18 @@ def save_results(batch_t, pose_pred, preds_dir, gt_pose):
 def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bboxs=None, labels=None):
     # batch_t contains data for the t-th timestep in N sequences
     bsize = len(rgb)
+    assert bsize == 1
     for bidx in range(bsize):
         rgb = cast_to_numpy(rgb[bidx])
         intrinsics = cast_to_numpy(intrinsics[bidx])
         name = Path(rgb_path[bidx]).stem
-        pose = torch.eye(4)
-        pose = pose_pred[bidx]
+        pose = pose_pred[:]
         pose = cast_to_numpy(pose)
-        gt_pose_formatted = pose_gt[bidx]
+        gt_pose_formatted = pose_gt[:]
         gt_pose_formatted = cast_to_numpy(gt_pose_formatted)
         seq_dir = preds_dir if bsize == 1 else preds_dir / f"seq_{bidx}"
-        pose_path = seq_dir / "poses" / f"{name}.txt"
-        gt_path = seq_dir / "poses_gt" / f"{name}.txt"
+        pose_path = seq_dir / "poses" / f"{name}"
+        gt_path = seq_dir / "poses_gt" / f"{name}"
         intrinsics_path = seq_dir / "intrinsics.txt"
         rgb_path = seq_dir / "rgb" / f"{name}.png"
         pose_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,12 +78,8 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
             bbox_path.parent.mkdir(parents=True, exist_ok=True)
             with open(bbox_path, "w") as f:
                 json.dump({"bbox": bboxs[bidx].tolist(), "labels": labels[bidx].tolist()}, f)
-        with open(pose_path, "w") as f:
-            for row in pose:
-                f.write(" ".join(map(str, row)) + "\n")
-        with open(gt_path, "w") as f:
-            for row in gt_pose_formatted:
-                f.write(" ".join(map(str, row)) + "\n")
+        np.save(pose_path, pose)
+        np.save(gt_path, gt_pose_formatted)
         rgb = adjust_img_for_plt(rgb)
         rgb = rgb[..., ::-1]
         rgb_path = str(rgb_path)
