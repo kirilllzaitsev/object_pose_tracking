@@ -233,11 +233,11 @@ class TrackingDataset(Dataset):
             sample["mesh_bbox"] = self.mesh_bbox
             sample["mesh_diameter"] = self.mesh_diameter
 
-        if (self.include_bbox_2d and self.bbox_num_kpts == 32) or self.include_bbox_3d:
+        if self.bbox_num_kpts == 32 or self.include_kpt_projections:
             ibbs_res = interpolate_bbox_edges(copy.deepcopy(self.mesh_bbox), num_points=24)
-            sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
             bbox_3d_kpts = ibbs_res["all_points"]
-            if self.include_bbox_3d and self.include_pose:
+            if self.include_kpt_projections:
+                sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts_corners"] = world_to_cam(self.mesh_bbox, sample["pose"]).astype(np.float32)
@@ -292,12 +292,26 @@ class TrackingDataset(Dataset):
                     )
             sample["bbox_2d"] = np.stack(bbox_2ds)
 
-            bbox_3d_kpts = world_to_cam(bbox_3d_kpts, sample["pose"])
-            sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[..., 2:]
-            sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=sample["intrinsics"])
-            sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
+            if self.include_kpt_projections:
+                bbox_3d_kpts = world_to_cam(bbox_3d_kpts, sample["pose"])
+                sample["bbox_2d_kpts_depth"] = bbox_3d_kpts[..., 2:]
+                sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=sample["intrinsics"])
+                sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
 
         sample = self.augment_sample(sample, i)
+
+        if self.use_factors:
+            sample["factors"] = {}
+            if "scale" in self.factors:
+                if self.max_num_objs == 1:
+                    scale = get_visib_px_num(sample["mask"])
+                    scale = [scale]
+                else:
+                    scale = get_visib_px_num(sample["mask"])
+                scale_strength = calc_scale_factor_strength(
+                    scale, min_val=self.min_visib_px_num, max_val=self.max_visib_px_num
+                )
+                sample["factors"]["scale"] = [scale_strength]
 
         sample = process_raw_sample(
             sample,
@@ -364,6 +378,8 @@ class TrackingDataset(Dataset):
                 "color_file_id_strs",
                 "meta_paths",
                 "metadata",
+                "scene_gt",
+                "K_table",
             ],
         )
 
