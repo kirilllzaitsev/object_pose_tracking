@@ -35,7 +35,7 @@ from pose_tracking.utils.artifact_utils import (
     log_exp_meta,
     log_model_meta,
 )
-from pose_tracking.utils.comet_utils import log_params_to_exp
+from pose_tracking.utils.comet_utils import load_artifacts_from_comet, log_params_to_exp
 from pose_tracking.utils.common import get_ordered_paths, print_args
 from pose_tracking.utils.misc import print_error_locals, set_seed
 from pose_tracking.utils.pipe_utils import (
@@ -44,6 +44,7 @@ from pose_tracking.utils.pipe_utils import (
     get_datasets,
     get_ds_dirs,
     get_model,
+    get_num_classes,
     get_trainer,
 )
 from torch.distributed.elastic.multiprocessing.errors import record
@@ -124,18 +125,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     ds_video_subdirs_val = ds_dirs["ds_video_subdirs_val"]
 
     if args.num_classes is None:
-        if "ikea" in args.ds_name:
-            metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
-            if args.ds_alias == "cube_large":
-                num_classes = 1
-            else:
-                num_classes = metadata["num_classes"]
-            logger.info(f"{num_classes=}")
-        elif args.ds_name in ["ycbi", "ycbv", "ho3d_v3"]:
-            num_classes = len(YCBV_OBJ_NAME_TO_ID) + 1
-        else:
-            num_classes = None
+        num_classes = get_num_classes(args, ds_video_dir_train)
         args.num_classes = num_classes
+        logger.info(f"{num_classes=}")
         if is_main_process:
             log_params_to_exp(
                 exp,
@@ -228,7 +220,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{val_batch_size=}")
 
     if args.use_ddp:
-        train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+        train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, drop_last=True)
         train_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
@@ -236,7 +228,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
-        val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+        val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=True)
         val_loader = DataLoader(
             val_dataset,
             batch_size=val_batch_size,
@@ -245,7 +237,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             num_workers=args.num_workers,
         )
         train_as_val_sampler = DistributedSampler(
-            train_as_val_dataset, num_replicas=world_size, rank=rank, shuffle=False
+            train_as_val_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=True
         )
         train_as_val_loader = DataLoader(
             train_as_val_dataset,
@@ -262,6 +254,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             shuffle=shuffle,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
+            drop_last=True,
         )
         val_loader = DataLoader(
             val_dataset,
@@ -269,6 +262,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
+            drop_last=True,
         )
         train_as_val_loader = DataLoader(
             train_as_val_dataset,
@@ -276,6 +270,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=args.num_workers,
+            drop_last=True,
         )
 
     model = get_model(args, num_classes=num_classes).to(device)
@@ -408,7 +403,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     early_stopping(loss=cur_val_loss)
 
                 if args.do_save_artifacts and epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
-                    log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best")
+                    log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best", do_log_session=True)
                     printer.saved_artifacts(epoch)
 
                 last_lrs_before = lr_scheduler.get_last_lr()

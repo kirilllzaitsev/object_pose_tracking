@@ -900,6 +900,22 @@ def get_ds_root_dirs(args):
     }
 
 
+def get_num_classes(args, ds_video_dir_train):
+    if "cube_" in args.ds_alias:
+        num_classes = 1
+    elif "ikea" in args.ds_name:
+        metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
+        if args.ds_alias == "cube_large":
+            num_classes = 1
+        else:
+            num_classes = metadata["num_classes"]
+    elif args.ds_name in ["ycbi", "ycbv", "ho3d_v3"]:
+        num_classes = len(YCBV_OBJ_NAME_TO_ID) + 1
+    else:
+        num_classes = None
+    return num_classes
+
+
 class Printer:
     def __init__(self, logger=None):
         self.log_fn = logger.info if logger else print
