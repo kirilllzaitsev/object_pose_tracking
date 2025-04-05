@@ -269,17 +269,25 @@ class VideoDatasetTracking(VideoDataset):
             for k in ["boxes", "prev_boxes", "rot", "t", "prev_rot", "prev_t", "xy", "center_depth"]:
                 if k not in new_sample:
                     continue
-                new_sample[k] = new_sample[k].float()
-                new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
+                if new_sample[k] is not None:
+                    new_sample[k] = new_sample[k].float()
+                    new_sample[k] = new_sample[k][None] if new_sample[k].ndim == 1 else new_sample[k]
 
             frame_idx = idxs[idx]
             frame_idx_prev = idxs[idx - 1]
             new_sample["image_id"] = torch.tensor([frame_idx])
-            new_sample["track_ids"] = torch.tensor(
-                [0]
-            )  # always 0 with one obj per video. should persist across frames in this video
+            num_objs = sum(obj_visibility_mask)
+            num_objs_prev = sum(prev_obj_visibility_mask)
+            new_sample["num_objs"] = num_objs
+            new_sample["num_objs_prev"] = num_objs_prev
+            # obj_visibility_mask is a bool arr of max_num_objs len. its idxs correspond to the same objs over the video
+            visible_obj_idxs = [i for i, v in enumerate(obj_visibility_mask) if v]
+            prev_visible_obj_idxs = [i for i, v in enumerate(prev_obj_visibility_mask) if v]
+            new_sample["track_ids"] = torch.tensor(visible_obj_idxs)
+            new_sample["prev_track_ids"] = torch.tensor(prev_visible_obj_idxs)
+            new_sample["visible_obj_idxs"] = torch.tensor(visible_obj_idxs)
+            new_sample["prev_visible_obj_idxs"] = torch.tensor(prev_visible_obj_idxs)
             new_sample["prev_image_id"] = torch.tensor([frame_idx_prev])
-            new_sample["prev_track_ids"] = torch.tensor([0])
 
             # move prev_* into prev_target dict removing prev_ prefix
             new_sample["prev_target"] = {
