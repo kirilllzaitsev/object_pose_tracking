@@ -79,6 +79,7 @@ class TrackingDataset(Dataset):
         target_hw=None,
         do_load_mesh_in_memory=True,
         is_val=True,
+        factors=None,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -117,9 +118,11 @@ class TrackingDataset(Dataset):
         self.dino_features_folder_name = dino_features_folder_name
         self.max_num_objs = max_num_objs
         self.min_pixels_for_visibility = min_pixels_for_visibility
-        self.target_size = target_hw
+        self.target_hw = target_hw
+        self.factors = factors
 
         self.use_occlusion_augm = use_occlusion_augm and not is_val
+        self.use_factors = factors is not None
         self.do_load_dino_features = dino_features_folder_name is not None
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
@@ -172,6 +175,16 @@ class TrackingDataset(Dataset):
             from pose_tracking.dataset.transforms import RandomPolygonMask
 
             self.transform_occlusion = RandomPolygonMask(num_vertices=5, p=0.5)
+
+        if self.use_factors:
+            idxs = range(len(self)) if len(self) < 100 else np.linspace(0, len(self) - 1, 100).astype(int)
+            if "scale" in self.factors:
+                masks = wrap_with_futures(idxs, functools.partial(self.get_mask))
+                visib_px_nums = [get_visib_px_num(s) for s in masks]
+                self.max_visib_px_num, self.min_visib_px_num = np.quantile(visib_px_nums, [0.95, 0.05])
+
+        if self.use_real_bg:
+            self.real_bg_paths = list((PROJ_DIR / "real_bg").glob("*.png"))
 
     def __len__(self):
         return self.num_frames
