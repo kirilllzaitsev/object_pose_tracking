@@ -257,6 +257,9 @@ class TrainerPizza(Trainer):
         nan_count = 0
         do_skip_first_step = False
 
+        if stage == "train" and len(batched_seq["rgb"]) == 1:
+            self.logger.warning("Received bs=1 for training.")
+            return {"losses": {}, "metrics": {}}
         if stage == "train":
             out_ts_raw = self.model(
                 batched_seq["rgb"],

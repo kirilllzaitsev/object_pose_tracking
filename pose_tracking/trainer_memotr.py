@@ -219,12 +219,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                     rot_pred = torch.cat(
                         [track.rots[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0
                     )
-                    other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
-                    other_values_for_metrics = {}
-                    for k in other_values_for_metrics_keys:
-                        other_values_for_metrics[k] = torch.cat(
-                            [t[k][i] for t, (i) in zip(targets, matched_idx_tgt)], dim=0
-                        )
+                    other_values_for_metrics = self.get_req_target_values_for_metrics(targets, matched_idx_tgt)
 
                     if self.do_predict_2d_t:
                         center_depth_pred = out["center_depth"][idx]
@@ -268,9 +263,10 @@ class TrainerMemotr(TrainerDeformableDETR):
                         pose_mat_pred_metrics = pose_mat_pred_abs
                         pose_mat_gt_metrics = pose_mat_gt_abs
 
-                    batch_t = self.prepare_batch_t_for_metrics_mot(batch_t)
-                    m_batch_avg = self.calc_metrics_batch(
-                        batch_t, pose_mat_pred_metrics=pose_mat_pred_metrics, pose_mat_gt_metrics=pose_mat_gt_metrics
+                    m_batch_avg = self.calc_metrics_batch_mot(
+                        pose_mat_pred_metrics=pose_mat_pred_metrics,
+                        pose_mat_gt_metrics=pose_mat_gt_metrics,
+                        **other_values_for_metrics,
                     )
                     for k, v in m_batch_avg.items():
                         if "classes" in k:
