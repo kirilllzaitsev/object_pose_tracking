@@ -42,7 +42,7 @@ def get_ds_sample(
         depth = adjust_depth_for_torch(depth)
         sample["depth"] = depth
     if intrinsics is not None:
-        sample["intrinsics"] = from_numpy(intrinsics)
+        sample["intrinsics"] = from_numpy(intrinsics).float()
     if mask is not None:
         mask = adjust_mask_for_torch(mask)
         sample["mask"] = from_numpy(mask)
@@ -152,11 +152,12 @@ def dict_collate_fn(batch):
 def seq_collate_fn(batch):
     # result is a list of size seq_len with dicts having values of size batch_size x ...
     new_b = []
-    batch = [d for d in batch if d is not None]
-    assert len(batch) > 0, "batch is empty after filtering"
-    seq_lens = [len(d) for d in batch]
+    batch_not_none = [d for d in batch if d is not None]
+    if len(batch_not_none) == 0:
+        raise RuntimeError(f"batch is empty after filtering. {batch_not_none=}")
+    seq_lens = [len(d) for d in batch_not_none]
     for i in range(min(seq_lens)):
-        new_b.append(dict_collate_fn([d[i] for d in batch]))
+        new_b.append(dict_collate_fn([d[i] for d in batch_not_none]))
     return new_b
 
 
@@ -167,7 +168,8 @@ def batch_seq_collate_fn(batch):
         if batch[i] is None:
             continue
         new_b.append(dict_collate_fn(batch[i]))
-    assert len(new_b) > 0, "batch is empty after filtering"
+    if len(new_b) == 0:
+        raise RuntimeError(f"batch is empty after filtering. {batch=}")
     new_b = dict_collate_fn(new_b)
     return new_b
 
