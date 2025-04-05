@@ -61,7 +61,7 @@ def calc_metrics(
             adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
             res["adds"] = adds
     except Exception as e:
-        log_fn(f"Error calculating metrics: {e}\nInputs:\n{pred_rt=},\n{gt_rt=}")
+        log_fn(f"Error calculating metrics: {e}\n{locals()=}")
         res.update(
             {
                 "add": torch.nan,
@@ -79,7 +79,7 @@ def calc_metrics(
         return res
     if use_miou:
         assert bbox_3d is not None
-        bbox_3d = copy.deepcopy(cast_to_numpy(bbox_3d))
+        bbox_3d = copy.deepcopy(cast_to_numpy(bbox_3d)).squeeze()
         if is_meters:
             bbox_3d *= 1000
         miou = calc_3d_iou_new(
@@ -116,15 +116,15 @@ def calc_add(pred_rt, gt_rt, pts=None, model=None):
         pts_pred = get_posed_model_pts(pred_rt, model)
         pts_gt = get_posed_model_pts(gt_rt, model)
     else:
-        pts_pred = transform_pts(pts=pts, pose=pred_rt)
-        pts_gt = transform_pts(pts=pts, pose=gt_rt)
+        pts_pred = transform_pts(pts=pts, rt=pred_rt)
+        pts_gt = transform_pts(pts=pts, rt=gt_rt)
     e = calc_add_pts(pts_pred, pts_gt)
     return e
 
 
 def calc_add_pts(pts1, pts2):
-    assert pts1.shape[1] == pts2.shape[1] == 3
-    return np.linalg.norm(pts1 - pts2, axis=1).mean()
+    assert pts1.shape[-1] == pts2.shape[-1] == 3
+    return np.linalg.norm(pts1 - pts2, axis=-1).mean()
 
 
 def calc_adds(pred_rt, gt_rt, pts=None, model=None):
@@ -133,8 +133,8 @@ def calc_adds(pred_rt, gt_rt, pts=None, model=None):
         pts_pred = get_posed_model_pts(pred_rt, model)
         pts_gt = get_posed_model_pts(gt_rt, model)
     else:
-        pts_pred = transform_pts(pts=pts, pose=pred_rt)
-        pts_gt = transform_pts(pts=pts, pose=gt_rt)
+        pts_pred = transform_pts(pts=pts, rt=pred_rt)
+        pts_gt = transform_pts(pts=pts, rt=gt_rt)
 
     e = calc_adds_pts(pts_pred, pts_gt)
     return e
@@ -255,7 +255,9 @@ def calc_n_deg_m_cm_errors(rt_error):
 def calc_3d_iou_new(rt1, rt2, bbox, handle_visibility, class_name, use_symmetry=True):
     """Computes IoU overlaps between two 3d bboxes."""
 
-    assert bbox.shape == (8, 3) and bbox.shape == (8, 3)
+    if bbox.ndim == 3:
+        bbox = bbox.squeeze(0)
+    assert bbox.shape == (8, 3), bbox.shape
 
     if use_symmetry and (class_name in ["bottle", "bowl", "can"]) or (class_name == "mug" and handle_visibility == 0):
 
