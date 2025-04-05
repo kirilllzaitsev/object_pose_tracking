@@ -239,6 +239,12 @@ class VideoDatasetTracking(VideoDataset):
 
             new_sample["prev_depth"] = sample_prev.get("depth", [])
             new_sample["prev_mask"] = sample_prev.get("mask", [])
+            new_sample["prev_is_visible"] = sample_prev.get("is_visible", [])
+            new_sample["prev_factors"] = sample_prev.get("factors")
+            mesh_keys = [k for k in sample_prev if k.startswith("mesh_")]
+            for k, v in sample_prev.items():
+                if k in mesh_keys:
+                    new_sample[f"prev_{k}"] = v
 
             if self.do_predict_rel_pose:
                 pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(prev_pose)
