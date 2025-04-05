@@ -1,6 +1,7 @@
 import argparse
 import copy
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from pose_tracking.dataset.custom_sim_ds import (
     CustomSimDatasetIkea,
     CustomSimMultiObjDatasetIkea,
 )
+from pose_tracking.dataset.ds_meta import YCBV_OBJ_NAME_TO_ID
 from pose_tracking.dataset.ho3d import HO3DDataset
 from pose_tracking.dataset.transforms import get_transforms
 from pose_tracking.dataset.video_ds import (
@@ -410,6 +412,7 @@ def get_trackformer_args(args):
 
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
+    tf_args.r_num_layers_inc = args.r_num_layers_inc
 
     if args.tf_use_kpts_as_img:
         tf_args.num_feature_levels = 2
@@ -597,7 +600,7 @@ def get_datasets(
     seq_len_max_val=200,
     max_depth_m=10,
     dino_features_folder_name=None,
-    bbox_num_kpts=32,
+    bbox_num_kpts=8,
     do_load_mesh_in_memory=False,
     factors=None,
 ):
@@ -613,6 +616,7 @@ def get_datasets(
     include_bbox_2d = (
         do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d or is_motr_model
     )
+    is_tracker_model = is_tf_model or is_motr_model
     include_mask = include_mask or do_subtract_bg
     ds_kwargs_common = dict(
         shorter_side=None,
@@ -635,6 +639,7 @@ def get_datasets(
         use_occlusion_augm="occlusion" in transform_names if transform_names else False,
         do_load_mesh_in_memory=do_load_mesh_in_memory,
         factors=factors,
+        do_skip_invisible_single_obj=not is_tracker_model,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -742,6 +747,8 @@ def get_datasets(
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
+        test_ds_kwargs["use_mask_for_visibility_check"] = False
+        test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
             ds_name=ds_name,
