@@ -53,13 +53,20 @@ class CustomDatasetTest(CustomDataset):
     ds_name = "custom_test"
 
     def __init__(self, *args, **kwargs):
-        kwargs["include_pose"] = False
-        kwargs["include_mask"] = False
-        kwargs["include_bbox_2d"] = False
-        kwargs["target_size"] = (480, 640)
+        fpose_save_dirname = 'ob_in_cam_fpose'
+        if os.path.exists(f"{kwargs['video_dir']}/{fpose_save_dirname}"):
+            kwargs["include_pose"] = True
+            kwargs["pose_dirname"] = fpose_save_dirname
+        else:
+            kwargs["include_pose"] = False
+            kwargs["include_bbox_2d"] = False
+        mask_dir = f"{kwargs['video_dir']}/masks"
+        kwargs["include_mask"] = os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 0
+        # kwargs["target_hw"] = (480, 640)
         super().__init__(*args, **kwargs)
 
     def augment_sample(self, sample, idx):
         sample = super().augment_sample(sample, idx)
-        sample["pose"] = np.eye(4)
+        if not self.include_pose:
+            sample["pose"] = np.eye(4)
         return sample
