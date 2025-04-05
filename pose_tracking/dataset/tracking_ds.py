@@ -90,6 +90,7 @@ class TrackingDataset(Dataset):
         self.include_pose = include_pose
         self.include_bbox_2d = include_bbox_2d
         self.include_bbox_3d = include_bbox_3d
+        self.include_kpt_projections = include_kpt_projections
         self.do_erode_mask = do_erode_mask
         self.do_convert_depth_to_m = do_convert_depth_to_m
         self.do_normalize_bbox = do_normalize_bbox
@@ -99,6 +100,10 @@ class TrackingDataset(Dataset):
         self.include_nocs = include_nocs
         self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
         self.do_load_mesh_in_memory = do_load_mesh_in_memory
+        self.do_skip_invisible_obj = do_skip_invisible_obj
+        self.use_mask_for_visibility_check = use_mask_for_visibility_check
+        self.do_filter_invisible_frames = do_filter_invisible_frames
+        self.use_real_bg = use_real_bg
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -133,10 +138,7 @@ class TrackingDataset(Dataset):
         self.pose_files = self.get_pose_paths()
         self.end_frame_idx = end_frame_idx or len(self.color_files)
         self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
-        self.color_files = np.array(self.color_files)
         self.pose_files = self.pose_files[self.start_frame_idx : self.end_frame_idx]
-        self.pose_files = np.array(self.pose_files)
-        self.num_frames = len(self.color_files)
 
         self.mesh = None
         self.mesh_bbox = None
@@ -169,6 +171,16 @@ class TrackingDataset(Dataset):
                     self.K[:2] *= self.downscale
             else:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
+
+        if do_filter_invisible_frames:
+            idxs = range(len(self.color_files))
+            is_visible = wrap_with_futures(idxs, functools.partial(check_is_visible_at_least_one_obj, ds=self))
+            self.color_files = [f for idx, f in enumerate(self.color_files) if is_visible[idx]]
+            self.pose_files = [f for idx, f in enumerate(self.pose_files) if is_visible[idx]]
+
+        self.color_files = np.array(self.color_files)
+        self.pose_files = np.array(self.pose_files)
+        self.num_frames = len(self.color_files)
 
         if use_occlusion_augm:
             assert self.max_num_objs == 1
