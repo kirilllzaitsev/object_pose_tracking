@@ -174,8 +174,6 @@ class VideoDatasetTracking(VideoDataset):
             if len(obj_visibility_mask) > 1:
                 assert sample["bbox_2d"] is not None, "need boxes to compute matches for >1 obj"
             prev_obj_visibility_mask = sample_prev["is_visible"]
-            num_objs = sum(obj_visibility_mask)
-            num_objs_prev = sum(prev_obj_visibility_mask)
             if self.ds.max_num_objs == 1:
                 for s in [sample_prev, sample]:
                     for k, v in s.items():
@@ -202,8 +200,7 @@ class VideoDatasetTracking(VideoDataset):
 
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
             new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
-            # rename rgb->image bbox_2d->boxes class_id->labels
-            new_sample["bbox_2d"] = sample["bbox_2d"]
+            new_sample["bbox_2d"] = sample.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["class_id"] = sample["class_id"]
             new_sample["intrinsics"] = sample["intrinsics"]
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
@@ -217,7 +214,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["rot"] = pose[..., 3:]
 
             new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
-            new_sample["prev_bbox_2d"] = sample_prev["bbox_2d"]
+            new_sample["prev_bbox_2d"] = sample_prev.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["prev_class_id"] = sample_prev["class_id"]
             new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
             new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
@@ -326,9 +323,14 @@ class VideoDatasetTracking(VideoDataset):
                     "t_rel",
                     "pose_rel",
                     "rot_rel",
+                    "is_visible",
+                    "factors",
+                    "visible_obj_idxs",
                 ]
+                + mesh_keys
                 if k in new_sample
             }
+            new_sample["target"]["rgb_path"] = new_sample["rgb_path"]
 
             new_sample["target"]["prev_target"] = new_sample.pop("prev_target")
 
