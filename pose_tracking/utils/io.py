@@ -155,15 +155,22 @@ def load_mask(path, wh=None):
     return mask
 
 
-def load_semantic_mask(path, wh=None, ignored_colors=None):
+def load_semantic_mask(path, wh=None, excluded_colors=None):
     mask = load_mask_(path)[..., ::-1]
 
-    ignored_colors = [] if ignored_colors is None else ignored_colors
-    for color in ignored_colors:
+    excluded_colors = [] if excluded_colors is None else excluded_colors
+    for color in excluded_colors:
         mask[(mask == color).all(axis=-1)] = 0
     if wh is not None:
         mask = resize_img(mask, wh=wh)
     return mask
+
+
+def convert_semantic_mask_to_bin(mask, included_colors):
+    joint_mask = np.zeros(mask.shape[:2], dtype=np.uint8)
+    for color in included_colors:
+        joint_mask[(mask == color).all(axis=-1)] = 1
+    return joint_mask.astype(bool)
 
 
 def save_depth(path, im, is_m=True):

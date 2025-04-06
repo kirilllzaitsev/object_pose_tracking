@@ -603,6 +603,7 @@ def get_datasets(
     bbox_num_kpts=8,
     do_load_mesh_in_memory=False,
     factors=None,
+    target_hw=None,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -637,9 +638,11 @@ def get_datasets(
         dino_features_folder_name=dino_features_folder_name,
         use_mask_for_bbox_2d=use_mask_for_bbox_2d,
         use_occlusion_augm="occlusion" in transform_names if transform_names else False,
+        use_bg_augm="bg" in transform_names if transform_names else False,
         do_load_mesh_in_memory=do_load_mesh_in_memory,
         factors=factors,
         do_skip_invisible_single_obj=not is_tracker_model,
+        target_hw=target_hw,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -748,6 +751,7 @@ def get_datasets(
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
         test_ds_kwargs["use_mask_for_visibility_check"] = False
+        test_ds_kwargs["use_bg_augm"] = False
         test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
@@ -869,6 +873,8 @@ def get_ds_dirs(args):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_16"]]
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
+    if "dextreme" in str(ds_video_dir_train):
+        ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
 
     if args.do_split_train_for_val:
         assert args.val_split_share > 0

@@ -33,7 +33,10 @@ from pose_tracking.utils.geom import (
     world_to_2d_pt_homo,
 )
 from pose_tracking.utils.kpt_utils import is_torch
-from pose_tracking.utils.pose import convert_pose_vector_to_matrix
+from pose_tracking.utils.pose import (
+    convert_pose_vector_to_matrix,
+    convert_rot_vector_to_matrix,
+)
 from pose_tracking.utils.video_utils import show_video
 from skimage.feature import canny
 from skimage.morphology import binary_dilation
@@ -233,6 +236,9 @@ def draw_pose_on_img(
     rgb = adjust_img_for_plt(rgb) if final_frame is None else final_frame
     K = cast_to_numpy(K)
     pose_pred = cast_to_numpy(pose_pred)
+    if np.all(pose_pred == np.eye(4)):
+        print("pose_pred is identity. not drawing")
+        return rgb
     final_frame = draw_xyz_axis(rgb, scale=scale, K=K, rt=pose_pred, is_input_rgb=True)
     if bbox is not None:
         final_frame = draw_posed_3d_box(final_frame, rt=pose_pred, K=K, bbox=bbox, line_color=bbox_color)
@@ -650,15 +656,23 @@ def plot_seq(
                 if pose.shape[-2:] != (4, 4):
                     pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
 
+                bbox = fetcher_fn("mesh_bbox", sidx)
                 if key in ["pose_mat_prev_gt_abs"]:
                     t_gt_rel, rot_gt_rel_mat = fetcher_fn("t_gt_rel", sidx), fetcher_fn("rot_gt_rel_mat", sidx)
                     pose = egocentric_delta_pose_to_pose(pose, t_gt_rel, rot_gt_rel_mat)
+                if key in ["pose_rel"]:
+                    # t_gt_rel, rot_gt_rel = fetcher_fn("t_gt_rel", sidx), fetcher_fn("rot_gt_rel", sidx)
+                    # rot_gt_rel_mat = convert_rot_vector_to_matrix(rot_gt_rel, rot_repr=rot_repr)
+                    prev_pose_mat_abs = convert_pose_vector_to_matrix(fetcher_fn("prev_target", sidx)["pose"])
+                    pose_rel_mat = convert_pose_vector_to_matrix(fetcher_fn("pose_rel", sidx))
+                    pose = egocentric_delta_pose_to_pose(prev_pose_mat_abs, pose_delta=pose_rel_mat)
+                    bbox = fetcher_fn("prev_target", sidx)["mesh_bbox"]
 
                 grid_img = draw_pose_on_img(
                     fetcher_fn(img_key, sidx),
                     fetcher_fn("intrinsics", sidx),
                     pose,
-                    bbox=fetcher_fn("mesh_bbox", sidx),
+                    bbox=bbox,
                     bbox_color=(255, 255, 0),
                     scale=0.15,
                 )
