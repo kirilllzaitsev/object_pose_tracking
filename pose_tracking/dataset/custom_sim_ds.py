@@ -48,11 +48,12 @@ class CustomSimDatasetBase(object):
         super(CustomSimDatasetBase, self).__init__(**kwargs)
 
         self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
-        self.do_load_bbox_from_metadata = do_load_bbox_from_metadata
 
         self.video_dir = kwargs["video_dir"]
         self.cam_pose_path = cam_pose_path
         self.cam_init_rot = cam_init_rot
+
+        self.do_load_bbox_from_metadata = False if "dextreme" in str(self.video_dir) else do_load_bbox_from_metadata
 
         if cam_pose_path is None:
             if os.path.exists(f"{self.video_dir}/cam_pose.txt"):
@@ -98,7 +99,8 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
                     mesh_path = mesh_path_prop
                     break
         if mesh_path is not None:
-            self.set_up_obj_mesh(mesh_path)
+            scale_factor = 0.0325 * 0.92 if "dextreme" in str(self.video_dir) else None
+            self.set_up_obj_mesh(mesh_path, scale_factor=scale_factor)
 
     def get_pose(self, idx):
         pose = load_pose(self.pose_files[idx])
@@ -194,7 +196,7 @@ class CustomSimDatasetIkea(CustomSimDataset):
             self.metadata_obj = self.metadata[0]
         self.mesh_path_orig = self.metadata_obj["usd_path"]
 
-        if do_load_bbox_from_metadata:
+        if self.do_load_bbox_from_metadata:
             assert self.metadata is not None, f"metadata not found at {metadata_path}"
             self.mesh_bbox = bbox_to_8_point_centered(bbox=self.metadata_obj["bbox"])
             self.mesh_diameter = compute_pts_span(self.mesh_bbox)
@@ -286,7 +288,7 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
         return load_semantic_mask(
             self.color_files[i].replace("rgb", "semantic_segmentation"),
             wh=(self.w, self.h),
-            ignored_colors=ignored_colors,
+            excluded_colors=ignored_colors,
         )
 
 
