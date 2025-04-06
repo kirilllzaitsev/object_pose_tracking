@@ -1,4 +1,5 @@
 import copy
+import functools
 import os
 import re
 import sys
@@ -8,10 +9,15 @@ import cv2
 import numpy as np
 import torch
 import trimesh
-from pose_tracking.config import logger
+from pose_tracking.config import PROJ_DIR, logger
+from pose_tracking.dataset.dataloading import load_sample
 from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
+from pose_tracking.utils.factor_utils import (
+    calc_scale_factor_strength,
+    get_visib_px_num,
+)
 from pose_tracking.utils.geom import (
     cam_to_2d,
     convert_3d_bbox_to_2d,
@@ -21,13 +27,14 @@ from pose_tracking.utils.geom import (
     world_to_cam,
 )
 from pose_tracking.utils.io import (
+    convert_semantic_mask_to_bin,
     load_color,
     load_depth,
     load_mask,
     load_pose,
     load_semantic_mask,
 )
-from pose_tracking.utils.misc import print_cls
+from pose_tracking.utils.misc import print_cls, wrap_with_futures
 from pose_tracking.utils.segm_utils import infer_bounding_box, mask_morph
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torch.utils.data import Dataset
@@ -50,8 +57,9 @@ class TrackingDataset(Dataset):
         include_mask=True,
         include_pose=True,
         include_bbox_2d=False,
-        include_bbox_3d=True,
+        include_bbox_3d=False,
         include_nocs=False,
+        include_kpt_projections=False,
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
@@ -72,7 +80,7 @@ class TrackingDataset(Dataset):
         t_repr="3d",
         is_intrinsics_for_all_samples=True,
         use_mask_for_bbox_2d=False,
-        bbox_num_kpts=32,
+        bbox_num_kpts=8,
         dino_features_folder_name=None,
         max_num_objs=1,
         min_pixels_for_visibility=20 * 20,
@@ -80,6 +88,10 @@ class TrackingDataset(Dataset):
         do_load_mesh_in_memory=True,
         is_val=True,
         factors=None,
+        do_skip_invisible_single_obj=True,
+        use_mask_for_visibility_check=True,
+        do_filter_invisible_single_obj_frames=False,
+        use_bg_augm=False,
     ):
         if do_subtract_bg:
             assert do_subtract_bg and include_mask, do_subtract_bg
@@ -100,10 +112,10 @@ class TrackingDataset(Dataset):
         self.include_nocs = include_nocs
         self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
         self.do_load_mesh_in_memory = do_load_mesh_in_memory
-        self.do_skip_invisible_obj = do_skip_invisible_obj
+        self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
         self.use_mask_for_visibility_check = use_mask_for_visibility_check
-        self.do_filter_invisible_frames = do_filter_invisible_frames
-        self.use_real_bg = use_real_bg
+        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames
+        self.use_bg_augm = use_bg_augm
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -172,7 +184,7 @@ class TrackingDataset(Dataset):
             else:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
 
-        if do_filter_invisible_frames:
+        if do_filter_invisible_single_obj_frames:
             idxs = range(len(self.color_files))
             is_visible = wrap_with_futures(idxs, functools.partial(check_is_visible_at_least_one_obj, ds=self))
             self.color_files = [f for idx, f in enumerate(self.color_files) if is_visible[idx]]
@@ -195,8 +207,8 @@ class TrackingDataset(Dataset):
                 visib_px_nums = [get_visib_px_num(s) for s in masks]
                 self.max_visib_px_num, self.min_visib_px_num = np.quantile(visib_px_nums, [0.95, 0.05])
 
-        if self.use_real_bg:
-            self.real_bg_paths = list((PROJ_DIR / "real_bg").glob("*.png"))
+        if self.use_bg_augm:
+            self.real_bg_paths = list((PROJ_DIR / "mit_indoor_subset").glob("*.jpg"))
 
     def __len__(self):
         return self.num_frames
@@ -207,22 +219,24 @@ class TrackingDataset(Dataset):
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
 
-        if self.include_mask or self.max_num_objs > 1 or self.use_occlusion_augm:
+        if self.use_mask_for_visibility_check or self.include_mask or self.use_occlusion_augm or self.use_bg_augm:
             mask = self.get_mask(i)
             is_visible = self.get_visibility(mask)
             sample["is_visible"] = is_visible if self.max_num_objs > 1 else [is_visible]
             if self.include_mask:
                 sample["mask"] = mask
         else:
-            sample["is_visible"] = [True]
+            sample["is_visible"] = [True] * self.max_num_objs
 
-        if self.max_num_objs == 1 and sample["is_visible"][0] == False:
+        if self.max_num_objs == 1 and sample["is_visible"][0] == False and self.do_skip_invisible_single_obj:
             print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
             return None
 
         if self.use_bg_augm or self.use_occlusion_augm:
             if "dextreme" in str(self.video_dir):
-                sem_mask = load_semantic_mask(self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h))
+                sem_mask = load_semantic_mask(
+                    self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h)
+                )
                 fg_mask = convert_semantic_mask_to_bin(
                     sem_mask,
                     included_colors=[
@@ -397,8 +411,8 @@ class TrackingDataset(Dataset):
     def get_visibility(self, mask):
         return mask.sum() > self.min_pixels_for_visibility
 
-    def set_up_obj_mesh(self, mesh_path, is_mm=False):
-        load_res = load_mesh(mesh_path, is_mm=is_mm)
+    def set_up_obj_mesh(self, mesh_path, is_mm=False, scale_factor=None):
+        load_res = load_mesh(mesh_path, is_mm=is_mm, scale_factor=scale_factor)
         if self.do_load_mesh_in_memory:
             self.mesh = load_res["mesh"]
         self.mesh_bbox = copy.deepcopy(np.asarray(load_res["bbox"]))
@@ -485,3 +499,11 @@ class TrackingDatasetEval:
         sample = self.ds[idx]
         sample["pose_pred"] = load_pose(f"{self.preds_path}/{self.ds.id_strs[idx]}.txt")
         return sample
+
+
+def check_is_visible_at_least_one_obj(idx, ds):
+    mask = ds.get_mask(idx)
+    is_visible = ds.get_visibility(mask)
+    if ds.max_num_objs == 1:
+        is_visible = [is_visible]
+    return any(is_visible)
