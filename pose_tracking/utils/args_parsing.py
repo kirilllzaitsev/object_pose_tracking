@@ -368,9 +368,10 @@ def get_parser():
         nargs="*",
         default=[],
         help="List of transform names to use",
-        choices=["jitter", "iso", "brightness", "blur", "motion_blur", "gamma", "hue", "norm", "occlusion"],
+        choices=["jitter", "iso", "brightness", "blur", "motion_blur", "gamma", "hue", "norm", "occlusion", "bg"],
     )
     data_args.add_argument("--transform_prob", type=float, default=0.0, help="Probability of applying the transforms")
+    data_args.add_argument("--target_hw", nargs="*", type=int, help="Target height and width")
     return parser
 
 
@@ -397,7 +398,6 @@ def postprocess_args(args, use_if_provided=True):
             "exp_name",
             "use_ddp",
             "exp_disabled",
-            "batch_size",
             "ignored_file_args",
         ]
         if args.do_ignore_file_args_with_provided:
@@ -405,11 +405,15 @@ def postprocess_args(args, use_if_provided=True):
         else:
             provided_ignored_args = []
         ignored_file_args = set(provided_ignored_args) | set(default_ignored_file_args) | set(args.ignored_file_args)
+        legacy_args = []
         for k, v in loaded_args.items():
+            if not hasattr(args, k):
+                legacy_args.append(k)
             if k in ignored_file_args or not hasattr(args, k):
-                print(f"Ignoring overriding {k}")
                 continue
             setattr(args, k, v)
+        print(f"{ignored_file_args=}")
+        print(f"{legacy_args=}")
 
     if args.do_overfit:
         args.dropout = 0.0
