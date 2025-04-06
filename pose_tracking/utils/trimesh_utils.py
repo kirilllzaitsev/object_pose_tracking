@@ -70,14 +70,17 @@ def load_mesh_bounds(path, ORIGIN_GEOMETRY="BOUNDS", return_origin_bounds=False)
         return mesh
 
 
-def load_mesh(mesh_path, ext=None, is_mm=False):
+def load_mesh(mesh_path, ext=None, is_mm=False, scale_factor=None):
     if ext is None:
         ext = mesh_path.split(".")[-1]
     mesh = trimesh.load(open(mesh_path, "rb"), file_type=ext, force="mesh")
     if is_mm:
         mesh.vertices *= 1e-3
+
+    if scale_factor is not None:
+        mesh.apply_scale(scale_factor)
     bbox = np.asarray(mesh.bounding_box.vertices).copy()
-    diameter = compute_mesh_diameter(mesh)
+    diameter = compute_mesh_diameter(bbox)
     return {
         "mesh": mesh,
         "bbox": bbox,
@@ -130,10 +133,8 @@ def extract_data_from_trimesh(mesh, device="cuda", max_tex_size=None):
     return mesh_tensors
 
 
-def compute_mesh_diameter(mesh):
-    u, s, vh = scipy.linalg.svd(mesh.vertices, full_matrices=False)
-    pts = u @ s
-    diameter = compute_pts_span(pts)
+def compute_mesh_diameter(mesh_bbox):
+    diameter = compute_pts_span(mesh_bbox)
     return diameter
 
 
