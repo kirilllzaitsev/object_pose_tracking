@@ -220,8 +220,25 @@ class TrackingDataset(Dataset):
             print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
             return None
 
-        if self.use_occlusion_augm:
-            sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=mask)
+        if self.use_bg_augm or self.use_occlusion_augm:
+            if "dextreme" in str(self.video_dir):
+                sem_mask = load_semantic_mask(self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h))
+                fg_mask = convert_semantic_mask_to_bin(
+                    sem_mask,
+                    included_colors=[
+                        v for k, v in self.metadata["segm_labels_to_id"].items() if k in ["object_0", "robot"]
+                    ],
+                )
+            else:
+                fg_mask = mask
+
+            if self.use_bg_augm:
+                random_bg_idx = np.random.randint(0, len(self.real_bg_paths))
+                real_rgb = load_color(self.real_bg_paths[random_bg_idx], wh=(self.w, self.h))
+                real_rgb[fg_mask, :] = sample["rgb"][fg_mask, :]
+                sample["rgb"] = real_rgb
+            if self.use_occlusion_augm:
+                sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=fg_mask)
 
         if self.include_depth:
             depth = self.get_depth(i)
