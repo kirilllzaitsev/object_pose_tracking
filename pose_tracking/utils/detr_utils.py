@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
+from torchvision.ops import roi_align
 from torchvision.ops.boxes import batched_nms
 
 
@@ -126,3 +127,48 @@ def postprocess_detr_outputs_nms(outputs, target_sizes):
         )
 
     return results
+
+
+def prepare_bbox_for_cropping(bbox, hw, padding=5, is_normalized=False):
+    # prepares xyxy bbox
+    new_boxes = []
+    bbox = bbox.clone()
+    if bbox.ndim == 2:
+        bbox = [bbox]
+    else:
+        assert bbox.ndim == 3
+    h, w = hw
+    for i, boxes_padded in enumerate(bbox):
+        boxes_padded = boxes_padded.clone()
+        if is_normalized:
+            assert hw is not None and len(hw) == 2
+            boxes_padded[..., [0, 2]] *= hw[1]
+            boxes_padded[..., [1, 3]] *= hw[0]
+        else:
+            if boxes_padded.max() < 1:
+                print(f"WARNING: boxes seem not normalized {boxes_padded=}")
+        boxes_padded[..., 0] = boxes_padded[..., 0] - padding
+        boxes_padded[..., 1] = boxes_padded[..., 1] - padding
+        boxes_padded[..., 2] = boxes_padded[..., 2] + padding
+        boxes_padded[..., 3] = boxes_padded[..., 3] + padding
+        boxes_padded[..., 0].clamp_(min=0, max=w)
+        boxes_padded[..., 1].clamp_(min=0, max=h)
+        boxes_padded[..., 2].clamp_(min=0, max=w)
+        boxes_padded[..., 3].clamp_(min=0, max=h)
+        new_boxes.append(boxes_padded)
+    return new_boxes
+
+
+def get_crops(
+    rgb,
+    bbox_xyxy,
+    hw,
+    crop_size=(60, 80),
+):
+    new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=True)
+    rgb_crop = roi_align(
+        rgb,
+        new_boxes,
+        crop_size,
+    )
+    return rgb_crop
