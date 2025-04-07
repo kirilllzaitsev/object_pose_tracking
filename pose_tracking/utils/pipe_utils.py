@@ -326,9 +326,9 @@ def get_model(args, num_classes=None):
         print(f"Loading model from {args.ckpt_path}")
         model = load_from_ckpt(args.ckpt_path, model)["model"]
     if args.ckpt_exp_name:
-        model_artifact_name = "model_best"
-        print(f"Loading model from {model_artifact_name} artifact at {args.ckpt_exp_name}")
-        model = load_model_from_exp(model, args.ckpt_exp_name, model_artifact_name=model_artifact_name)
+        artifact_suffix = "best"
+        print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
+        model = load_model_from_exp(model, args.ckpt_exp_name, artifact_suffix=artifact_suffix)
 
     return model
 

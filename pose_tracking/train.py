@@ -330,8 +330,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             threshold_mode=args.lrs_threshold_mode,
             min_lr=args.lrs_min_lr,
         )
-    if args.ckpt_exp_name is not None:
-        download_res = load_artifacts_from_comet(exp_name=args.ckpt_exp_name, do_load_session=True)
+    if args.ckpt_exp_name:
+        download_res = load_artifacts_from_comet(exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best")
         if download_res["session_checkpoint_path"] is None:
             logger.warning(f"Checkpoint not found for {args.ckpt_exp_name}")
         else:

@@ -80,9 +80,9 @@ def load_artifacts_from_comet(
     args_file_path: str = None,
     model_checkpoint_path: str = None,
     local_artifacts_dir: str = ARTIFACTS_DIR,
-    model_artifact_name: str = "model_best",
+    artifact_suffix: str = "best",
     args_filename: str = "args",
-    session_artifact_name: t.Optional[str] = "session.pth",
+    session_artifact_name: t.Optional[str] = "session",
     api: t.Optional[API] = None,
     epoch: t.Optional[int] = None,
     use_epoch: bool = False,
@@ -110,8 +110,9 @@ def load_artifacts_from_comet(
     exp_dir = f"{local_artifacts_dir}/{exp_name}"
     os.makedirs(exp_dir, exist_ok=True)
     args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
-    model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{model_artifact_name}.pth"
-    alternative_model_artifact_name = "model_best" if model_artifact_name == "model_last" else "model_last"
+    model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{artifact_suffix}.pth"
+    artifact_suffix = artifact_suffix.replace("model_", "")
+    alternative_model_artifact_name = "model_best" if artifact_suffix == "last" else "model_last"
     alternative_model_checkpoint_path = f"{exp_dir}/{alternative_model_artifact_name}.pth"
     weights_not_exist = False or do_force_download
     if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path, alternative_model_checkpoint_path]):
@@ -120,7 +121,9 @@ def load_artifacts_from_comet(
         print(f"Using {Path(alternative_model_checkpoint_path).stem=}")
         model_checkpoint_path = alternative_model_checkpoint_path
     args_not_exist = not os.path.exists(args_file_path)
-    session_checkpoint_path = f"{exp_dir}/{session_artifact_name}"
+    session_checkpoint_path = f"{exp_dir}/{session_artifact_name}.pth"
+    if not os.path.exists(session_checkpoint_path):
+        session_checkpoint_path = f"{exp_dir}/{session_artifact_name}_{artifact_suffix}.pth"
     session_not_exist = not os.path.exists(session_checkpoint_path)
 
     if any([args_not_exist, (weights_not_exist and do_load_model), (session_not_exist and do_load_session)]):
@@ -152,27 +155,32 @@ def load_artifacts_from_comet(
         if need_load_model or need_load_session:
             if use_epoch and epoch is None:
                 epoch = get_latest_ckpt_epoch(exp_name)
-                alternative_model_artifact_name = f"{model_artifact_name}_{epoch}"
+                alternative_model_artifact_name = f"model_{artifact_suffix}_{epoch}"
             else:
-                alternative_model_artifact_name = model_artifact_name
+                alternative_model_artifact_name = f"model_{artifact_suffix}"
             logged_models = exp_api.get_model_asset_list("ckpt")
             sorted_assets = sorted(logged_models, key=lambda x: x["step"], reverse=True)
             if need_load_model:
                 model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
                 if len(model_assets) == 0:
                     print(f"WARN: No model found with name {alternative_model_artifact_name}. Trying the alternative")
-                    alternative_model_artifact_name = (
-                        "model_best" if model_artifact_name == "model_last" else "model_last"
-                    )
+                    alternative_model_artifact_name = "model_best" if artifact_suffix == "last" else "model_last"
                     model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
                     assert len(model_assets) > 0, f"No model found with name {alternative_model_artifact_name}"
-                    model_artifact_name = alternative_model_artifact_name
+                    artifact_suffix = alternative_model_artifact_name.replace("model_", "")
+                    model_checkpoint_path = alternative_model_checkpoint_path
                 model_asset = model_assets[0]
                 print(f"Loading the model from step {model_asset['step']}")
                 load_asset(exp_api, model_asset["assetId"], model_checkpoint_path)
                 weights_not_exist = False
             if need_load_session:
                 try:
+                    filenames = [x["fileName"] for x in sorted_assets]
+                    if "session" in filenames:
+                        session_artifact_name = "session"
+                    else:
+                        session_artifact_name = f"session_{artifact_suffix}"
+                    session_checkpoint_path = f"{exp_dir}/{session_artifact_name}.pth"
                     session_asset = [x for x in sorted_assets if session_artifact_name in x["fileName"]][0]
                     load_asset(exp_api, session_asset["assetId"], session_checkpoint_path)
                     session_not_exist = False

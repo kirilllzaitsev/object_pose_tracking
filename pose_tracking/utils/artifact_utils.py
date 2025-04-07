@@ -87,9 +87,9 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         np.savetxt(intrinsics_path, intrinsics)
 
 
-def load_model_from_exp(model, exp_name, model_artifact_name="model_best"):
+def load_model_from_exp(model, exp_name, artifact_suffix="best"):
 
-    download_res = load_artifacts_from_comet(exp_name, api=None, model_artifact_name=model_artifact_name)
+    download_res = load_artifacts_from_comet(exp_name, api=None, artifact_suffix=artifact_suffix)
     ckpt_path = download_res["checkpoint_path"]
     assert os.path.exists(ckpt_path)
     model = load_model_from_ckpt(model, ckpt_path)
@@ -152,7 +152,7 @@ def log_artifacts(
     save_model(artifacts["model"], save_path_model)
     log_ckpt_to_exp(exp, save_path_model, "ckpt")
     if do_log_session:
-        save_path_session = os.path.join(log_dir, "session.pth")
+        save_path_session = os.path.join(log_dir, f"session_{suffix}.pth")
         torch.save(
             {
                 "optimizer": artifacts["optimizer"].state_dict(),
