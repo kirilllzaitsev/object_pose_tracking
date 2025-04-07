@@ -402,7 +402,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                 if args.use_es_val:
                     early_stopping(loss=cur_val_loss)
 
-                if args.do_save_artifacts and epoch % args.save_epoch_freq == 0 and cur_val_loss <= best_val_loss:
+                if args.do_save_artifacts and cur_val_loss <= best_val_loss:
                     log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best", do_log_session=True)
                     printer.saved_artifacts(epoch)
 
@@ -417,6 +417,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                 for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
                     if lr_before != lr_after and lr_after > args.lrs_min_lr:
                         logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
+
+        if is_main_process and args.do_save_artifacts and epoch % args.save_epoch_freq == 0:
+            log_artifacts(artifacts, exp, logdir, epoch, suffix="last", do_log_session=True)
+            printer.saved_artifacts(epoch)
 
         if args.use_es_train and is_main_process:
             early_stopping(loss=history["train"]["loss"][-1])
@@ -433,10 +437,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     if args.do_debug:
         shutil.rmtree(logdir)
         return
-
-    if is_main_process and args.do_save_artifacts:
-        log_artifacts(artifacts, exp, logdir, epoch, suffix="last", do_log_session=True)
-        printer.saved_artifacts(epoch)
 
     if logdir is not None:
         logger.info(f"# {logdir=} {os.path.basename(logdir)}")
