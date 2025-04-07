@@ -153,10 +153,9 @@ def seq_collate_fn(batch):
     # result is a list of size seq_len with dicts having values of size batch_size x ...
     new_b = []
     batch_not_none = [d for d in batch if d is not None]
-    if len(batch_not_none) == 0:
-        raise RuntimeError(f"batch is empty after filtering. {batch_not_none=}")
     seq_lens = [len(d) for d in batch_not_none]
-    for i in range(min(seq_lens)):
+    min_seq_len = min(seq_lens) if len(seq_lens) > 0 else 0
+    for i in range(min_seq_len):
         new_b.append(dict_collate_fn([d[i] for d in batch_not_none]))
     return new_b
 
@@ -168,8 +167,6 @@ def batch_seq_collate_fn(batch):
         if batch[i] is None:
             continue
         new_b.append(dict_collate_fn(batch[i]))
-    if len(new_b) == 0:
-        raise RuntimeError(f"batch is empty after filtering. {batch=}")
     new_b = dict_collate_fn(new_b)
     return new_b
 
