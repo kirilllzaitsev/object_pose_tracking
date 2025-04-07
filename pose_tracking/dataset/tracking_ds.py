@@ -169,6 +169,7 @@ class TrackingDataset(Dataset):
         if target_hw is not None:
             img_res_scaler = (target_hw[0] / self.h, target_hw[1] / self.w)
             self.h, self.w = target_hw
+            self.min_pixels_for_visibility = int(self.min_pixels_for_visibility * min(img_res_scaler))
 
         if is_intrinsics_for_all_samples:
             intrinsics_path = f"{video_dir}/cam_K.txt"
@@ -392,7 +393,8 @@ class TrackingDataset(Dataset):
         return load_color(self.color_files[i], wh=(self.w, self.h))
 
     def get_mask(self, i):
-        mask = load_mask(self.color_files[i].replace("rgb", "masks"), wh=(self.w, self.h))
+        mask_dirname = "masks_with_hand" if "allegro_real" in str(self.video_dir) else "masks"
+        mask = load_mask(self.color_files[i].replace("rgb", mask_dirname), wh=(self.w, self.h))
         if self.do_erode_mask:
             mask = mask_morph(mask, kernel_size=11)
         return mask

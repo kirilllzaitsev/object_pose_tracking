@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import re
+from glob import glob
 from pathlib import Path
 
 import cv2
@@ -45,12 +46,14 @@ class YCBvDataset(TrackingMultiObjDataset):
             self.scene_gt = copy.deepcopy(self.scene_gt)  # Release file handle to be pickle-able by joblib
         else:
             self.scene_gt = None
-        self.color_files = [f"{video_dir}/rgb/{1:06d}.png"]
+        self.color_files = get_ordered_paths(f"{video_dir}/rgb/*")[:1]
         self.ycb_meshes_dir = ycb_meshes_dir
 
         self.obj_id_to_names = {}
         self.name_to_ob_id = {}
+        self.first_idx = int(Path(self.color_files[0]).stem)
         self.obj_ids = self.get_instance_ids_in_image(0)
+
         self.obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.obj_ids]
         for i, ob_id in enumerate(self.obj_ids):
             self.obj_id_to_names[ob_id] = self.obj_names[i]
@@ -64,7 +67,11 @@ class YCBvDataset(TrackingMultiObjDataset):
             pose_dirname="annotated_poses",
             **kwargs,
         )
-        self.scene_gt = {k: v for k, v in self.scene_gt.items() if self.start_frame_idx < int(k) <= self.end_frame_idx}
+        self.scene_gt = {
+            k: v
+            for k, v in self.scene_gt.items()
+            if self.start_frame_idx + self.first_idx <= int(k) < self.end_frame_idx + self.first_idx
+        }
 
         if ycb_meshes_dir is not None:
             mesh_paths_obj = [f"{ycb_meshes_dir}/obj_{oid:06d}.ply" for oid in self.obj_ids]
@@ -80,7 +87,7 @@ class YCBvDataset(TrackingMultiObjDataset):
         mask_path_template = self.color_files[i].replace("rgb", "mask").replace(".png", "_{i:06d}.png")
         annot_idx_to_obj_name = {}
         mask_paths = []
-        gt = self.scene_gt[str(i + 1)]
+        gt = self.scene_gt[str(i + self.first_idx)]
         for i_k, k in enumerate(gt):
             annot_idx_to_obj_name[i_k] = self.obj_id_to_names[k["obj_id"]]
             mask_paths.append((i_k, mask_path_template.format(i=i_k)))
@@ -148,8 +155,7 @@ class YCBvDataset(TrackingMultiObjDataset):
     def get_instance_ids_in_image(self, i_frame: int):
         ob_ids = []
         if self.scene_gt is not None:
-            name = int(os.path.basename(self.color_files[i_frame]).split(".")[0])
-            for k in self.scene_gt[str(name)]:
+            for k in self.scene_gt[str(self.first_idx)]:
                 ob_ids.append(k["obj_id"])
         elif self.scene_ob_ids_dict is not None:
             return np.array(self.scene_ob_ids_dict[self.id_strs[i_frame]])
