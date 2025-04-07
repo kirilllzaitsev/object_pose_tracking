@@ -325,7 +325,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             optimizer=optimizer,
             mode="min",
             factor=args.lrs_gamma,
-            patience=args.lrs_patience,
+            patience=max(1, args.lrs_patience // args.val_epoch_freq),
             threshold=args.lrs_delta,
             threshold_mode=args.lrs_threshold_mode,
             min_lr=args.lrs_min_lr,
@@ -347,7 +347,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         logger.info(f"# Experiment created at {exp._get_experiment_url()}")
         logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
 
-    early_stopping = EarlyStopping(patience=args.es_patience_epochs, delta=args.es_delta, verbose=True)
+    early_stopping = EarlyStopping(patience=max(1, args.es_patience_epochs // args.val_epoch_freq), delta=args.es_delta, verbose=True)
     artifacts = {
         "model": model.module if args.use_ddp else model,
         "optimizer": optimizer,
