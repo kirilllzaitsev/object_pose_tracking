@@ -52,9 +52,14 @@ class YCBvDataset(TrackingMultiObjDataset):
         self.obj_id_to_names = {}
         self.name_to_ob_id = {}
         self.first_idx = int(Path(self.color_files[0]).stem)
-        self.obj_ids = self.get_instance_ids_in_image(0)
 
-        self.obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.obj_ids]
+        self.is_synt = "synt" in str(video_dir)
+        if self.is_synt:
+            self.obj_ids = list(YCBV_OBJ_ID_TO_NAME.keys())
+            self.obj_names = list(YCBV_OBJ_ID_TO_NAME.values())
+        else:
+            self.obj_ids = self.get_instance_ids_in_image(0)
+            self.obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.obj_ids]
         for i, ob_id in enumerate(self.obj_ids):
             self.obj_id_to_names[ob_id] = self.obj_names[i]
             self.name_to_ob_id[self.obj_names[i]] = ob_id
@@ -76,10 +81,12 @@ class YCBvDataset(TrackingMultiObjDataset):
         if ycb_meshes_dir is not None:
             mesh_paths_obj = [f"{ycb_meshes_dir}/obj_{oid:06d}.ply" for oid in self.obj_ids]
             self.set_up_obj_mesh(mesh_paths_obj, is_mm=True)
+            self.obj_id_to_mesh_idx = {oid: midx for midx, oid in enumerate(self.obj_ids)}
 
     def augment_sample(self, sample, idx):
         # todo: ensure obj_id=class_id
-        sample["class_id"] = self.obj_ids
+        # synt is single-frame -> doesn't matter if track_ids correspond to class_ids
+        sample["class_id"] = self.get_instance_ids_in_image(idx) if self.is_synt else self.obj_ids
 
         return sample
 
@@ -88,8 +95,16 @@ class YCBvDataset(TrackingMultiObjDataset):
         annot_idx_to_obj_name = {}
         mask_paths = []
         gt = self.scene_gt[str(i + self.first_idx)]
+        if self.is_synt:
+            obj_ids = self.get_instance_ids_in_image(i)
+            obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in obj_ids]
+            obj_id_to_names = {k: v for k, v in zip(obj_ids, obj_names)}
+        else:
+            obj_ids = self.obj_ids
+            obj_names = self.obj_names
+            obj_id_to_names = self.obj_id_to_names
         for i_k, k in enumerate(gt):
-            annot_idx_to_obj_name[i_k] = self.obj_id_to_names[k["obj_id"]]
+            annot_idx_to_obj_name[i_k] = obj_id_to_names[k["obj_id"]]
             mask_paths.append((i_k, mask_path_template.format(i=i_k)))
         mask = np.zeros((self.h, self.w, 3))
         for i_k, mask_path in mask_paths:
@@ -99,6 +114,28 @@ class YCBvDataset(TrackingMultiObjDataset):
             mask += mask_obj
         mask = mask.astype(np.uint8)
         return mask
+
+    def add_mesh_data_to_sample(self, i, sample):
+        if self.is_synt:
+            obj_ids = self.get_instance_ids_in_image(i)
+            mesh_idxs = [self.obj_id_to_mesh_idx[oid] for oid in obj_ids]
+            sample["mesh_pts"] = self.mesh_pts[mesh_idxs]
+            sample["mesh_bbox"] = self.mesh_bbox[mesh_idxs]
+            sample["mesh_diameter"] = self.mesh_diameter[mesh_idxs]
+        else:
+            return super().add_mesh_data_to_sample(i, sample)
+        return sample
+
+    def get_visibility(self, mask, i):
+        if self.is_synt:
+            visibilities = []
+            obj_ids = self.get_instance_ids_in_image(i)
+            obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in obj_ids]
+            for oname in obj_names:
+                ocolor = self.segm_labels_to_color[oname]
+                visibilities.append((mask == ocolor).all(axis=-1).sum() > self.min_pixels_for_visibility)
+            return visibilities
+        return super().get_visibility(mask)
 
     def get_gt_poses(self, i_frame):
         gt_poses = []
