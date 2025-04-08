@@ -174,7 +174,7 @@ class TrainerMemotr(TrainerDeformableDETR):
 
             # LOSSES
 
-            loss_dict = model_forward_res["loss_dict"]
+            loss_dict, _ = self.criterion.get_mean_by_n_gts()
             loss = self.criterion.get_sum_loss_dict(loss_dict=loss_dict)
 
             # reduce losses over all GPUs for logging purposes
