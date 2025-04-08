@@ -24,6 +24,7 @@ ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"
 YCBINEOAT_SCENE_DIR = DATA_DIR / "ycbineoat"
 YCBV_SCENE_DIR = DATA_DIR / "ycbv"
+YCBV_SYNT_SCENE_DIR = DATA_DIR / "ycbv_synt"
 NOCS_SCENE_DIR = DATA_DIR / "nocs"
 
 YCB_MESHES_DIR = DATA_DIR / "ycb/models"

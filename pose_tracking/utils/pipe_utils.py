@@ -22,6 +22,7 @@ from pose_tracking.config import (
     YCB_MESHES_DIR,
     YCBINEOAT_SCENE_DIR,
     YCBV_SCENE_DIR,
+    YCBV_SYNT_SCENE_DIR,
 )
 from pose_tracking.dataset.custom import CustomDataset, CustomDatasetTest
 from pose_tracking.dataset.custom_sim_ds import (
@@ -340,7 +341,8 @@ def get_memotr_args(args):
             "r",
         )
     )
-    config["USE_DAB"] = False
+
+    config["USE_DAB"] = args.tf_use_dab
     config["BACKBONE"] = args.encoder_name
     config["rot_out_dim"] = args.rot_out_dim
     config["t_out_dim"] = args.t_out_dim
@@ -910,7 +912,10 @@ def get_ds_root_dirs(args):
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
     elif args.ds_name == "ycbv":
-        ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
+        if YCBV_SYNT_SCENE_DIR.exists():
+            ds_video_dir_train = YCBV_SYNT_SCENE_DIR / "train_synt"
+        else:
+            ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
         ds_video_dir_val = YCBV_SCENE_DIR / "test"
     elif args.ds_name == "nocs":
         ds_video_dir_train = NOCS_SCENE_DIR
