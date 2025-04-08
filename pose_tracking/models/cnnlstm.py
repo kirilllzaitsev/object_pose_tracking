@@ -189,6 +189,20 @@ class MLP(nn.Module):
         return print_cls(self, extra_str=super().__repr__())
 
 
+class MLPFactors(MLP):
+
+    def forward(self, x):
+        for layer_idx, layer in enumerate(self.layers[:-1]):
+            x = self.act(layer(x))
+            if layer_idx < len(self.dropouts):
+                x = self.dropouts[layer_idx](x)
+        last_hidden = x
+        x = self.layers[-1](x)
+        if self.act_out is not None:
+            x = self.act_out(x)
+        return {"out": x, "last_hidden": last_hidden}
+
+
 class RecurrentNet(nn.Module):
     def __init__(self, rnn_type="gru", rnn_state_init_type="zeros", state_dim=256):
         super().__init__()

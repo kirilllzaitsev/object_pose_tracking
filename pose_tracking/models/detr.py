@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from einops import rearrange
-from pose_tracking.models.cnnlstm import MLP
+from pose_tracking.models.cnnlstm import MLP, MLPFactors
 from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
