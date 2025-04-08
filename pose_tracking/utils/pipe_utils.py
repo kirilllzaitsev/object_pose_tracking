@@ -126,11 +126,57 @@ def get_model(args, num_classes=None):
         )
     elif args.model_name == "memotr":
         from memotr.models import build_model
+        from memotr.models.utils import load_pretrained_model
 
         memotr_args = get_memotr_args(args)
-        args.memotr_args = memotr_args
-        model = build_model(memotr_args, num_classes=num_classes)
 
+        if args.tf_use_pretrained_model:
+            memotr_args["NUM_DET_QUERIES"] = 300
+            memotr_args["USE_DAB"] = True
+            model = build_model(memotr_args, num_classes=num_classes)
+            load_pretrained_model(model, pretrained_path=f"{MEMOTR_DIR}/dab_deformable_detr.pth", show_details=True)
+            model.n_det_queries = args.mt_num_queries
+            model.transformer.decoder.n_det_queries = args.mt_num_queries
+            memotr_args["NUM_DET_QUERIES"] = args.mt_num_queries
+
+            if args.tf_use_dab:
+                model.det_query_embed = torch.nn.Parameter(model.det_query_embed[: args.mt_num_queries])
+                model.det_anchor = torch.nn.Parameter(model.det_anchor[: args.mt_num_queries])
+            else:
+                model.det_query_embed = torch.nn.Parameter(
+                    torch.cat(
+                        [
+                            model.det_query_embed[: args.mt_num_queries],
+                            model.det_query_embed[: args.mt_num_queries].clone(),
+                        ],
+                        dim=-1,
+                    )
+                )
+                model.query_updater.use_dab = False
+                model.query_updater.linear_pos1 = nn.Linear(256, 256)
+                model.query_updater.linear_pos2 = nn.Linear(256, 256)
+                model.query_updater.norm_pos = nn.LayerNorm(256)
+                model.query_updater.activation = nn.ReLU(inplace=True)
+                model.det_anchor = None
+                model.transformer.decoder.query_scale = None
+                model.transformer.decoder.ref_point_head = None
+                model.use_dab = False
+                model.transformer.decoder.use_dab = False
+                model.transformer.use_dab = False
+                model.transformer.reference_points = nn.Linear(args.mt_d_model, 2)
+                for m in [
+                    model.query_updater.linear_pos1,
+                    model.query_updater.linear_pos2,
+                    model.transformer.reference_points,
+                ]:
+                    for p in m.parameters():
+                        if p.dim() > 1:
+                            nn.init.xavier_uniform_(p, 0.01)
+                memotr_args["USE_DAB"] = False
+        else:
+            model = build_model(memotr_args, num_classes=num_classes)
+
+        args.memotr_args = memotr_args
         for p in model.parameters():
             p.requires_grad = True
     elif args.model_name == "trackformer":
