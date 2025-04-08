@@ -318,9 +318,25 @@ class DETRBase(nn.Module):
             self.crop_cnn = CNNFeatureExtractor(out_dim=d_model, model_name="resnet18")
             if "scale" in factors:
                 self.scale_factor_mlp = get_clones(
-                    MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
+                    MLPFactors(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
+            self.uncertainty_layer = get_clones(
+                nn.Sequential(
+                    nn.TransformerEncoderLayer(
+                        d_model=d_model,
+                        nhead=n_heads,
+                        dim_feedforward=4 * d_model,
+                        dropout=dropout,
+                        batch_first=True,
+                    ),
+                    nn.Linear(d_model, d_model),
+                    nn.ReLU(),
+                    nn.Linear(d_model, 1),
+                    nn.Sigmoid(),
+                ),
+                n_layers,
+            )
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
@@ -483,13 +499,26 @@ class DETRBase(nn.Module):
                 )
                 crop_feats = self.crop_cnn(rgb_crop)
                 factors = {}
+                factor_latents = {}
                 if "scale" in self.factors:
-                    pred_scale = self.scale_factor_mlp[layer_idx](crop_feats)
+                    factor_out = self.scale_factor_mlp[layer_idx](crop_feats)
+                    pred_scale = factor_out["out"]
+                    last_hidden = factor_out["last_hidden"]
                     factors["scale"] = pred_scale
+                    factor_latents["scale"] = last_hidden
                 b = pred_boxes_xyxy.shape[0]
                 for k, v in factors.items():
                     factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                for k, v in factor_latents.items():
+                    factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
                 out["factors"] = factors
+
+                all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
+                u_in = torch.cat([o.unsqueeze(-1), all_factor_latents], dim=-1)
+                u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
+                u_out = self.uncertainty_layer[layer_idx](u_in)
+                u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
+                out["uncertainty"] = u_out[..., 0, 0]
 
             out["pose_token"] = pose_token
             outs.append(out)
@@ -509,6 +538,7 @@ class DETRBase(nn.Module):
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
         if self.use_factors:
             res["factors"] = last_out["factors"]
+            res["uncertainty"] = last_out["uncertainty"]
         res["tokens"] = tokens_enc
 
         return res
