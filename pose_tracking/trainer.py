@@ -239,6 +239,13 @@ class Trainer:
             if len(batched_seq) == 0:
                 self.logger.warning(f"Empty batch at seq_pack_idx {seq_pack_idx}, skipping...")
                 continue
+            if seq_pack_idx == len(loader) - 1:
+                if (
+                    stage == "train"
+                    and self.model_name in ["trackformer"]
+                    and len(batched_seq[0].get("rgb_path", [])) <= 1
+                ):
+                    continue
 
             if self.do_reset_state:
                 batch_size = len(batched_seq[0]["rgb"])
