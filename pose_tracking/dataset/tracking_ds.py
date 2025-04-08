@@ -15,6 +15,7 @@ from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.factor_utils import (
+    calc_occlusion_factor_strength,
     calc_scale_factor_strength,
     get_visib_px_num,
 )
@@ -203,10 +204,15 @@ class TrackingDataset(Dataset):
 
         if self.use_factors:
             idxs = range(len(self)) if len(self) < 100 else np.linspace(0, len(self) - 1, 100).astype(int)
-            if "scale" in self.factors:
+            if "occlusion" in self.factors:
                 masks = wrap_with_futures(idxs, functools.partial(self.get_mask))
                 visib_px_nums = [get_visib_px_num(s) for s in masks]
                 self.max_visib_px_num, self.min_visib_px_num = np.quantile(visib_px_nums, [0.95, 0.05])
+            if "scale" in self.factors:
+                poses = wrap_with_futures(idxs, functools.partial(self.get_pose))
+                zs = [pose[..., 2, 3] for pose in poses]
+                zs = [z for z in zs if z > 0.001]
+                self.max_z, self.min_z = np.quantile(zs, [0.95, 0.05])
 
         if self.use_bg_augm:
             self.real_bg_paths = list((PROJ_DIR / "mit_indoor_subset").glob("*.jpg"))
@@ -358,15 +364,19 @@ class TrackingDataset(Dataset):
         if self.use_factors:
             sample["factors"] = {}
             if "scale" in self.factors:
+                z = sample["pose"][..., 2, 3]
                 if self.max_num_objs == 1:
-                    scale = get_visib_px_num(sample["mask"])
-                    scale = [scale]
-                else:
-                    scale = get_visib_px_num(sample["mask"])
-                scale_strength = calc_scale_factor_strength(
-                    scale, min_val=self.min_visib_px_num, max_val=self.max_visib_px_num
-                )
+                    z = [z]
+                scale_strength = calc_scale_factor_strength(z, min_val=self.max_z, max_val=self.min_z)
                 sample["factors"]["scale"] = [scale_strength]
+            if "occlusion" in self.factors:
+                occlusion = get_visib_px_num(sample["mask"])
+                if self.max_num_objs == 1:
+                    occlusion = [occlusion]
+                occlusion_strength = calc_occlusion_factor_strength(
+                    occlusion, min_val=self.min_visib_px_num, max_val=self.max_visib_px_num
+                )
+                sample["factors"]["occlusion"] = [occlusion_strength]
 
         sample = process_raw_sample(
             sample,
