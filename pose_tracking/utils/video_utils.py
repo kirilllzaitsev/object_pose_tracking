@@ -38,6 +38,9 @@ def save_video(
     fix_mp4_encoding(save_path)
     print(f"Video saved as {save_path}")
 
+    if not os.path.isabs(save_path):
+        print(f"Absolute path: {os.path.abspath(save_path)}")
+
 
 def save_folder_imgs_as_video(folder_path, save_path=None, **kwargs):
     images = []

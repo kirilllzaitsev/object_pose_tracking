@@ -22,7 +22,7 @@ def get_transforms(transform_names=None, transform_prob=0.75):
     if "blur" in transform_names:
         ts.append(A.Blur(p=0.1, blur_limit=(3, 5)))
     if "motion_blur" in transform_names:
-        ts.append(A.MotionBlur(p=0.2, blur_limit=(3, 11)))
+        ts.append(A.MotionBlur(p=0.3, blur_limit=(3, 11)))
     if "gamma" in transform_names:
         ts.append(A.RandomGamma(p=0.1, gamma_limit=(80, 120)))
     if "hue" in transform_names:

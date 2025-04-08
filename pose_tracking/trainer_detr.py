@@ -310,7 +310,8 @@ class TrainerDeformableDETR(Trainer):
                     [torch.cat([t["t"][i], t["rot"][i]], dim=1) for t, (_, i) in zip(targets, indices)], dim=0
                 )
                 if len(target_rts) == 0:
-                    ...
+                    pose_mat_gt_abs = torch.empty(0, 4, 4).to(self.device)
+                    pose_mat_pred_abs = torch.empty(0, 4, 4).to(self.device)
                 else:
                     other_values_for_metrics = self.get_req_target_values_for_metrics(targets, [i[1] for i in indices])
 
@@ -414,7 +415,7 @@ class TrainerDeformableDETR(Trainer):
                 if "indices" in k:
                     continue
                 seq_stats[k].append(v.item())
-            for k in ["class_error", "cardinality_error"]:
+            for k in ["class_error", "cardinality_error", "uncertainty"]:
                 if k in loss_dict_reduced:
                     v = loss_dict_reduced[k]
                     seq_stats[k].append(v.item())

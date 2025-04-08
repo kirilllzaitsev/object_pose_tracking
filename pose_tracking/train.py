@@ -178,6 +178,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         dino_features_folder_name=args.dino_features_folder_name,
         use_mask_for_bbox_2d=args.use_mask_for_bbox_2d,
         factors=args.factors,
+        target_hw=args.target_hw,
     )
 
     train_dataset, val_dataset, train_as_val_dataset = (
