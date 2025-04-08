@@ -564,9 +564,10 @@ def plot_seq(
     use_label=False,
     rot_repr="quaternion",
     nrow=None,
+    do_allow_empty_ts=False,
 ):
     keys_to_plot = keys_to_plot or []
-    target_key = "target" if "target" in seq[0] and len(seq[0]["target"]) else "targets"
+    target_key = "target"
 
     def fetcher_fn(k, sidx=0):
         if not key_in_seq(k):
@@ -587,9 +588,11 @@ def plot_seq(
         if target_key in seq[0]:
             val = seq[0][target_key]
             if isinstance(val, dict):
-                return len(val.get(k, [])) > 0
+                # return len(val.get(k, [])) > 0
+                return k in val and (do_allow_empty_ts or len(val[k]) > 0)
             else:
-                return val[batch_idx].get(k, []) != []
+                # return val[batch_idx].get(k, []) != []
+                return k in val[batch_idx] and (do_allow_empty_ts or len(val[batch_idx][k]) > 0)
         return False
 
     if isinstance(seq, list) and isinstance(seq[0], list):
@@ -657,6 +660,9 @@ def plot_seq(
                     pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
 
                 bbox = fetcher_fn("mesh_bbox", sidx)
+                if len(bbox) == 0:
+                    print(f"WARNING: empty bbox for {sidx=}")
+                    continue
                 if key in ["pose_mat_prev_gt_abs"]:
                     t_gt_rel, rot_gt_rel_mat = fetcher_fn("t_gt_rel", sidx), fetcher_fn("rot_gt_rel_mat", sidx)
                     pose = egocentric_delta_pose_to_pose(pose, t_gt_rel, rot_gt_rel_mat)
@@ -745,10 +751,11 @@ def plot_rgb_depth(color, depth, axs=None):
     return axs
 
 
-def plot_depth(depth, ax=None, include_colorbar=True):
+def plot_depth(depth, ax=None, include_colorbar=True, disable_axis=True):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-        ax.axis("off")
+        if disable_axis:
+            ax.axis("off")
     depth = adjust_depth_for_plt(depth)
     im = ax.imshow(depth, cmap="viridis")
     if include_colorbar:
