@@ -153,19 +153,13 @@ class YCBvDataset(TrackingMultiObjDataset):
         return str(self.video_dir).split("/")[-1]
 
     def get_instance_ids_in_image(self, i_frame: int):
-        ob_ids = []
         if self.scene_gt is not None:
-            for k in self.scene_gt[str(self.first_idx)]:
-                ob_ids.append(k["obj_id"])
-        elif self.scene_ob_ids_dict is not None:
-            return np.array(self.scene_ob_ids_dict[self.id_strs[i_frame]])
-        else:
-            mask_dir = os.path.dirname(self.color_files[0]).replace("rgb", "mask_visib")
-            id_str = self.id_strs[i_frame]
-            mask_files = sorted(glob.glob(f"{mask_dir}/{id_str}_*.png"))
             ob_ids = []
-            for mask_file in mask_files:
-                ob_id = int(os.path.basename(mask_file).split(".")[0].split("_")[1])
-                ob_ids.append(ob_id)
-        ob_ids = np.asarray(ob_ids)
+            for k in self.scene_gt[str(self.first_idx + i_frame)]:
+                ob_ids.append(k["obj_id"])
+            ob_ids = np.asarray(ob_ids)
+        elif self.scene_ob_ids_dict is not None:
+            return np.array(self.scene_ob_ids_dict[self.first_idx + self.id_strs[i_frame]])
+        else:
+            raise RuntimeError(f"{i_frame=} cannot be processed")
         return ob_ids
