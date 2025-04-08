@@ -222,7 +222,7 @@ class TrackingDataset(Dataset):
 
         if self.use_mask_for_visibility_check or self.include_mask or self.use_occlusion_augm or self.use_bg_augm:
             mask = self.get_mask(i)
-            is_visible = self.get_visibility(mask)
+            is_visible = self.get_visibility(mask, i)
             sample["is_visible"] = is_visible if self.max_num_objs > 1 else [is_visible]
             if self.include_mask:
                 sample["mask"] = mask
@@ -245,7 +245,7 @@ class TrackingDataset(Dataset):
                     ],
                 )
             else:
-                fg_mask = mask
+                fg_mask = np.any(mask, axis=-1)
 
             if self.use_bg_augm:
                 random_bg_idx = np.random.randint(0, len(self.real_bg_paths))
@@ -286,21 +286,19 @@ class TrackingDataset(Dataset):
         sample["obj_name"] = self.obj_name
 
         if self.mesh_pts is not None:
-            sample["mesh_pts"] = self.mesh_pts
-            sample["mesh_bbox"] = self.mesh_bbox
-            sample["mesh_diameter"] = self.mesh_diameter
+            sample = self.add_mesh_data_to_sample(i, sample)
 
         if self.bbox_num_kpts == 32 or self.include_kpt_projections:
-            ibbs_res = interpolate_bbox_edges(copy.deepcopy(self.mesh_bbox), num_points=24)
+            ibbs_res = interpolate_bbox_edges(copy.deepcopy(sample["mesh_bbox"]), num_points=24)
             bbox_3d_kpts = ibbs_res["all_points"]
             if self.include_kpt_projections:
                 sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
-                sample["bbox_3d_kpts_corners"] = world_to_cam(self.mesh_bbox, sample["pose"]).astype(np.float32)
+                sample["bbox_3d_kpts_corners"] = world_to_cam(sample["mesh_bbox"], sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_corners"][:, 2] *= 1e-0
         else:
-            bbox_3d_kpts = copy.deepcopy(self.mesh_bbox)
+            bbox_3d_kpts = copy.deepcopy(sample["mesh_bbox"])
 
         if self.include_bbox_2d:
             if self.use_mask_for_bbox_2d:
@@ -323,7 +321,7 @@ class TrackingDataset(Dataset):
                     bbox_2ds.append(bbox_2d)
             else:
                 bbox_2ds = convert_3d_bbox_to_2d(
-                    self.mesh_bbox, sample["intrinsics"], hw=(self.h, self.w), pose=sample["pose"]
+                    sample["mesh_bbox"], sample["intrinsics"], hw=(self.h, self.w), pose=sample["pose"]
                 )
                 if self.max_num_objs == 1:
                     bbox_2ds = [bbox_2ds]
@@ -380,6 +378,12 @@ class TrackingDataset(Dataset):
 
         return sample
 
+    def add_mesh_data_to_sample(self, i, sample):
+        sample["mesh_pts"] = self.mesh_pts
+        sample["mesh_bbox"] = self.mesh_bbox
+        sample["mesh_diameter"] = self.mesh_diameter
+        return sample
+
     def get_intrinsics(self, idx):
         return self.K
 
@@ -410,7 +414,7 @@ class TrackingDataset(Dataset):
     def get_pose(self, idx):
         return load_pose(self.pose_files[idx])
 
-    def get_visibility(self, mask):
+    def get_visibility(self, mask, i):
         return mask.sum() > self.min_pixels_for_visibility
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False, scale_factor=None):
@@ -453,6 +457,17 @@ class TrackingMultiObjDataset(TrackingDataset):
         super().__init__(*args, **kwargs, max_num_objs=max(len(self.obj_ids), len(self.obj_names)))
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False):
+        load_res = self.load_obj_meshes(mesh_path, is_mm=is_mm)
+        if self.do_load_mesh_in_memory:
+            self.mesh = load_res["mesh"]
+        self.mesh_bbox = load_res["mesh_bbox"]
+        self.mesh_diameter = load_res["mesh_diameter"]
+        self.mesh_pts = load_res["mesh_pts"]
+        self.mesh_path = load_res["mesh_path"]
+        # TODO: n objs
+        self.mesh_path_orig = load_res["mesh_path_orig"][0]
+
+    def load_obj_meshes(self, mesh_path, is_mm=False):
         meshes = []
         mesh_bbox = []
         mesh_diameter = []
@@ -460,23 +475,23 @@ class TrackingMultiObjDataset(TrackingDataset):
         mesh_paths = copy.deepcopy(mesh_path)
         mesh_paths_orig = copy.deepcopy(mesh_path)
 
-        for mesh_path_obj in mesh_path:
-            load_res = load_mesh(f"{mesh_path_obj}", is_mm=is_mm)
+        load_mesh_res = wrap_with_futures(mesh_path, functools.partial(load_mesh, is_mm=is_mm), max_workers=8)
+        for idx, load_res in enumerate(load_mesh_res):
             mesh = load_res["mesh"]
             meshes.append(mesh)
             mesh_bbox.append((copy.deepcopy(np.asarray(load_res["bbox"]))))
             mesh_diameter.append(load_res["diameter"])
             mesh_pts.append(torch.tensor(trimesh.sample.sample_surface(mesh, self.num_mesh_pts)[0]).float())
-        if self.do_load_mesh_in_memory:
-            self.mesh = meshes
-        self.mesh_bbox = np.stack(mesh_bbox)
-        self.mesh_diameter = mesh_diameter
-        self.mesh_pts = torch.stack(mesh_pts)
-        self.mesh_path = mesh_paths
-        # TODO
-        self.mesh_path_orig = mesh_paths_orig[0]
+        return {
+            "mesh": meshes,
+            "mesh_bbox": np.stack(mesh_bbox),
+            "mesh_diameter": np.stack(mesh_diameter),
+            "mesh_pts": torch.stack(mesh_pts),
+            "mesh_path": mesh_paths,
+            "mesh_path_orig": mesh_paths_orig,
+        }
 
-    def get_visibility(self, mask):
+    def get_visibility(self, mask, i):
         visibilities = []
         for oname in self.obj_names:
             ocolor = self.segm_labels_to_color[oname]
