@@ -315,12 +315,15 @@ class DETRBase(nn.Module):
             )
 
         if self.use_factors:
+            assert len(factors) > 0
             self.crop_cnn = CNNFeatureExtractor(out_dim=d_model, model_name="resnet18")
-            if "scale" in factors:
-                self.scale_factor_mlp = get_clones(
+            self.factor_mlps = {}
+            for k in factors:
+                self.factor_mlps[k] = get_clones(
                     MLPFactors(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
+            self.factor_mlps = nn.ModuleDict(self.factor_mlps)
             self.uncertainty_layer = get_clones(
                 nn.Sequential(
                     nn.TransformerEncoderLayer(
@@ -333,7 +336,7 @@ class DETRBase(nn.Module):
                     nn.Linear(d_model, d_model),
                     nn.ReLU(),
                     nn.Linear(d_model, 1),
-                    nn.Sigmoid(),
+                    # nn.Sigmoid(),
                 ),
                 n_layers,
             )
@@ -500,12 +503,10 @@ class DETRBase(nn.Module):
                 crop_feats = self.crop_cnn(rgb_crop)
                 factors = {}
                 factor_latents = {}
-                if "scale" in self.factors:
-                    factor_out = self.scale_factor_mlp[layer_idx](crop_feats)
-                    pred_scale = factor_out["out"]
-                    last_hidden = factor_out["last_hidden"]
-                    factors["scale"] = pred_scale
-                    factor_latents["scale"] = last_hidden
+                for factor in self.factors:
+                    factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                    factors[factor] = factor_out["out"]
+                    factor_latents[factor] = factor_out["last_hidden"]
                 b = pred_boxes_xyxy.shape[0]
                 for k, v in factors.items():
                     factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
