@@ -44,9 +44,6 @@ class CustomSimDatasetBase(object):
         do_load_bbox_from_metadata=False,
         **kwargs,
     ):
-
-        super(CustomSimDatasetBase, self).__init__(**kwargs)
-
         self.do_remap_pose_from_isaac = do_remap_pose_from_isaac
 
         self.video_dir = kwargs["video_dir"]
@@ -68,6 +65,8 @@ class CustomSimDatasetBase(object):
             self.w2c = get_inv_pose(pose=self.c2w)
         else:
             self.c2w = None
+
+        super(CustomSimDatasetBase, self).__init__(**kwargs)
 
     def pose_remap_from_isaac(self, pose):
         rt = self.w2c @ pose

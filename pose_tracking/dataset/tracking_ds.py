@@ -240,7 +240,7 @@ class TrackingDataset(Dataset):
             return None
 
         if self.use_bg_augm or self.use_occlusion_augm:
-            if "dextreme" in str(self.video_dir):
+            if "ycbv" not in str(self.video_dir) and ("dextreme" in str(self.video_dir) or self.max_num_objs > 1):
                 sem_mask = load_semantic_mask(
                     self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h)
                 )
@@ -251,7 +251,9 @@ class TrackingDataset(Dataset):
                     ],
                 )
             else:
-                fg_mask = np.any(mask, axis=-1)
+                fg_mask = mask
+                if self.max_num_objs > 1:
+                    fg_mask = fg_mask.any(-1)
 
             if self.use_bg_augm:
                 random_bg_idx = np.random.randint(0, len(self.real_bg_paths))
@@ -365,12 +367,17 @@ class TrackingDataset(Dataset):
             sample["factors"] = {}
             if "scale" in self.factors:
                 z = sample["pose"][..., 2, 3]
+                z[z < 0] = self.max_z
+                z = np.clip(z, self.min_z, self.max_z)
                 if self.max_num_objs == 1:
                     z = [z]
                 scale_strength = calc_scale_factor_strength(z, min_val=self.max_z, max_val=self.min_z)
                 sample["factors"]["scale"] = [scale_strength]
             if "occlusion" in self.factors:
-                occlusion = get_visib_px_num(sample["mask"])
+                occ_mask = mask if "mask" in locals() else self.get_mask(i)
+                occlusion = get_visib_px_num(occ_mask)
+                # clip
+                occlusion = np.clip(occlusion, self.min_visib_px_num, self.max_visib_px_num)
                 if self.max_num_objs == 1:
                     occlusion = [occlusion]
                 occlusion_strength = calc_occlusion_factor_strength(
@@ -424,7 +431,7 @@ class TrackingDataset(Dataset):
     def get_pose(self, idx):
         return load_pose(self.pose_files[idx])
 
-    def get_visibility(self, mask, i):
+    def get_visibility(self, mask, i=None):
         return mask.sum() > self.min_pixels_for_visibility
 
     def set_up_obj_mesh(self, mesh_path, is_mm=False, scale_factor=None):
@@ -452,6 +459,7 @@ class TrackingDataset(Dataset):
                 "metadata",
                 "scene_gt",
                 "K_table",
+                "real_bg_paths",
             ],
         )
 
@@ -501,7 +509,7 @@ class TrackingMultiObjDataset(TrackingDataset):
             "mesh_path_orig": mesh_paths_orig,
         }
 
-    def get_visibility(self, mask, i):
+    def get_visibility(self, mask, i=None):
         visibilities = []
         for oname in self.obj_names:
             ocolor = self.segm_labels_to_color[oname]
