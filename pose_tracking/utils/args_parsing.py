@@ -353,7 +353,7 @@ def get_parser():
         type=str,
         default="ycbi",
         help="Dataset name",
-        choices=["ycbi", "cube_sim", "ikea", "ho3d_v3", "ikea_multiobj", "nocs", "ycbv"],
+        choices=["ycbi", "cube_sim", "ikea", "ho3d_v3", "ikea_multiobj", "nocs", "ycbv", "ycbv_synt"],
     )
     data_args.add_argument(
         "--end_frame_idx", type=int, help="Optional index of the last frame of each tracking ds for train set"

@@ -4,11 +4,10 @@ import random
 import sys
 import typing as t
 
-from tqdm import tqdm
-
 import numpy as np
 import torch
 import torch.distributed as dist
+from tqdm import tqdm
 
 TensorOrArr = t.Union[torch.Tensor, np.ndarray]
 TensorOrArrOrList = t.Union[list, torch.Tensor, np.ndarray]
@@ -242,7 +241,8 @@ def wrap_with_futures(arr, func, use_threads=True, max_workers=None):
         executor_cls = concurrent.futures.ThreadPoolExecutor
     else:
         executor_cls = concurrent.futures.ProcessPoolExecutor
+    disable = len(arr) <= 5
     with executor_cls(max_workers=max_workers) as executor:
-        res = list(tqdm(executor.map(func, arr), total=len(arr)))
+        res = list(tqdm(executor.map(func, arr), total=len(arr), disable=disable))
         res = [x for x in res if x is not None]
     return res

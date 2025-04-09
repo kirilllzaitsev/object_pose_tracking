@@ -53,7 +53,7 @@ def save_results(batch_t, pose_pred, preds_dir, gt_pose):
         np.savetxt(intrinsics_path, intrinsics)
 
 
-def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bboxs=None, labels=None):
+def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, det_res=None):
     # batch_t contains data for the t-th timestep in N sequences
     bsize = len(rgb)
     assert bsize == 1
@@ -73,11 +73,11 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         pose_path.parent.mkdir(parents=True, exist_ok=True)
         rgb_path.parent.mkdir(parents=True, exist_ok=True)
         gt_path.parent.mkdir(parents=True, exist_ok=True)
-        if bboxs is not None and labels is not None and len(labels) > 0:
+        if det_res is not None:
             bbox_path = seq_dir / "bbox" / f"{name}.json"
             bbox_path.parent.mkdir(parents=True, exist_ok=True)
             with open(bbox_path, "w") as f:
-                json.dump({"bbox": bboxs[bidx].tolist(), "labels": labels[bidx].tolist()}, f)
+                json.dump({k: v[bidx].tolist() for k, v in det_res.items() if len(v) > 0}, f)
         np.save(pose_path, pose)
         np.save(gt_path, gt_pose_formatted)
         rgb = adjust_img_for_plt(rgb)
@@ -87,22 +87,25 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, bb
         np.savetxt(intrinsics_path, intrinsics)
 
 
-def load_model_from_exp(model, exp_name, artifact_suffix="best"):
+def load_model_from_exp(model, exp_name, artifact_suffix="best", ckpt_load_fn=None):
+
+    if ckpt_load_fn is None:
+        ckpt_load_fn = load_model_from_ckpt
 
     download_res = load_artifacts_from_comet(exp_name, api=None, artifact_suffix=artifact_suffix)
     ckpt_path = download_res["checkpoint_path"]
     assert os.path.exists(ckpt_path)
-    model = load_model_from_ckpt(model, ckpt_path)
+    model = ckpt_load_fn(model, ckpt_path)
     return model
 
 
 def load_model_from_ckpt(model, ckpt_path):
-    return load_from_ckpt(ckpt_path, model)["model"]
+    return load_from_ckpt(model, ckpt_path)["model"]
 
 
 def load_from_ckpt(
-    checkpoint_path: str,
     model: nn.Module,
+    checkpoint_path: str,
     device: DeviceType = "cpu",
     optimizer: t.Any = None,
     scheduler: t.Any = None,
