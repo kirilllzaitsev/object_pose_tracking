@@ -1,5 +1,6 @@
 import argparse
 import copy
+import functools
 import json
 import logging
 import os
@@ -55,7 +56,7 @@ from pose_tracking.models.cnnlstm import (
 )
 from pose_tracking.models.cvae import CVAE
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
-from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_exp
+from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_ckpt, load_model_from_exp
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
 from torch import nn
@@ -369,13 +370,21 @@ def get_model(args, num_classes=None):
             **extra_kwargs,
         )
 
-    if args.ckpt_path:
-        print(f"Loading model from {args.ckpt_path}")
-        model = load_from_ckpt(args.ckpt_path, model)["model"]
-    if args.ckpt_exp_name:
-        artifact_suffix = "best"
-        print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
-        model = load_model_from_exp(model, args.ckpt_exp_name, artifact_suffix=artifact_suffix)
+    if args.ckpt_path or args.ckpt_exp_name:
+        ckpt_load_fn = (
+            load_model_from_ckpt
+            if args.model_name not in ["memotr"]
+            else functools.partial(load_pretrained_model, show_details=True)
+        )
+        if args.ckpt_path:
+            print(f"Loading model from {args.ckpt_path}")
+            model = ckpt_load_fn(model, args.ckpt_path)
+        if args.ckpt_exp_name:
+            artifact_suffix = "best"
+            print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
+            model = load_model_from_exp(
+                model, args.ckpt_exp_name, artifact_suffix=artifact_suffix, ckpt_load_fn=ckpt_load_fn
+            )
 
     return model
 
@@ -699,6 +708,8 @@ def get_datasets(
         ds_kwargs_custom = ycbi_kwargs
     elif ds_name in ["ikea", "custom", "custom_test", "ho3d_v3", "ikea_multiobj", "ycbv"]:
         ds_kwargs_custom = dict()
+    elif ds_name in ["ycbv_synt"]:
+        ds_kwargs_custom = dict(ycb_meshes_dir=f"{YCBV_SYNT_SCENE_DIR}/models")
     else:
         cube_sim_kwargs = dict(
             mesh_path=f"{ds_video_dir_train}/mesh/cube.obj",
@@ -885,7 +896,7 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
         ds = CustomDatasetTest(**ds_kwargs)
     elif ds_name == "ho3d_v3":
         ds = HO3DDataset(**ds_kwargs)
-    elif ds_name == "ycbv":
+    elif ds_name in ["ycbv", "ycbv_synt"]:
         ds = YCBvDataset(**ds_kwargs)
     elif ds_name == "ikea":
         ds = CustomSimDatasetIkea(**ds_kwargs)
@@ -910,7 +921,7 @@ def get_ds_dirs(args):
     elif args.ds_name in ["custom_test"]:
         ds_video_subdirs_train = args.obj_names
         ds_video_subdirs_val = args.obj_names_val
-    elif args.ds_name in ["ho3d_v3", "ycbv"]:
+    elif args.ds_name in ["ho3d_v3", "ycbv", "ycbv_synt"]:
         ds_video_subdirs_train = [Path(p).name for p in get_ordered_paths(ds_video_dir_train / "*")]
         ds_video_subdirs_val = [Path(p).name for p in get_ordered_paths(ds_video_dir_val / "*")]
     else:
@@ -921,8 +932,8 @@ def get_ds_dirs(args):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_16"]]
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
-    if "dextreme" in str(ds_video_dir_train):
-        ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
+    # if "dextreme" in str(ds_video_dir_train):
+    #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
 
     if args.do_split_train_for_val:
         assert args.val_split_share > 0
@@ -957,7 +968,7 @@ def get_ds_root_dirs(args):
     elif args.ds_name == "ycbi":
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
-    elif args.ds_name == "ycbv":
+    elif args.ds_name in ["ycbv", "ycbv_synt"]:
         if YCBV_SYNT_SCENE_DIR.exists():
             ds_video_dir_train = YCBV_SYNT_SCENE_DIR / "train_synt"
         else:
@@ -983,7 +994,7 @@ def get_num_classes(args, ds_video_dir_train):
             num_classes = 1
         else:
             num_classes = metadata["num_classes"]
-    elif args.ds_name in ["ycbi", "ycbv", "ho3d_v3"]:
+    elif args.ds_name in ["ycbi", "ycbv", "ycbv_synt", "ho3d_v3"]:
         num_classes = len(YCBV_OBJ_NAME_TO_ID) + 1
     else:
         num_classes = None
