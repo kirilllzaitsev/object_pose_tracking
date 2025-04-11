@@ -73,28 +73,31 @@ def geodesic_loss_mat(pred_rot, true_rot):
     return torch.mean(dists)
 
 
-def compute_adds_loss(pose_pred, pose_gt, points):
-    assert pose_gt.dim() == 3 and pose_gt.shape[-2:] == (4, 4)
-    assert pose_pred.shape[-2:] == (4, 4)
-    assert points.dim() == 3 and points.shape[-1] == 3
-    TXO_gt_points = transform_pts_batch(pose_gt, points)
-    TXO_pred_points = transform_pts_batch(pose_pred, points)
+
+def compute_adds_loss(pose_pred, pose_gt, pts):
+    if pose_pred.shape[-2:] == (3, 3):
+        transform_fn = rotate_pts
+    else:
+        transform_fn = transform_pts_batch
+    TXO_gt_points = transform_fn(pose_gt, pts)
+    TXO_pred_points = transform_fn(pose_pred, pts)
     dists_squared = (TXO_gt_points.unsqueeze(1) - TXO_pred_points.unsqueeze(2)) ** 2
     dists = dists_squared
     dists_norm_squared = dists_squared.sum(dim=-1)
     assign = dists_norm_squared.argmin(dim=1)
     ids_row = torch.arange(dists.shape[0]).unsqueeze(1).repeat(1, dists.shape[1])
     ids_col = torch.arange(dists.shape[1]).unsqueeze(0).repeat(dists.shape[0], 1)
-    losses = dists_squared[ids_row, assign, ids_col].mean(dim=(-1, -2))
+    losses = dists_squared[ids_row, assign, ids_col].mean(dim=(-1, -2, -3))
     return losses
 
 
-def compute_add_loss(pose_pred, pose_gt, points):
-    bsz = len(pose_gt)
-    assert pose_pred.shape == (bsz, 4, 4) and pose_gt.shape == (bsz, 4, 4)
-    assert len(points.shape) == 3 and points.shape[-1] == 3
-    lib = pick_library(points)
-    dists = lib.mean(lib.abs(transform_pts_batch(pose_gt, points) - transform_pts_batch(pose_pred, points)))
+def compute_add_loss(pose_pred, pose_gt, pts):
+    if pose_pred.shape[-2:] == (3, 3):
+        transform_fn = rotate_pts
+    else:
+        transform_fn = transform_pts_batch
+    lib = pick_library(pts)
+    dists = lib.mean((transform_fn(pose_gt, pts) - transform_fn(pose_pred, pts)) ** 2)
     return dists
 
 
