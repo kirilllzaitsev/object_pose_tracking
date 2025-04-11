@@ -2,6 +2,7 @@ import copy
 from collections import defaultdict
 
 import numpy as np
+from pose_tracking.utils.misc import is_tensor
 import torch
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.detr_utils import postprocess_bbox
@@ -231,8 +232,12 @@ def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
 
 
 def normalize_rotation_matrix(matrix):
-    U, _, Vt = np.linalg.svd(matrix)
-    return np.dot(U, Vt)
+    if is_tensor(matrix):
+        U, _, Vt = torch.linalg.svd(matrix)
+        return torch.matmul(U, Vt)
+    else:
+        U, _, Vt = np.linalg.svd(matrix)
+        return np.dot(U, Vt)
 
 
 def calc_n_deg_m_cm_errors(rt_error):

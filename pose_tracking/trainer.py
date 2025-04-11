@@ -182,7 +182,7 @@ class Trainer:
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
-        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement", "geodesic_mat"]
+        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement", "geodesic_mat","geodesic_mat_sym", "adds"]
         self.save_vis_paths = []
         self.seq_stats_all_seq = defaultdict(lambda: defaultdict(list))
 
@@ -571,7 +571,7 @@ class Trainer:
 
                 # rot loss
 
-                if self.criterion_rot_name == "displacement":
+                if self.criterion_rot_name in ["displacement", "adds"]:
                     self.criterion_rot = functools.partial(self.criterion_rot, pts=pts)
 
                 if self.do_predict_rel_pose:

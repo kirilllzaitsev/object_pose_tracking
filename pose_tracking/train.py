@@ -341,6 +341,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             lr_scheduler.load_state_dict(opt_state["scheduler"])
             logger.warning(f"Loaded optimizer state from {args.ckpt_exp_name}")
 
+    if args.lr_scaler is not None:
+        for param_group in optimizer.param_groups:
+            param_group['lr'] *= args.lr_scaler
+
+
     logger.info(trainer)
     if logdir is not None:
         logger.info(f"{logdir=} {os.path.basename(logdir)}")
