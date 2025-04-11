@@ -111,13 +111,7 @@ class TrainerMemotr(TrainerDeformableDETR):
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
         for t in ts_pbar:
-            batch_t = {}
-            for k, v in batched_seq.items():
-                if not is_empty(v):
-                    if isinstance(v, list):
-                        batch_t[k] = [x[t] for x in v]
-                    else:
-                        batch_t[k] = v[:, t]
+            batch_t = self.get_seq_slice_for_dict_seq(batched_seq, t)
 
             # print(f"{batch_t['rgb_path']}")
             rgb = batch_t["image"]
@@ -263,6 +257,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                         pose_mat_pred_metrics = pose_mat_pred_abs
                         pose_mat_gt_metrics = pose_mat_gt_abs
 
+                    # TODO: matched_idx_tgt should idx within batch as well as the batch itself
                     m_batch_avg = self.calc_metrics_batch_mot(
                         pose_mat_pred_metrics=pose_mat_pred_metrics,
                         pose_mat_gt_metrics=pose_mat_gt_metrics,
@@ -333,16 +328,24 @@ class TrainerMemotr(TrainerDeformableDETR):
                 )
                 bboxs = []
                 labels = []
+                scores = []
                 for bidx, out_b in enumerate(out_formatted):
                     keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
                     # keep = torch.ones_like(res['scores']).bool()
                     if sum(keep) == 0:
-                        print(f"{bidx=} failed")
+                        print(f"{t=} failed")
                         continue
                     boxes_b = out_b["boxes"][keep]
+                    scores_b = out_b["scores"][keep]
                     labels_b = out_b["labels"][keep]
                     bboxs.append(boxes_b)
                     labels.append(labels_b)
+                    scores.append(scores_b)
+                det_res = {
+                    "bbox": bboxs,
+                    "labels": labels,
+                    "scores": scores,
+                }
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
@@ -350,8 +353,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                     pose_pred=pose_mat_pred_abs,
                     rgb_path=batch_t["rgb_path"],
                     preds_dir=preds_dir,
-                    bboxs=bboxs,
-                    labels=labels,
+                    det_res=det_res,
                 )
 
             if do_vis:
@@ -425,6 +427,16 @@ class TrainerMemotr(TrainerDeformableDETR):
             "metrics": seq_metrics,
         }
 
+    def get_seq_slice_for_dict_seq(self, batched_seq, t):
+        batch_t = {}
+        for k, v in batched_seq.items():
+            if not is_empty(v):
+                if isinstance(v, list):
+                    batch_t[k] = [x[t] for x in v]
+                else:
+                    batch_t[k] = v[:, t]
+        return batch_t
+
     def model_forward(self, batch_t, tracks, prev_features=None, **kwargs):
         frame = batch_t["image"]
         for f in frame:
@@ -432,8 +444,6 @@ class TrainerMemotr(TrainerDeformableDETR):
         # check frame grads
         frame = tensor_list_to_nested_tensor(tensor_list=frame).to(self.device)
         out = self.model(frame=frame, tracks=tracks)
-        loss_dict, _ = self.criterion.get_mean_by_n_gts()
         return {
             "out": out,
-            "loss_dict": loss_dict,
         }
