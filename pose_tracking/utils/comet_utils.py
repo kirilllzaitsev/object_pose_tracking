@@ -115,11 +115,8 @@ def load_artifacts_from_comet(
     alternative_model_artifact_name = "model_best" if artifact_suffix == "last" else "model_last"
     alternative_model_checkpoint_path = f"{exp_dir}/{alternative_model_artifact_name}.pth"
     weights_not_exist = False or do_force_download
-    if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path, alternative_model_checkpoint_path]):
+    if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path]):
         weights_not_exist = True
-    elif os.path.exists(alternative_model_checkpoint_path) and not os.path.exists(model_checkpoint_path):
-        print(f"Using {Path(alternative_model_checkpoint_path).stem=}")
-        model_checkpoint_path = alternative_model_checkpoint_path
     args_not_exist = not os.path.exists(args_file_path)
     session_checkpoint_path = f"{exp_dir}/{session_artifact_name}.pth"
     if not os.path.exists(session_checkpoint_path):

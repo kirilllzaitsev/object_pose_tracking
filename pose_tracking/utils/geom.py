@@ -463,12 +463,6 @@ def transform_pts_batch(pose: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
 
 def transform_pts(pts, r=None, t=None, rt=None):
     """
-    Applies a rigid transformation to 3D points.
-
-    Args:
-        pts: nx3 ndarray with 3D points.
-        r: 3x3 rotation matrix.
-        t: 3x1 translation vector.
     Returns:
         nx3 ndarray with transformed 3D points.
     """
@@ -479,6 +473,14 @@ def transform_pts(pts, r=None, t=None, rt=None):
     if pts.shape[-1] == 3:
         pts = t_func(pts)
     new_pts = r @ pts + t[..., None]
+    return t_func(new_pts)
+
+
+def rotate_pts(pts, r):
+    t_func = get_transpose_func(pts)
+    if pts.shape[-1] == 3:
+        pts = t_func(pts)
+    new_pts = r @ pts
     return t_func(new_pts)
 
 

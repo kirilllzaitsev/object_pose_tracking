@@ -812,8 +812,8 @@ def plot_imgs(imgs, n_samples=15, return_fig=False):
 
 def plot_sample_dict(sample):
     rgb = sample["rgb"].squeeze()
-    depth = sample["depth"].squeeze()
-    mask = sample["mask"].squeeze()
+    depth = sample.get("depth", np.ones_like(rgb)[0]).squeeze()
+    mask = sample.get("mask", np.ones_like(rgb)[0]).squeeze()
     pose = sample["pose"].squeeze()
     if pose.shape[-1] == 7:
         pose = convert_pose_vector_to_matrix(pose)

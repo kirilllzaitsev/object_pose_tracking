@@ -76,6 +76,7 @@ def get_parser():
     train_args.add_argument("--es_patience_epochs", type=int, default=3, help="Early stopping patience")
     train_args.add_argument("--es_delta", type=float, default=1e-4, help="Early stopping delta")
     train_args.add_argument("--lr", type=float, default=1e-4, help="lr for the rest of the model")
+    train_args.add_argument("--lr_scaler", type=float, help="lr scaler")
     train_args.add_argument("--lr_encoders", type=float, default=1e-4, help="lr for encoders")
     train_args.add_argument(
         "--lrs_type", type=str, default="pl", help="Type of lr scheduler", choices=["pl", "step", "none"]

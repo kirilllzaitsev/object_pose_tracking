@@ -407,6 +407,9 @@ def get_memotr_args(args):
     config["WITH_BOX_REFINE"] = False
     config["WITH_BOX_REFINE"] = True
     config["opt_only"] = args.opt_only
+    config["rot_loss_name"] = args.rot_loss_name
+
+    config['r_num_layers_inc'] = args.r_num_layers_inc
 
     config["LR_BACKBONE"] = args.lr_encoders
     config["LR_POINTS"] = args.lr * 1e-1
@@ -810,7 +813,7 @@ def get_datasets(
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
         test_ds_kwargs["use_mask_for_visibility_check"] = False
-        test_ds_kwargs["use_bg_augm"] = False
+        test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_train) and "bg" in transform_names
         test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
@@ -939,8 +942,7 @@ def get_ds_dirs(args):
         assert args.val_split_share > 0
         ds_video_subdirs_train = ds_video_subdirs_train + ds_video_subdirs_val
         val_num_subdirs = int(len(ds_video_subdirs_train) * args.val_split_share)
-        val_random_idxs = np.random.choice(len(ds_video_subdirs_train), val_num_subdirs, replace=False)
-        ds_video_subdirs_val = [ds_video_subdirs_train[i] for i in val_random_idxs]
+        ds_video_subdirs_val = np.random.choice(ds_video_subdirs_train, val_num_subdirs, replace=False)
         ds_video_subdirs_train = [d for d in ds_video_subdirs_train if d not in ds_video_subdirs_val]
         ds_video_dir_val = ds_video_dir_train
 
