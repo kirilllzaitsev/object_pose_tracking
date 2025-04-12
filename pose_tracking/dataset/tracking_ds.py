@@ -73,7 +73,7 @@ class TrackingDataset(Dataset):
         transforms_rgb=None,
         start_frame_idx=0,
         end_frame_idx=None,
-        num_mesh_pts=2000,
+        num_mesh_pts=1000,
         mask_pixels_prob=0.0,
         rgb_file_extension="png",
         color_file_id_strs=None,
