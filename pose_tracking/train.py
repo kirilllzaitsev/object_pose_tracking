@@ -332,7 +332,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             min_lr=args.lrs_min_lr,
         )
     if args.ckpt_exp_name:
-        download_res = load_artifacts_from_comet(exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best")
+        download_res = load_artifacts_from_comet(
+            exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best", do_raise_if_missing=True
+        )
         if download_res["session_checkpoint_path"] is None:
             logger.warning(f"Checkpoint not found for {args.ckpt_exp_name}")
         else:
@@ -343,8 +345,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
     if args.lr_scaler is not None:
         for param_group in optimizer.param_groups:
-            param_group['lr'] *= args.lr_scaler
-
+            param_group["lr"] *= args.lr_scaler
 
     logger.info(trainer)
     if logdir is not None:
@@ -353,7 +354,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         logger.info(f"# Experiment created at {exp._get_experiment_url()}")
         logger.info(f'# Please leave a note about the experiment at {exp._get_experiment_url(tab="notes")}')
 
-    early_stopping = EarlyStopping(patience=max(1, args.es_patience_epochs // args.val_epoch_freq), delta=args.es_delta, verbose=True)
+    early_stopping = EarlyStopping(
+        patience=max(1, args.es_patience_epochs // args.val_epoch_freq), delta=args.es_delta, verbose=True
+    )
     artifacts = {
         "model": model.module if args.use_ddp else model,
         "optimizer": optimizer,

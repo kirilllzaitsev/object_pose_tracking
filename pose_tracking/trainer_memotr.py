@@ -109,6 +109,7 @@ class TrainerMemotr(TrainerDeformableDETR):
             device=self.device,
         )
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
+        failed_ts = []
 
         for t in ts_pbar:
             batch_t = self.get_seq_slice_for_dict_seq(batched_seq, t)
@@ -333,7 +334,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                     keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
                     # keep = torch.ones_like(res['scores']).bool()
                     if sum(keep) == 0:
-                        print(f"{t=} failed")
+                        failed_ts.append(t)
                         continue
                     boxes_b = out_b["boxes"][keep]
                     scores_b = out_b["scores"][keep]
@@ -421,6 +422,9 @@ class TrainerMemotr(TrainerDeformableDETR):
             torch.save(vis_data, save_vis_path)
             self.save_vis_paths.append(save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
+
+        if len(failed_ts) > 0:
+            self.logger.error(f"Failed steps: {failed_ts}")
 
         return {
             "losses": seq_stats,
