@@ -370,21 +370,20 @@ def get_model(args, num_classes=None):
             **extra_kwargs,
         )
 
-    if args.ckpt_path or args.ckpt_exp_name:
-        ckpt_load_fn = (
-            load_model_from_ckpt
-            if args.model_name not in ["memotr"]
-            else functools.partial(load_pretrained_model, show_details=True)
+    ckpt_load_fn = (
+        load_model_from_ckpt
+        if args.model_name not in ["memotr"]
+        else functools.partial(load_pretrained_model, show_details=True)
+    )
+    if args.ckpt_path:  # eval from a locally loaded ckpt
+        print(f"Loading model from {args.ckpt_path}")
+        model = ckpt_load_fn(model, args.ckpt_path)
+    elif args.ckpt_exp_name:  # resume training
+        artifact_suffix = "best"
+        print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
+        model = load_model_from_exp(
+            model, args.ckpt_exp_name, artifact_suffix=artifact_suffix, ckpt_load_fn=ckpt_load_fn
         )
-        if args.ckpt_path:
-            print(f"Loading model from {args.ckpt_path}")
-            model = ckpt_load_fn(model, args.ckpt_path)
-        if args.ckpt_exp_name:
-            artifact_suffix = "best"
-            print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
-            model = load_model_from_exp(
-                model, args.ckpt_exp_name, artifact_suffix=artifact_suffix, ckpt_load_fn=ckpt_load_fn
-            )
 
     return model
 
