@@ -56,7 +56,11 @@ from pose_tracking.models.cnnlstm import (
 )
 from pose_tracking.models.cvae import CVAE
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
-from pose_tracking.utils.artifact_utils import load_from_ckpt, load_model_from_ckpt, load_model_from_exp
+from pose_tracking.utils.artifact_utils import (
+    load_from_ckpt,
+    load_model_from_ckpt,
+    load_model_from_exp,
+)
 from pose_tracking.utils.comet_utils import create_tracking_exp
 from pose_tracking.utils.common import get_ordered_paths
 from torch import nn
@@ -173,7 +177,7 @@ def get_model(args, num_classes=None):
                     for p in m.parameters():
                         if p.dim() > 1:
                             nn.init.xavier_uniform_(p, 0.01)
-                memotr_args["USE_DAB"] = False
+                memotr_args["USE_DAB"] = args.tf_use_dab
         else:
             model = build_model(memotr_args, num_classes=num_classes)
 
@@ -408,7 +412,7 @@ def get_memotr_args(args):
     config["opt_only"] = args.opt_only
     config["rot_loss_name"] = args.rot_loss_name
 
-    config['r_num_layers_inc'] = args.r_num_layers_inc
+    config["r_num_layers_inc"] = args.r_num_layers_inc
 
     config["LR_BACKBONE"] = args.lr_encoders
     config["LR_POINTS"] = args.lr * 1e-1
@@ -468,6 +472,7 @@ def get_trackformer_args(args):
 
     tf_args.opt_only = args.opt_only
     tf_args.factors = args.factors
+    tf_args.uncertainty_coef = args.mt_uncertainty_coef
 
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
