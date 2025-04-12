@@ -143,6 +143,12 @@ def get_parser():
         help="Number of object queries for the transformer",
     )
     poseformer_args.add_argument(
+        "--mt_uncertainty_coef",
+        type=float,
+        default=0.1,
+        help="Weight of the uncertainty loss",
+    )
+    poseformer_args.add_argument(
         "--mt_d_model",
         type=int,
         default=256,

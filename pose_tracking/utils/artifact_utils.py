@@ -113,6 +113,7 @@ def load_from_ckpt(
     state_dicts = torch.load(
         checkpoint_path,
         map_location=device,
+        weights_only=False,
     )
     if "model" in state_dicts:
         state_dict_model = state_dicts["model"]

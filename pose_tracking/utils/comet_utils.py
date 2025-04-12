@@ -1,4 +1,5 @@
 import argparse
+import functools
 import glob
 import json
 import os
@@ -11,6 +12,8 @@ import yaml
 from comet_ml.api import API
 from pose_tracking.config import ARTIFACTS_DIR, COMET_WORKSPACE, PROJ_DIR, PROJ_NAME
 from pose_tracking.utils.args_parsing import load_args_from_file
+from pose_tracking.utils.misc import wrap_with_futures
+from tqdm import tqdm
 
 
 def log_tags(args: argparse.Namespace, exp: comet_ml.Experiment, args_to_group_map=None) -> None:
@@ -63,7 +66,7 @@ def get_latest_ckpt_epoch(
     model_name_regex: str = r"model_(\d+)\.pt*",
     project_name: str = PROJ_NAME,
 ) -> int:
-    """Infers the latest checkpoint epoch from the experiment's assets."""
+    """Infers the latest ckpt epoch from the experiment's assets."""
 
     api = API(api_key=os.environ["COMET_API_KEY"])
     exp_api = api.get(f"{COMET_WORKSPACE}/{project_name}/{exp_name}")
@@ -76,9 +79,9 @@ def get_latest_ckpt_epoch(
 
 
 def load_artifacts_from_comet(
-    exp_name: str,
+    exp_name,
     args_file_path: str = None,
-    model_checkpoint_path: str = None,
+    model_ckpt_path: str = None,
     local_artifacts_dir: str = ARTIFACTS_DIR,
     artifact_suffix: str = "best",
     args_filename: str = "args",
@@ -89,41 +92,71 @@ def load_artifacts_from_comet(
     do_load_model: bool = True,
     do_load_session: bool = False,
     do_force_download=False,
-) -> dict:
+    do_raise_if_missing=False,
+):
     """Downloads artifacts from comet.ml if they don't exist locally and returns the paths to them.
     Args:
         exp_name: The name of the Comet experiment.
         args_file_path: The local path to the args file.
-        model_checkpoint_path: The local path to the model checkpoint.
+        model_ckpt_path: The local path to the model ckpt.
         local_artifacts_dir: The directory to save the artifacts to.
         model_artifact_name: The path to the model artifact in the experiment Assets.
         args_filename: The regex to match the args file name.
         session_artifact_name: The name of the session artifact.
-        session_checkpoint_path: The path to the session checkpoint.
+        session_ckpt_path: The path to the session ckpt.
         project_name: The name of the Comet project.
         api: The comet.ml API object (takes time to initialize, so it's better to pass it as an argument if done multiple times).
-        epoch: The epoch of the model checkpoint to download. It will be inferred if not provided.
+        epoch: The epoch of the model ckpt to download. It will be inferred if not provided.
     Returns:
         A dictionary containing the paths to the artifacts.
     """
 
-    exp_dir = f"{local_artifacts_dir}/{exp_name}"
-    os.makedirs(exp_dir, exist_ok=True)
-    args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
-    model_checkpoint_path = model_checkpoint_path or f"{exp_dir}/{artifact_suffix}.pth"
+    if isinstance(exp_name, list):
+        load_artifacts_from_comet_fn = functools.partial(
+            load_artifacts_from_comet,
+            args_file_path=args_file_path,
+            model_ckpt_path=model_ckpt_path,
+            local_artifacts_dir=local_artifacts_dir,
+            artifact_suffix=artifact_suffix,
+            args_filename=args_filename,
+            session_artifact_name=session_artifact_name,
+            api=api,
+            epoch=epoch,
+            use_epoch=use_epoch,
+            do_load_model=do_load_model,
+            do_load_session=do_load_session,
+        )
+        load_ress = wrap_with_futures(exp_name, load_artifacts_from_comet_fn)
+        return load_ress
+
     artifact_suffix = artifact_suffix.replace("model_", "")
-    alternative_model_artifact_name = "model_best" if artifact_suffix == "last" else "model_last"
-    alternative_model_checkpoint_path = f"{exp_dir}/{alternative_model_artifact_name}.pth"
-    weights_not_exist = False or do_force_download
-    if do_load_model and not any(os.path.exists(x) for x in [model_checkpoint_path]):
+    exp_dir = f"{local_artifacts_dir}/{exp_name}"
+    args_file_path = args_file_path or f"{exp_dir}/{args_filename}.yaml"
+    model_artifact_name = f"model_{artifact_suffix}"
+    model_ckpt_path = model_ckpt_path or f"{exp_dir}/{model_artifact_name}.pth"
+    alt_artifact_suffix = "last" if artifact_suffix == "best" else "best"
+    alt_model_artifact_name = f"model_{alt_artifact_suffix}"
+    alt_model_ckpt_path = f"{exp_dir}/{alt_model_artifact_name}.pth"
+    # session
+    session_ckpt_path = f"{exp_dir}/{session_artifact_name}.pth"
+    session_not_exist = not os.path.exists(session_ckpt_path)
+    if session_not_exist:
+        session_ckpt_path = f"{exp_dir}/{session_artifact_name}_{artifact_suffix}.pth"  # v2 includes suffix
+        session_not_exist = not os.path.exists(session_ckpt_path)
+
+    weights_not_exist = do_load_model and do_force_download
+    if do_load_model and not os.path.exists(model_ckpt_path):
         weights_not_exist = True
     args_not_exist = not os.path.exists(args_file_path)
-    session_checkpoint_path = f"{exp_dir}/{session_artifact_name}.pth"
-    if not os.path.exists(session_checkpoint_path):
-        session_checkpoint_path = f"{exp_dir}/{session_artifact_name}_{artifact_suffix}.pth"
-    session_not_exist = not os.path.exists(session_checkpoint_path)
+    model_step = None
+    session_step = None
 
-    if any([args_not_exist, (weights_not_exist and do_load_model), (session_not_exist and do_load_session)]):
+    need_load_model = weights_not_exist and do_load_model
+    need_load_session = session_not_exist and do_load_session
+
+    os.makedirs(exp_dir, exist_ok=True)
+
+    if any([args_not_exist, need_load_model, need_load_session]):
         os.makedirs(exp_dir, exist_ok=True)
         if api is None:
             api = API(api_key=os.environ["COMET_API_KEY"])
@@ -134,6 +167,8 @@ def load_artifacts_from_comet(
         )
         print(f"loading artifacts for {exp_name=}")
         assert exp_api is not None, f"Experiment {exp_name} not found"
+
+        # args
         if args_not_exist:
             try:
                 asset_id = [
@@ -147,28 +182,31 @@ def load_artifacts_from_comet(
             except IndexError:
                 print(f"No args found with name {args_filename}")
                 args_file_path = None
-        need_load_model = weights_not_exist and do_load_model
-        need_load_session = session_not_exist and do_load_session
+
         if need_load_model or need_load_session:
             if use_epoch and epoch is None:
                 epoch = get_latest_ckpt_epoch(exp_name)
-                alternative_model_artifact_name = f"model_{artifact_suffix}_{epoch}"
-            else:
-                alternative_model_artifact_name = f"model_{artifact_suffix}"
+                model_artifact_name = f"{model_artifact_name}_{epoch}"
+                alt_model_artifact_name = f"{alt_model_artifact_name}_{epoch}"
             logged_models = exp_api.get_model_asset_list("ckpt")
             sorted_assets = sorted(logged_models, key=lambda x: x["step"], reverse=True)
+            model_assets = [x for x in sorted_assets if model_artifact_name in x["fileName"]]
+            if len(model_assets) == 0:
+                print(
+                    f"WARN: No model found with name {model_artifact_name}. Trying alternative: {alt_model_artifact_name}"
+                )
+                artifact_suffix = alt_artifact_suffix
+                model_ckpt_path = alt_model_ckpt_path
+                model_artifact_name = alt_model_artifact_name
+                model_assets = [x for x in sorted_assets if model_artifact_name in x["fileName"]]
+                assert (
+                    len(model_assets) > 0
+                ), f"No model found with name {alt_model_artifact_name}"  # no artifacts logged
             if need_load_model:
-                model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
-                if len(model_assets) == 0:
-                    print(f"WARN: No model found with name {alternative_model_artifact_name}. Trying the alternative")
-                    alternative_model_artifact_name = "model_best" if artifact_suffix == "last" else "model_last"
-                    model_assets = [x for x in sorted_assets if alternative_model_artifact_name in x["fileName"]]
-                    assert len(model_assets) > 0, f"No model found with name {alternative_model_artifact_name}"
-                    artifact_suffix = alternative_model_artifact_name.replace("model_", "")
-                    model_checkpoint_path = alternative_model_checkpoint_path
                 model_asset = model_assets[0]
-                print(f"Loading the model from step {model_asset['step']}")
-                load_asset(exp_api, model_asset["assetId"], model_checkpoint_path)
+                model_step = model_asset["step"]
+                print(f"Loading the model from step {model_step}")
+                load_asset(exp_api, model_asset["assetId"], model_ckpt_path)
                 weights_not_exist = False
             if need_load_session:
                 try:
@@ -176,28 +214,35 @@ def load_artifacts_from_comet(
                     if "session" in filenames:
                         session_artifact_name = "session"
                     else:
-                        session_artifact_name = f"session_{artifact_suffix}"
-                    session_checkpoint_path = f"{exp_dir}/{session_artifact_name}.pth"
+                        session_artifact_name = f"session_{artifact_suffix}"  # v2
+                    session_ckpt_path = f"{exp_dir}/{session_artifact_name}.pth"
                     session_asset = [x for x in sorted_assets if session_artifact_name in x["fileName"]][0]
-                    load_asset(exp_api, session_asset["assetId"], session_checkpoint_path)
+                    session_step = session_asset["step"]
+                    load_asset(exp_api, session_asset["assetId"], session_ckpt_path)
                     session_not_exist = False
-                except IndexError:
+                except IndexError as e:
                     print(f"No session found with name {session_artifact_name}")
-                    session_checkpoint_path = None
-    if do_load_model:
-        assert os.path.exists(model_checkpoint_path), f"Model checkpoint not found at {model_checkpoint_path}"
-    assert os.path.exists(args_file_path), f"Args file not found at {args_file_path}"
+                    session_ckpt_path = None
+                    if do_raise_if_missing:
+                        raise e
+    args = load_args_from_file(args_file_path)
     results = {
-        "checkpoint_path": model_checkpoint_path,
+        "args_path": args_file_path,
+        "args": args,
     }
-    if args_file_path is not None:
-        results["args_path"] = args_file_path
-        args = load_args_from_file(args_file_path)
-        if do_load_model and os.path.exists(model_checkpoint_path):
-            args.ckpt_path = model_checkpoint_path
-        results["args"] = args
+
+    if do_load_model:
+        results["checkpoint_path"] = model_ckpt_path
+        if model_step is not None:
+            results["model_step"] = model_step
+        assert os.path.exists(model_ckpt_path), f"Model ckpt not found at {model_ckpt_path}"
+        args.ckpt_path = model_ckpt_path
+    assert os.path.exists(args_file_path), f"Args file not found at {args_file_path}"
+
     if do_load_session and not session_not_exist:
-        results["session_checkpoint_path"] = session_checkpoint_path
+        results["session_checkpoint_path"] = session_ckpt_path
+        if session_step is not None:
+            results["session_step"] = session_step
     else:
         results["session_checkpoint_path"] = None
     return results
