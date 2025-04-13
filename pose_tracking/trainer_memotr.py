@@ -47,7 +47,6 @@ class TrainerMemotr(TrainerDeformableDETR):
         self.track_score_thresh = 0.5
 
         TrackInstances.rot_out_dim = self.config["rot_out_dim"]
-        TrackInstances.t_out_dim = self.config["t_out_dim"]
 
     def get_param_dicts(self):
         from memotr.train_engine import get_param_groups
