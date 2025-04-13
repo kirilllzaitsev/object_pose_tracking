@@ -181,6 +181,11 @@ def get_model(args, num_classes=None):
         else:
             model = build_model(memotr_args, num_classes=num_classes)
 
+        if args.seq_len == 1:
+            for n, p in model.named_parameters():
+                if "query_updater" in n:
+                    p.requires_grad = False
+
         args.memotr_args = memotr_args
     elif args.model_name == "trackformer":
         from trackformer.models import build_model
@@ -260,6 +265,7 @@ def get_model(args, num_classes=None):
             head_num_layers=args.rt_mlps_num_layers,
             head_hidden_dim=args.rt_hidden_dim or 256,
             factors=args.factors,
+            roi_feature_dim=args.mt_roi_feature_dim,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -782,7 +788,9 @@ def get_datasets(
                 == set()
             )
         else:
-            assert ds_video_dir_val and ds_video_subdirs_val, print(f"{ds_video_dir_val=} {ds_video_subdirs_val}")
+            assert ds_video_dir_val is not None and ds_video_subdirs_val is not None, print(
+                f"{ds_video_dir_val=} {ds_video_subdirs_val}"
+            )
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
             val_ds_kwargs["video_dir"] = Path(ds_video_dir_val)
@@ -811,12 +819,14 @@ def get_datasets(
         res["val"] = val_dataset
 
     if "test" in ds_types:
-        assert ds_video_dir_test and ds_video_subdirs_test, print(f"{ds_video_dir_test=} {ds_video_subdirs_test}")
+        assert ds_video_dir_test is not None and ds_video_subdirs_test is not None, print(
+            f"{ds_video_dir_test=} {ds_video_subdirs_test}"
+        )
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
         test_ds_kwargs["use_mask_for_visibility_check"] = False
-        test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_train) and "bg" in transform_names
+        test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_test) and "bg" in transform_names
         test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
