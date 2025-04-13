@@ -144,6 +144,7 @@ class TrackingDataset(Dataset):
         self.do_load_dino_features = dino_features_folder_name is not None
 
         self.color_files = get_ordered_paths(f"{self.video_dir}/rgb/*.{rgb_file_extension}")
+        assert len(self.color_files) > 0, f"{self.video_dir}/rgb/*.{rgb_file_extension}"
         if color_file_id_strs is not None:
             self.color_files = [f for f in self.color_files if Path(f).stem in color_file_id_strs]
 

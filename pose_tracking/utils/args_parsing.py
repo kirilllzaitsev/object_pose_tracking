@@ -131,6 +131,12 @@ def get_parser():
         choices=[2, 3],
     )
     poseformer_args.add_argument(
+        "--mt_roi_feature_dim",
+        type=int,
+        default=512,
+        help="Feature dimension of roi-extractor",
+    )
+    poseformer_args.add_argument(
         "--mt_encoding_type",
         type=str,
         default="spatial",

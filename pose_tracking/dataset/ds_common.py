@@ -128,6 +128,8 @@ def process_raw_sample(sample, **kwargs):
 def dict_collate_fn(batch):
     # result is a dict with values of size batch_size x ...
     new_b = defaultdict(list)
+    if len(batch) == 0:
+        return new_b
     for k in batch[0].keys():
         new_b[k] = [d[k] for d in batch]
     for k, v in new_b.items():
@@ -164,7 +166,7 @@ def batch_seq_collate_fn(batch):
     # result is a tensor of size batch_size with dicts having values of size seq_len x ...
     new_b = []
     for i in range(len(batch)):
-        if batch[i] is None:
+        if batch[i] is None or len(batch[i]) == 0:
             continue
         new_b.append(dict_collate_fn(batch[i]))
     new_b = dict_collate_fn(new_b)
