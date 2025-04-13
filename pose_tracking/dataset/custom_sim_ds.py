@@ -98,7 +98,7 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
                     mesh_path = mesh_path_prop
                     break
         if mesh_path is not None:
-            scale_factor = 0.0325 * 0.92 if "dextreme" in str(self.video_dir) else None
+            scale_factor = 0.0325 * 1 if "dextreme" in str(self.video_dir) else None
             self.set_up_obj_mesh(mesh_path, scale_factor=scale_factor)
 
     def get_pose(self, idx):
