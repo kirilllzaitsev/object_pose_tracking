@@ -49,6 +49,7 @@ def get_parser():
 
     train_args = parser.add_argument_group("Training arguments")
     train_args.add_argument("--use_ddp", action="store_true", help="Use Distributed Data Parallel")
+    train_args.add_argument("--do_load_session", action="store_true", help="Load session from ckpt")
     train_args.add_argument("--use_es", action="store_true", help="Use early stopping")
     train_args.add_argument("--do_log_every_ts", action="store_true", help="Log every timestep")
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")

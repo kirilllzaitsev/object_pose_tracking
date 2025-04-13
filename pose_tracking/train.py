@@ -331,7 +331,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             threshold_mode=args.lrs_threshold_mode,
             min_lr=args.lrs_min_lr,
         )
-    if args.ckpt_exp_name:
+    if args.ckpt_exp_name and args.do_load_session:
         download_res = load_artifacts_from_comet(
             exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best", do_raise_if_missing=True
         )

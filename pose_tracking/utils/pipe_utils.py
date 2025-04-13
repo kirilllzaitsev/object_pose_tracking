@@ -182,8 +182,6 @@ def get_model(args, num_classes=None):
             model = build_model(memotr_args, num_classes=num_classes)
 
         args.memotr_args = memotr_args
-        for p in model.parameters():
-            p.requires_grad = True
     elif args.model_name == "trackformer":
         from trackformer.models import build_model
 
@@ -202,6 +200,7 @@ def get_model(args, num_classes=None):
             obj_detect_checkpoint = torch.load(
                 f"{TF_DIR}/models/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint_hidden_dim_288.pth",
                 map_location="cpu",
+                weights_only=False,
             )
 
             obj_detect_state_dict = obj_detect_checkpoint["model"]
