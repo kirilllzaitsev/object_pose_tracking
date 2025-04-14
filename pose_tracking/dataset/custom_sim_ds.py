@@ -26,12 +26,13 @@ from pose_tracking.utils.geom import (
     get_inv_pose,
 )
 from pose_tracking.utils.io import load_pose, load_semantic_mask
+from pose_tracking.utils.misc import get_scale_factor
 from pose_tracking.utils.pcl import (
     downsample_pcl_via_subsampling,
     downsample_pcl_via_voxels,
 )
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
-from pose_tracking.utils.trimesh_utils import compute_pts_span
+from pose_tracking.utils.trimesh_utils import compute_pts_span, load_mesh
 
 
 class CustomSimDatasetBase(object):
@@ -98,7 +99,7 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
                     mesh_path = mesh_path_prop
                     break
         if mesh_path is not None:
-            scale_factor = 0.0325 * 1 if "dextreme" in str(self.video_dir) else None
+            scale_factor = get_scale_factor(mesh_path)
             self.set_up_obj_mesh(mesh_path, scale_factor=scale_factor)
 
     def get_pose(self, idx):
