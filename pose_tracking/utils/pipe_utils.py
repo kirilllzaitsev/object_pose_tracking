@@ -542,7 +542,6 @@ def get_trainer(
             )
         if "memotr" in args.model_name:
             extra_kwargs.update({"config": args.memotr_args})
-        extra_kwargs.update({"args": args})
     elif args.model_name in ["cvae"]:
         extra_kwargs = {"kl_loss_coef": args.cvae_kl_loss_coef}
     else:
@@ -556,6 +555,7 @@ def get_trainer(
         criterion_trans=criterion_trans,
         criterion_rot=criterion_rot,
         criterion_pose=criterion_pose,
+        args=args,
         writer=writer,
         seq_len=args.seq_len,
         do_predict_2d_t=args.do_predict_2d_t,
@@ -656,7 +656,9 @@ def get_datasets(
     do_predict_rel_pose=False,
     use_entire_seq_in_train=False,
     do_normalize_depth=False,
-    use_mask_for_bbox_2d=True,
+    use_mask_for_bbox_2d=False,
+    do_load_mesh_in_memory=False,
+    use_allocentric_pose=False,
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
@@ -670,7 +672,6 @@ def get_datasets(
     max_depth_m=10,
     dino_features_folder_name=None,
     bbox_num_kpts=8,
-    do_load_mesh_in_memory=False,
     factors=None,
     target_hw=None,
 ):
@@ -712,6 +713,7 @@ def get_datasets(
         factors=factors,
         do_skip_invisible_single_obj=not is_tracker_model,
         target_hw=target_hw,
+        use_allocentric_pose=use_allocentric_pose,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -1001,7 +1003,7 @@ def get_ds_root_dirs(args):
 
 
 def get_num_classes(args, ds_video_dir_train):
-    if "cube_" in args.ds_alias:
+    if any(x in args.ds_alias for x in ["cube_", "dextreme"]):
         num_classes = 1
     elif "ikea" in args.ds_name:
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))

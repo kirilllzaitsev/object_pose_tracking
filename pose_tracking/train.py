@@ -105,8 +105,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logdir = exp_tools["logdir"]
     exp = exp_tools["exp"]
     writer = exp_tools["writer"]
-    if is_main_process:
-        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
 
     logpath = f"{logdir}/log.log"
     logger = prepare_logger(logpath=logpath, level="INFO")
@@ -137,6 +135,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         num_classes = args.num_classes
 
+    if is_main_process:
+        log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
     print_args(args, logger=logger)
     logger.info(f"{PROJ_DIR=}")
     logger.info(f"{logdir=}")
@@ -151,6 +151,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         ds_video_dir_val=ds_video_dir_val,
         ds_video_subdirs_train=ds_video_subdirs_train,
         ds_video_subdirs_val=ds_video_subdirs_val,
+        ds_types=args.ds_types,
         transform_names=args.transform_names,
         transform_prob=args.transform_prob,
         mask_pixels_prob=args.mask_pixels_prob,
@@ -181,10 +182,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         target_hw=args.target_hw,
     )
 
-    train_dataset, val_dataset, train_as_val_dataset = (
+    train_dataset, val_dataset = (
         datasets["train"],
         datasets["val"],
-        datasets["train_as_val"],
     )
 
     logger.info(f"{ds_video_dir_train=}")
@@ -193,19 +193,24 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     logger.info(f"{len(ds_video_subdirs_val)=}")
     logger.info(f"{len(train_dataset)=}")
     logger.info(f"{len(val_dataset)=}")
-    logger.info(f"{len(train_as_val_dataset)=}")
     logger.info(f"{train_dataset.video_datasets[0]=}")
     logger.info(f"{val_dataset.video_datasets[0]=}")
-    logger.info(f"{train_as_val_dataset.video_datasets[0]=}")
+    if "train_as_val" in args.ds_types:
+        train_as_val_dataset = datasets["train_as_val"]
+        logger.info(f"{len(train_as_val_dataset)=}")
+        logger.info(f"{train_as_val_dataset.video_datasets[0]=}")
 
     if is_main_process:
+        ds_lens = {
+            "len_train_videos": len(train_dataset.video_datasets),
+            "len_val_videos": len(val_dataset.video_datasets),
+        }
+        if "train_as_val" in args.ds_types:
+            ds_lens["len_train_as_val_videos"] = len(train_as_val_dataset.video_datasets)
+
         log_params_to_exp(
             exp,
-            {
-                "len_train_videos": len(train_dataset.video_datasets),
-                "len_val_videos": len(val_dataset.video_datasets),
-                "len_train_as_val_videos": len(train_as_val_dataset.video_datasets),
-            },
+            ds_lens,
             "d",
         )
 
@@ -237,16 +242,17 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             collate_fn=collate_fn,
             num_workers=args.num_workers,
         )
-        train_as_val_sampler = DistributedSampler(
-            train_as_val_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=True
-        )
-        train_as_val_loader = DataLoader(
-            train_as_val_dataset,
-            batch_size=val_batch_size,
-            sampler=train_as_val_sampler,
-            collate_fn=collate_fn,
-            num_workers=args.num_workers,
-        )
+        if "train_as_val" in args.ds_types:
+            train_as_val_sampler = DistributedSampler(
+                train_as_val_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=True
+            )
+            train_as_val_loader = DataLoader(
+                train_as_val_dataset,
+                batch_size=val_batch_size,
+                sampler=train_as_val_sampler,
+                collate_fn=collate_fn,
+                num_workers=args.num_workers,
+            )
     else:
         shuffle = False if args.do_overfit else True
         train_loader = DataLoader(
@@ -265,18 +271,17 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             num_workers=args.num_workers,
             drop_last=True,
         )
-        train_as_val_loader = DataLoader(
-            train_as_val_dataset,
-            batch_size=val_batch_size,
-            shuffle=False,
-            collate_fn=collate_fn,
-            num_workers=args.num_workers,
-            drop_last=True,
-        )
+        if "train_as_val" in args.ds_types:
+            train_as_val_loader = DataLoader(
+                train_as_val_dataset,
+                batch_size=val_batch_size,
+                shuffle=False,
+                collate_fn=collate_fn,
+                num_workers=args.num_workers,
+                drop_last=True,
+            )
 
     model = get_model(args, num_classes=num_classes).to(device)
-
-    log_model_meta(model, exp=exp, logger=logger)
     logger.info(model)
 
     if args.use_ddp:
