@@ -217,6 +217,8 @@ class TrainerMemotr(TrainerDeformableDETR):
                 if len(target_rts) == 0:
                     pose_mat_gt_abs = torch.empty(0, 4, 4).to(self.device)
                     pose_mat_pred_abs = torch.empty(0, 4, 4).to(self.device)
+                    if self.do_predict_2d_t:
+                        center_depth_pred = torch.empty(0, 1).to(self.device)
                 else:
                     pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts])
                     t_pred = torch.cat([track.ts[matched_idx_pred[tidx]] for tidx, track in enumerate(tracks)], dim=0)
@@ -226,9 +228,10 @@ class TrainerMemotr(TrainerDeformableDETR):
                     other_values_for_metrics = self.get_req_target_values_for_metrics(targets, matched_idx_tgt)
 
                     if self.do_predict_2d_t:
-                        center_depth_pred = out["center_depth"][idx]
+                        center_depth_pred = t_pred[..., 2:]
+                        t_pred_2d = t_pred[..., :2]
                         convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                            t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                            t_pred_2d, center_depth_pred, intrinsics, hw=(h, w)
                         )
                         t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
