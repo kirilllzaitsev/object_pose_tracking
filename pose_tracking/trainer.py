@@ -20,7 +20,7 @@ from pose_tracking.metrics import (
     calc_t_error,
     eval_batch_det,
 )
-from pose_tracking.models.encoders import FrozenBatchNorm2d
+from pose_tracking.models.encoders import FrozenBatchNorm2d, is_param_part_of_encoders
 from pose_tracking.models.matcher import HungarianMatcher
 from pose_tracking.models.set_criterion import SetCriterion
 from pose_tracking.utils.artifact_utils import save_results, save_results_v2
@@ -41,6 +41,7 @@ from pose_tracking.utils.kpt_utils import (
     get_pose_from_matches,
 )
 from pose_tracking.utils.misc import (
+    is_empty,
     match_module_by_name,
     print_cls,
     reduce_dict,
@@ -70,6 +71,7 @@ class Trainer:
         hidden_dim,
         rnn_type,
         seq_len,
+        args,
         criterion_trans=None,
         criterion_rot=None,
         criterion_rot_name=None,
@@ -139,6 +141,7 @@ class Trainer:
         self.use_pnp_for_rot_pred = use_pnp_for_rot_pred
         self.use_factors = use_factors
 
+        self.args = args
         self.world_size = world_size
         self.logger = default_logger if logger is None else logger
         self.vis_epoch_freq = vis_epoch_freq
@@ -182,7 +185,12 @@ class Trainer:
         self.do_log = writer is not None
         self.use_optim_every_ts = not use_rnn
         self.vis_dir = f"{self.exp_dir}/vis"
-        self.use_rot_mat_for_loss = self.criterion_rot_name in ["displacement", "geodesic_mat","geodesic_mat_sym", "adds"]
+        self.use_rot_mat_for_loss = self.criterion_rot_name in [
+            "displacement",
+            "geodesic_mat",
+            "geodesic_mat_sym",
+            "adds",
+        ]
         self.save_vis_paths = []
         self.seq_stats_all_seq = defaultdict(lambda: defaultdict(list))
 
@@ -212,6 +220,27 @@ class Trainer:
     def __repr__(self):
         return print_cls(self, excluded_attrs=["processed_data", "model", "args", "model_without_ddp"])
 
+    def get_param_dicts(self):
+        param_dicts = [
+            {
+                "params": [
+                    p
+                    for name, p in self.model_without_ddp.named_parameters()
+                    if is_param_part_of_encoders(name, encoder_module_prefix="encoder")
+                ],
+                "lr": self.args.lr_encoders,
+            },
+            {
+                "params": [
+                    p
+                    for name, p in self.model_without_ddp.named_parameters()
+                    if not is_param_part_of_encoders(name, encoder_module_prefix="encoder")
+                ],
+                "lr": self.args.lr,
+            },
+        ]
+        return param_dicts
+
     def loader_forward(
         self,
         loader,
@@ -236,16 +265,9 @@ class Trainer:
 
         for seq_pack_idx, batched_seq in enumerate(seq_pbar):
 
-            if len(batched_seq) == 0:
+            if is_empty(batched_seq):
                 self.logger.warning(f"Empty batch at seq_pack_idx {seq_pack_idx}, skipping...")
                 continue
-            if seq_pack_idx == len(loader) - 1:
-                if (
-                    stage == "train"
-                    and self.model_name in ["trackformer"]
-                    and len(batched_seq[0].get("rgb_path", [])) <= 1
-                ):
-                    continue
 
             if self.do_reset_state:
                 batch_size = len(batched_seq[0]["rgb"])

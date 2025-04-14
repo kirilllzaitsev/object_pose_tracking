@@ -302,23 +302,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         exp_dir=logdir,
         num_classes=num_classes,
     )
-
-    if any(x in args.model_name for x in ["cnnlstm", "pizza", "cvae", "cnn", "kpt_pose", "cnn_kpt", "kpt_kpt"]):
-        optimizer = optim.AdamW(
-            [
-                {
-                    "params": [p for name, p in model.named_parameters() if is_param_part_of_encoders(name)],
-                    "lr": args.lr_encoders,
-                },
-                {
-                    "params": [p for name, p in model.named_parameters() if not is_param_part_of_encoders(name)],
-                    "lr": args.lr,
-                },
-            ],
-            weight_decay=args.weight_decay,
-        )
-    else:
-        optimizer = trainer.optimizer
+    optimizer = trainer.optimizer
+    log_model_meta(trainer.model_without_ddp, exp=exp, logger=logger)
 
     if args.lrs_type == "step" or not args.use_lrs:
         lr_scheduler = optim.lr_scheduler.StepLR(
