@@ -65,7 +65,6 @@ class TrainerDeformableDETR(Trainer):
         num_classes,
         aux_loss,
         num_dec_layers,
-        args,
         opt_only=None,
         focal_alpha=0.25,
         kpt_spatial_dim=2,
@@ -84,7 +83,6 @@ class TrainerDeformableDETR(Trainer):
         self.num_dec_layers = num_dec_layers
         self.kpt_spatial_dim = kpt_spatial_dim
         self.focal_alpha = focal_alpha
-        self.args = args
 
         self.use_pose = opt_only is None or ("rot" in opt_only and "t" in opt_only)
 
@@ -113,9 +111,9 @@ class TrainerDeformableDETR(Trainer):
         else:
             self.model_without_ddp = self.model
 
-        if "detr_kpt" in args.model_name:
+        if "detr_kpt" in self.args.model_name:
             self.encoder_module_prefix = "extractor"
-        elif any(x in args.model_name for x in ["detr", "trackformer", "memotr"]):
+        elif any(x in self.args.model_name for x in ["detr", "trackformer", "memotr"]):
             self.encoder_module_prefix = "backbone"
         else:
             self.encoder_module_prefix = None
@@ -134,8 +132,8 @@ class TrainerDeformableDETR(Trainer):
 
         self.optimizer = torch.optim.AdamW(
             param_dicts,
-            lr=args.lr,
-            weight_decay=args.weight_decay,
+            lr=self.args.lr,
+            weight_decay=self.args.weight_decay,
         )
 
     def get_param_dicts(self):

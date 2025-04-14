@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
+from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
 from pose_tracking.utils.common import detach_and_cpu, extract_idxs
@@ -53,6 +54,15 @@ class TrainerMemotr(TrainerDeformableDETR):
 
         param_groups, lr_names = get_param_groups(config=self.config, model=self.model)
         return param_groups
+
+    def freeze_encoder(self):
+        for name, p in self.model_without_ddp.named_parameters():
+            if (
+                is_param_part_of_encoders(name, self.encoder_module_prefix)
+                or ("transformer" in name and "bbox_embed" not in name)
+                or any(x in name for x in ["feature_projs"])
+            ):
+                p.requires_grad = False
 
     def batched_seq_forward(
         self,
@@ -144,12 +154,12 @@ class TrainerMemotr(TrainerDeformableDETR):
                 criterion_res["matched_idxs"],
             )
             if is_train:
-                if t < seq_length - 1:
+                # TODO: why -1 in original?
+                if t < seq_length:
                     tracks = self.model_without_ddp.postprocess_single_frame(
                         previous_tracks, new_tracks, unmatched_dets
                     )
             else:
-                # raise RuntimeError
                 tracks: list[TrackInstances] = self.model_without_ddp.postprocess_single_frame(
                     previous_tracks, new_tracks, None
                 )
@@ -171,8 +181,8 @@ class TrainerMemotr(TrainerDeformableDETR):
             loss_dict, _ = self.criterion.get_mean_by_n_gts()
             loss = self.criterion.get_sum_loss_dict(loss_dict=loss_dict)
 
-            # reduce losses over all GPUs for logging purposes
-            loss_dict_reduced_scaled = reduce_dict(loss_dict)
+            # reduce dict can be costly
+            loss_dict_reduced_scaled = loss_dict
             loss_dict_reduced_scaled["loss_bbox"] = loss_dict_reduced_scaled.pop("box_l1_loss")
             loss_dict_reduced_scaled["loss_giou"] = loss_dict_reduced_scaled.pop("box_giou_loss")
             loss_dict_reduced_scaled["loss_ce"] = loss_dict_reduced_scaled.pop("label_focal_loss")
