@@ -305,22 +305,26 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     optimizer = trainer.optimizer
     log_model_meta(trainer.model_without_ddp, exp=exp, logger=logger)
 
-    if args.lrs_type == "step" or not args.use_lrs:
-        lr_scheduler = optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=args.lrs_step_size if args.use_lrs else 1000,
-            gamma=args.lrs_gamma,
-        )
+    if args.use_lrs:
+        if args.lrs_type == "step":
+            lr_scheduler = optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=args.lrs_step_size if args.use_lrs else 1000,
+                gamma=args.lrs_gamma,
+            )
+        else:
+            lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode="min",
+                factor=args.lrs_gamma,
+                patience=max(1, args.lrs_patience // args.val_epoch_freq),
+                threshold=args.lrs_delta,
+                threshold_mode=args.lrs_threshold_mode,
+                min_lr=args.lrs_min_lr,
+            )
     else:
-        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer=optimizer,
-            mode="min",
-            factor=args.lrs_gamma,
-            patience=max(1, args.lrs_patience // args.val_epoch_freq),
-            threshold=args.lrs_delta,
-            threshold_mode=args.lrs_threshold_mode,
-            min_lr=args.lrs_min_lr,
-        )
+        lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+
     if args.ckpt_exp_name and args.do_load_session:
         download_res = load_artifacts_from_comet(
             exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best", do_raise_if_missing=True
@@ -330,7 +334,8 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         else:
             opt_state = torch.load(download_res["session_checkpoint_path"])
             optimizer.load_state_dict(opt_state["optimizer"])
-            lr_scheduler.load_state_dict(opt_state["scheduler"])
+            if args.use_lrs:
+                lr_scheduler.load_state_dict(opt_state["scheduler"])
             logger.warning(f"Loaded optimizer state from {args.ckpt_exp_name}")
 
     if args.lr_scaler is not None:
@@ -355,7 +360,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     printer = Printer(logger)
     best_val_loss = np.inf
     history = defaultdict(lambda: defaultdict(list))
-    if is_main_process:
+    if is_main_process and args.do_upload_histograms:
         log_model_stats_epoch_freq = 15 if args.do_overfit else 5
         steps_per_epoch = len(train_loader) * (1 if args.use_rnn else args.seq_len) * world_size
         watch(model, log_step_interval=steps_per_epoch * log_model_stats_epoch_freq)
@@ -405,8 +410,9 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best", do_log_session=True)
                     printer.saved_artifacts(epoch)
 
+            if args.use_lrs:
                 last_lrs_before = lr_scheduler.get_last_lr()
-                if args.lrs_type == "step" or not args.use_lrs:
+                if args.lrs_type == "step":
                     lr_scheduler.step()
                 else:
                     lr_scheduler.step(history["val"]["loss"][-1])
