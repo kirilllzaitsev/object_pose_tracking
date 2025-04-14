@@ -772,7 +772,6 @@ def allocentric_to_egocentric(allo_pose, src_type="mat", dst_type="mat", cam_ray
 
 def egocentric_to_allocentric(ego_pose, src_type="mat", dst_type="mat", cam_ray=(0, 0, 1.0)):
     # Compute rotation between ray to object centroid and optical center ray
-    assert ego_pose.ndim == 1, ego_pose
     cam_ray = np.asarray(cam_ray)
     if src_type == "mat":
         trans = ego_pose[:3, 3]

@@ -246,3 +246,16 @@ def wrap_with_futures(arr, func, use_threads=True, max_workers=None):
         res = list(tqdm(executor.map(func, arr), total=len(arr), disable=disable))
         res = [x for x in res if x is not None]
     return res
+
+
+def get_scale_factor(mesh_path):
+    from pose_tracking.utils.trimesh_utils import load_mesh
+
+    scale_factor = None
+    if any(x in str(mesh_path) for x in ["allegro", "dextreme"]):
+        bbox = load_mesh(mesh_path)["bbox"]
+        if abs(bbox[0, 0]) == 1.0:
+            scale_factor = 0.0325
+        elif abs(bbox[0, 0]) == 0.299:
+            scale_factor = 1.08
+    return scale_factor
