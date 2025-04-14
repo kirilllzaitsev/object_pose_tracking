@@ -365,6 +365,26 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         steps_per_epoch = len(train_loader) * (1 if args.use_rnn else args.seq_len) * world_size
         watch(model, log_step_interval=steps_per_epoch * log_model_stats_epoch_freq)
 
+    eval_loaders = {
+        "val": val_loader,
+    }
+    if "train_as_val" in args.ds_types:
+        eval_loaders["train_as_val"] = train_as_val_loader
+
+    def run_eval(trainer):
+        model.eval()
+        stage_stats = {}
+        with torch.no_grad():
+            for stage, loader in eval_loaders.items():
+                stage_stats[stage] = trainer.loader_forward(
+                    loader,
+                    stage="val",
+                )
+        if is_main_process:
+            for stage, stats in stage_stats.items():
+                printer.print_stats(stats, stage)
+        return stage_stats
+
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         model.train()
         if args.use_ddp:
@@ -380,24 +400,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         for k, v in train_stats.items():
             history["train"][k].append(v)
 
-        if (epoch - 1) % args.val_epoch_freq == 0:
-            model.eval()
-            with torch.no_grad():
-                val_stats = trainer.loader_forward(
-                    val_loader,
-                    stage="val",
-                )
-                train_as_val_stats = (
-                    {}
-                    if args.do_overfit
-                    else trainer.loader_forward(
-                        train_as_val_loader,
-                        stage="train_as_val",
-                    )
-                )
+        if (epoch - 1) % args.val_epoch_freq == 0 or epoch == args.num_epochs:
+            eval_stage_stats = run_eval(trainer)
             if is_main_process:
-                for stage, stats in zip(["val", "train_as_val"], [val_stats, train_as_val_stats]):
-                    printer.print_stats(stats, stage)
+                for stage, stats in eval_stage_stats.items():
                     for k, v in stats.items():
                         history[stage][k].append(v)
 
