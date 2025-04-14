@@ -164,8 +164,9 @@ def get_crops(
     bbox_xyxy,
     hw,
     crop_size=(60, 80),
+    padding=5,
 ):
-    new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=True)
+    new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=True, padding=padding)
     rgb_crop = roi_align(
         rgb,
         new_boxes,

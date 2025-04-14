@@ -26,6 +26,7 @@ def get_parser():
     pipe_args.add_argument("--exp_disabled", action="store_true", help="Disable experiment logging.")
     pipe_args.add_argument("--do_overfit", action="store_true", help="Overfit setting")
     pipe_args.add_argument("--do_debug", action="store_true", help="Debugging setting")
+    pipe_args.add_argument("--do_upload_histograms", action="store_true", help="upload weight histograms")
     pipe_args.add_argument("--use_test_set", action="store_true", help="Predict on a test set")
     pipe_args.add_argument("--do_profile", action="store_true", help="Profile the code")
     pipe_args.add_argument("--do_save_artifacts", action="store_true", help="Save artifacts")
@@ -45,6 +46,13 @@ def get_parser():
         nargs="*",
         default=[],
         help="List of args to ignore when loading from file.",
+    )
+    pipe_args.add_argument(
+        "--ds_types",
+        nargs="*",
+        default=["train", "val"],
+        help="List of dataset types to use in the pipe",
+        choices=["train", "val", "test", "train_as_val"],
     )
 
     train_args = parser.add_argument_group("Training arguments")
@@ -324,6 +332,7 @@ def get_parser():
         "--use_seq_len_curriculum", action="store_true", help="Gradually increase seq_len during training"
     )
     data_args.add_argument("--use_mask_for_bbox_2d", action="store_true", help="Use bin mask to get 2d bbox")
+    data_args.add_argument("--use_allocentric_pose", action="store_true", help="Use allocentric repr for rot")
     data_args.add_argument(
         "--val_split_share",
         type=float,
@@ -367,7 +376,7 @@ def get_parser():
         type=str,
         default="ycbi",
         help="Dataset name",
-        choices=["ycbi", "cube_sim", "ikea", "ho3d_v3", "ikea_multiobj", "nocs", "ycbv", "ycbv_synt"],
+        choices=["ycbi", "cube_sim", "ikea", "ho3d_v3", "ikea_multiobj", "nocs", "ycbv", "ycbv_synt", "custom", "custom_test"],
     )
     data_args.add_argument(
         "--end_frame_idx", type=int, help="Optional index of the last frame of each tracking ds for train set"
@@ -427,8 +436,8 @@ def postprocess_args(args, use_if_provided=True):
             if k in ignored_file_args or not hasattr(args, k):
                 continue
             setattr(args, k, v)
-        print(f"{ignored_file_args=}")
-        print(f"{legacy_args=}")
+        print(f"{sorted(ignored_file_args)=}")
+        print(f"{sorted(legacy_args)=}")
 
     if args.do_overfit:
         args.dropout = 0.0

@@ -188,7 +188,7 @@ def log_model_meta(model: nn.Module, exp: comet_ml.Experiment = None, logger=Non
             exp.log_parameters(x)
 
     for name, submodule in model.named_children():  # Only immediate submodules
-        num_params = sum(p.numel() for p in submodule.parameters())
+        num_params = sum(p.numel() for p in submodule.parameters() if p.requires_grad)
         printer(f"num_params_{name}: {num_params}")
         sender({f"model/num_params_{name}": num_params})
 

@@ -52,7 +52,6 @@ class PIZZA(nn.Module):
                 nn.Linear(400, 200),
                 nn.BatchNorm1d(200),
                 nn.ReLU(inplace=True),
-                # nn.Sigmoid(),
             )
             self.fc_translation2d = nn.Linear(200, 2)
             self.fc_depth = nn.Linear(200, 1)
