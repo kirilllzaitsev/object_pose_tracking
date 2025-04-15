@@ -25,7 +25,7 @@ from pose_tracking.utils.kpt_utils import (
     get_kpt_within_mask_indicator,
     load_extractor,
 )
-from pose_tracking.utils.misc import print_cls
+from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from timm.models.resnet import resnet18, resnet50
 from torchvision.models import resnet18, resnet50, resnet101
@@ -171,6 +171,7 @@ class DETRBase(nn.Module):
         final_feature_dim=None,
         pose_token_time_encoding="sin",
         factors=None,
+        roi_feature_dim=512,
     ):
         super().__init__()
 
@@ -254,7 +255,7 @@ class DETRBase(nn.Module):
         if self.use_rot:
             rot_mlp_in_dim = d_model
             if use_roi:
-                rot_mlp_in_dim += d_model
+                rot_mlp_in_dim += roi_feature_dim
             if do_refinement:
                 rot_mlp_in_dim += self.d_model if do_refinement_with_pose_token else self.rot_out_dim
             self.rot_mlp_in_dim = rot_mlp_in_dim
@@ -302,25 +303,16 @@ class DETRBase(nn.Module):
             name = f"layer_{i}"
             layer.register_forward_hook(get_hook(self.decoder_outs, name))
 
-        if use_roi:
-            assert final_feature_dim is not None
-            self.rgb_roi_cnn = nn.Sequential(
-                nn.Conv2d(final_feature_dim, head_hidden_dim, kernel_size=3, padding=1, stride=1),
-                FrozenBatchNorm2d(head_hidden_dim),
-                nn.ReLU(),
-                nn.Conv2d(head_hidden_dim, head_hidden_dim, kernel_size=3, padding=1, stride=1),
-                FrozenBatchNorm2d(head_hidden_dim),
-                nn.ReLU(),
-                nn.AdaptiveAvgPool2d((1, 1)),
-            )
+        if self.use_roi:
+            self.roi_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
 
         if self.use_factors:
             assert len(factors) > 0
-            self.crop_cnn = CNNFeatureExtractor(out_dim=d_model, model_name="resnet18")
+            self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
             self.factor_mlps = {}
             for k in factors:
                 self.factor_mlps[k] = get_clones(
-                    MLPFactors(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
+                    MLPFactors(roi_feature_dim, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
@@ -340,6 +332,8 @@ class DETRBase(nn.Module):
                 ),
                 n_layers,
             )
+
+        init_params(self)
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
         if encoding_type == "learned":
@@ -446,22 +440,16 @@ class DETRBase(nn.Module):
                 pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens)
                 pose_token = pose_layers_tokens_enc[:, -self.n_queries :]
 
-            t_mlp_in = pose_token
+            t_mlp_in = pose_token.clone()
             if self.use_roi:
-                assert img_features is not None
+                assert rgb is not None
+                hw = rgb.shape[-2:]
                 pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-                ind = torch.arange(pred_boxes_xyxy.shape[0]).unsqueeze(1)
-                ind = ind.type_as(pred_boxes_xyxy)
-                pred_boxes_xyxy_roi = (
-                    torch.cat((ind.unsqueeze(1).repeat(1, self.n_queries, 1), pred_boxes_xyxy), dim=-1)
-                    .float()
-                    .view(-1, 5)
-                )
-                roi_features = roi_align(img_features, pred_boxes_xyxy_roi, output_size=(7, 7), spatial_scale=1.0)
-                roi_features_cnn = self.rgb_roi_cnn(roi_features)
-                bs = ind.shape[0]
-                roi_features_cnn = roi_features_cnn.view(bs, self.n_queries, -1)
-                rot_mlp_in = torch.cat([pose_token, roi_features_cnn], dim=-1)
+                rgb_crop = get_crops(rgb, pred_boxes_xyxy, hw=hw, crop_size=(60 * 1, 80 * 1), padding=5)
+                crop_feats = self.roi_cnn(rgb_crop)
+                crop_feats = rearrange(crop_feats, "(b q) d -> b q d", q=self.n_queries)
+                # TODO: check allocentric
+                rot_mlp_in = torch.cat([pose_token, crop_feats], dim=-1)
             else:
                 rot_mlp_in = pose_token
             if self.do_refinement:
@@ -519,7 +507,7 @@ class DETRBase(nn.Module):
                 u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](u_in)
                 u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
-                out["uncertainty"] = u_out[..., 0, 0]
+                out["uncertainty"] = u_out[..., 0, 0]  # idxs for obj query + placeholder
 
             out["pose_token"] = pose_token
             outs.append(out)
