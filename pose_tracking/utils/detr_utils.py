@@ -161,26 +161,9 @@ def prepare_bbox_for_cropping(bbox, hw, padding=5, is_normalized=False):
 
 def get_crops(
     rgb,
-    bbox_cxcywh,
+    bbox_xyxy,
     hw,
-    fixed_crop_size=(60, 80),
+    crop_size=(60, 80),
     padding=5,
-    use_fixed_crop_size=False,
-):
-    bbox_xyxy = box_cxcywh_to_xyxy(bbox_cxcywh)
     new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=True, padding=padding)
-    if use_fixed_crop_size:
-        crop_size = fixed_crop_size
-    else:
-        h, w = (hw[:, 0], hw[:, 1]) if is_tensor(hw) else hw
-        obj_wh = bbox_cxcywh[..., 2:4]
-        obj_wh = einops.rearrange(obj_wh, "b n c -> (b n) c")
-        crop_size = (obj_wh[..., 0] * h), obj_wh[..., 1] * w
-        # merge crop_size
-        crop_size = list(torch.stack(crop_size, dim=1).tolist())
-    rgb_crop = roi_align(
         rgb,
-        new_boxes,
-        crop_size,
-    )
-    return rgb_crop
