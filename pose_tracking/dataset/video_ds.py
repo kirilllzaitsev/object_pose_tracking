@@ -197,14 +197,14 @@ class VideoDatasetTracking(VideoDataset):
             sample = self.rm_invisible_obj(sample, obj_visibility_mask)
             sample_prev = self.rm_invisible_obj(sample_prev, prev_obj_visibility_mask)
 
-
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
             new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
             new_sample["bbox_2d"] = sample.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["class_id"] = sample["class_id"]
+            new_sample["class_name"] = sample["class_name"]
             new_sample["intrinsics"] = sample["intrinsics"]
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
-            pose = pose_all_objs
+            pose = sample["pose"]
             if pose.ndim == 1:
                 pose = pose[None]
 
@@ -216,10 +216,11 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
             new_sample["prev_bbox_2d"] = sample_prev.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["prev_class_id"] = sample_prev["class_id"]
+            new_sample["prev_class_name"] = sample_prev["class_name"]
             new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
             new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
 
-            prev_pose = prev_pose_all_objs
+            prev_pose = sample_prev["pose"]
             if prev_pose.ndim == 1:
                 prev_pose = prev_pose[None]
             new_sample["prev_pose"] = prev_pose
@@ -326,6 +327,7 @@ class VideoDatasetTracking(VideoDataset):
                     "is_visible",
                     "factors",
                     "visible_obj_idxs",
+                    "class_name",
                 ]
                 + mesh_keys
                 if k in new_sample

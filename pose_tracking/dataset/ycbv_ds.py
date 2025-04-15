@@ -87,6 +87,7 @@ class YCBvDataset(TrackingMultiObjDataset):
         # todo: ensure obj_id=class_id
         # synt is single-frame -> doesn't matter if track_ids correspond to class_ids
         sample["class_id"] = self.get_instance_ids_in_image(idx) if self.is_synt else self.obj_ids
+        sample["class_name"] = [self.obj_id_to_names[oid] for oid in sample["class_id"]]
 
         return sample
 
