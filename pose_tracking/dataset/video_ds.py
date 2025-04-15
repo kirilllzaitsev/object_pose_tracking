@@ -148,7 +148,7 @@ class VideoDatasetTracking(VideoDataset):
             ).item()
         else:
             seq_start = max(1, seq_start)
-            timesteps = min(timesteps, (len(self.ds) - seq_start) // seq_step)
+        timesteps = min(timesteps, (len(self.ds) - seq_start) // seq_step)
         seq_start = max(seq_start, seq_step)
 
         assert seq_start < len(self.ds), f"{seq_start=}"

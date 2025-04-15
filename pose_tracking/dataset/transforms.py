@@ -24,7 +24,7 @@ def get_transforms(transform_names=None, transform_prob=0.75):
     if "motion_blur" in transform_names:
         ts.append(A.MotionBlur(p=0.4, blur_limit=(3, 21)))
     if "gamma" in transform_names:
-        ts.append(A.RandomGamma(p=0.1, gamma_limit=(80, 120)))
+        ts.append(A.RandomGamma(p=0.1, gamma_limit=(60, 140)))
     if "hue" in transform_names:
         ts.append(A.HueSaturationValue(p=0.1, val_shift_limit=(-40, -20)))
     if "norm" in transform_names:
