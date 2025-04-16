@@ -485,7 +485,7 @@ class DETRBase(nn.Module):
                 pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
                 rgb_crop = get_crops(
                     rgb,
-                    pred_boxes_xyxy,
+                    pred_boxes_xyxy.detach(),
                     hw=hw,
                 )
                 crop_feats = self.crop_cnn(rgb_crop)
@@ -503,7 +503,7 @@ class DETRBase(nn.Module):
                 out["factors"] = factors
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
-                u_in = torch.cat([o.unsqueeze(-1), all_factor_latents], dim=-1)
+                u_in = torch.cat([o.unsqueeze(-1).detach(), pose_token.unsqueeze(-1).detach(), all_factor_latents], dim=-1)
                 u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](u_in)
                 u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
