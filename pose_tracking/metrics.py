@@ -2,11 +2,12 @@ import copy
 from collections import defaultdict
 
 import numpy as np
-from pose_tracking.utils.misc import is_tensor
 import torch
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.detr_utils import postprocess_bbox
 from pose_tracking.utils.geom import transform_pts, world_to_cam
+from pose_tracking.utils.kpt_utils import is_torch
+from pose_tracking.utils.misc import is_tensor, pick_library
 from pose_tracking.utils.trimesh_utils import get_posed_model_pts
 from scipy.spatial import cKDTree
 from sklearn import metrics
@@ -43,24 +44,22 @@ def calc_metrics(
         use_miou: whether to include miou
         use_symmetry: whether to use symmetry when calculating miou
         diameter: diameter of the object for ADD/ADDS-10 calculation
-
+        is_meters: either m or mm
+    Returns:
+        res: dictionary of metrics, dist metrics are in mm, angles in degrees
     """
     pred_rt = cast_to_numpy(pred_rt)
     gt_rt = cast_to_numpy(gt_rt)
     if pts is not None:
         pts = cast_to_numpy(pts)
-    if is_meters:
-        pred_rt = copy.deepcopy(pred_rt)
-        pred_rt[:3, 3] *= 1000
-        gt_rt = copy.deepcopy(gt_rt)
-        gt_rt[:3, 3] *= 1000
     res = {}
+    dist_scaler_to_mm = 1e3 if is_meters else 1  # m to mm
     try:
         add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
-        res["add"] = add
+        res["add"] = add * dist_scaler_to_mm
         if include_adds:
             adds = calc_adds(pred_rt, gt_rt, pts=pts, model=model)
-            res["adds"] = adds
+            res["adds"] = adds * dist_scaler_to_mm
     except Exception as e:
         log_fn(f"Error calculating metrics: {e}\n{locals()=}")
         res.update(
@@ -81,8 +80,6 @@ def calc_metrics(
     if use_miou:
         assert bbox_3d is not None
         bbox_3d = copy.deepcopy(cast_to_numpy(bbox_3d)).squeeze()
-        if is_meters:
-            bbox_3d *= 1000
         miou = calc_3d_iou_new(
             pred_rt,
             gt_rt,
@@ -94,12 +91,11 @@ def calc_metrics(
         res["miou"] = miou
 
     rt_errors = calc_rt_errors(pred_rt, gt_rt, class_name=class_name, handle_visibility=handle_visibility)
+    rt_errors["t_err"] *= dist_scaler_to_mm
     res.update(rt_errors)
 
     if diameter is not None:
         diameter = cast_to_numpy(diameter)
-        if is_meters:
-            diameter *= 1000
         thresh = diameter * 0.1
         res["add10"] = add < thresh
         if include_adds:
@@ -196,8 +192,14 @@ def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
     return result
 
 
-def calc_t_error(T1, T2):
-    return np.linalg.norm(T1 - T2)
+def calc_t_error(T1, T2, do_reduce=True):
+    if is_torch(T1):
+        res = torch.linalg.norm(T1 - T2, dim=-1)
+    else:
+        res = np.linalg.norm(T1 - T2, axis=-1)
+    if do_reduce:
+        res = res.mean()
+    return res
 
 
 def calc_r_error(rot_pred, rot_gt, handle_visibility=False, class_name=""):
