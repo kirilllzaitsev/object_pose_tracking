@@ -13,6 +13,7 @@ from pose_tracking.dataset.ds_meta import (
     YCBV_OBJ_ID_TO_NAME,
     YCBV_OBJ_NAME_TO_COLOR,
     YCBV_OBJ_NAME_TO_ID,
+    YCBV_SYMMETRY_OBJ_NAMES,
     get_ycb_class_id_from_obj_name,
 )
 from pose_tracking.dataset.tracking_ds import TrackingDataset, TrackingMultiObjDataset
@@ -87,7 +88,7 @@ class YCBvDataset(TrackingMultiObjDataset):
         # todo: ensure obj_id=class_id
         # synt is single-frame -> doesn't matter if track_ids correspond to class_ids
         sample["class_id"] = self.get_instance_ids_in_image(idx) if self.is_synt else self.obj_ids
-        sample["class_name"] = [self.obj_id_to_names[oid] for oid in sample["class_id"]]
+        sample["is_sym"] = [self.obj_id_to_names[oid] in YCBV_SYMMETRY_OBJ_NAMES for oid in sample["class_id"]]
 
         return sample
 

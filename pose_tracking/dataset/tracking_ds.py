@@ -90,7 +90,6 @@ class TrackingDataset(Dataset):
         is_val=True,
         factors=None,
         do_skip_invisible_single_obj=True,
-        use_mask_for_visibility_check=True,
         do_filter_invisible_single_obj_frames=False,
         use_bg_augm=False,
     ):
@@ -114,8 +113,6 @@ class TrackingDataset(Dataset):
         self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
         self.do_load_mesh_in_memory = do_load_mesh_in_memory
         self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
-        self.use_mask_for_visibility_check = use_mask_for_visibility_check
-        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames
         self.use_bg_augm = use_bg_augm
 
         self.video_dir = video_dir
@@ -160,6 +157,8 @@ class TrackingDataset(Dataset):
         self.mesh_pts = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
+        self.use_mask_for_visibility_check = include_mask
+        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames and include_mask
         self.t_dim = 3 if t_repr == "3d" else 2
 
         if shorter_side is not None:
@@ -189,7 +188,9 @@ class TrackingDataset(Dataset):
 
         if do_filter_invisible_single_obj_frames:
             idxs = range(len(self.color_files))
-            is_visible = wrap_with_futures(idxs, functools.partial(check_is_visible_at_least_one_obj, ds=self))
+            is_visible = wrap_with_futures(
+                idxs, functools.partial(check_is_visible_at_least_one_obj, ds=self), disable_tqdm=True
+            )
             self.color_files = [f for idx, f in enumerate(self.color_files) if is_visible[idx]]
             self.pose_files = [f for idx, f in enumerate(self.pose_files) if is_visible[idx]]
 
@@ -206,11 +207,11 @@ class TrackingDataset(Dataset):
         if self.use_factors:
             idxs = range(len(self)) if len(self) < 100 else np.linspace(0, len(self) - 1, 100).astype(int)
             if "occlusion" in self.factors:
-                masks = wrap_with_futures(idxs, functools.partial(self.get_mask))
+                masks = wrap_with_futures(idxs, functools.partial(self.get_mask), disable_tqdm=True)
                 visib_px_nums = [get_visib_px_num(s) for s in masks]
                 self.max_visib_px_num, self.min_visib_px_num = np.quantile(visib_px_nums, [0.95, 0.05])
             if "scale" in self.factors:
-                poses = wrap_with_futures(idxs, functools.partial(self.get_pose))
+                poses = wrap_with_futures(idxs, functools.partial(self.get_pose), disable_tqdm=True)
                 zs = [pose[..., 2, 3] for pose in poses]
                 zs = [z for z in zs if z > 0.001]
                 self.max_z, self.min_z = np.quantile(zs, [0.95, 0.05])
