@@ -1,8 +1,8 @@
 import functools
 
-from pose_tracking.metrics import normalize_rotation_matrix
 import torch
-from pose_tracking.utils.geom import rotate_pts_batch, transform_pts_batch
+from pose_tracking.metrics import normalize_rotation_matrix
+from pose_tracking.utils.geom import rotate_pts, rotate_pts_batch, transform_pts_batch
 from pose_tracking.utils.misc import pick_library
 from torch import nn
 from torch.nn import functional as F
@@ -23,20 +23,14 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
-def geodesic_mat_loss(m1, m2):
-    # matrices batch*3*3
-    # both matrix are orthogonal rotation matrices
-    # out theta between 0 to 180 degree batch
-    m = torch.bmm(m1, m2.transpose(1, 2))  # batch*3*3
-
-    cos = (m[:, 0, 0] + m[:, 1, 1] + m[:, 2, 2] - 1) / 2
-    cos = torch.clamp(cos, -1, 1)
-
-    theta = torch.acos(cos)
-
-    # theta = torch.min(theta, 2*np.pi - theta)
-
-    return torch.mean(theta)
+def geodesic_loss_mat(pred_rot, true_rot, do_reduce=True):
+    R_diffs = pred_rot @ true_rot.transpose(-1, -2)
+    traces = R_diffs.diagonal(dim1=-2, dim2=-1).sum(-1)
+    dists = torch.acos(torch.clamp((traces - 1) / 2, -1, 1))
+    res = dists
+    if do_reduce:
+        res = res.mean()
+    return res
 
 
 def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts, dist_loss="mse"):
@@ -66,12 +60,64 @@ def videopose_loss(pred_quat, true_quat, eps=1e-8):
     return quat_loss + quat_reg_loss
 
 
-def geodesic_loss_mat(pred_rot, true_rot):
-    R_diffs = normalize_rotation_matrix(pred_rot) @ true_rot.permute(0, 2, 1)
-    traces = R_diffs.diagonal(dim1=-2, dim2=-1).sum(-1)
-    dists = torch.acos(torch.clamp((traces - 1) / 2, -1, 1))
-    return torch.mean(dists)
+def geodesic_loss_mat_sym(
+    rot_pred, rot_gt, handle_visibility=False, class_name="", do_return_deg=False, do_reduce=True
+):
+    """
+    rot_pred, rot_gt: torch.Tensor of shape (3, 3)
+    Returns: rotation error in degrees (scalar)
+    """
 
+    if rot_pred.ndim == 3:
+        thetas = [
+            geodesic_loss_mat_sym(
+                rot_pred[i], rot_gt[i], handle_visibility, class_name, do_return_deg=do_return_deg, do_reduce=do_reduce
+            )
+            for i in range(rot_pred.shape[0])
+        ]
+        thetas = torch.stack(thetas)
+        if do_reduce:
+            thetas = thetas.mean()
+        return thetas
+
+    y = torch.tensor([0.0, 1.0, 0.0], device=rot_pred.device)
+
+    if class_name in ["bottle", "can", "bowl"]:
+        y1 = rot_gt @ y
+        y2 = rot_pred @ y
+        y1 = y1.flatten()
+        y2 = y2.flatten()
+        cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0, 1.0)
+        theta = torch.acos(cos_theta)
+
+    elif class_name == "mug" and handle_visibility:
+        y1 = rot_gt @ y
+        y2 = rot_pred @ y
+        y1 = y1.flatten()
+        y2 = y2.flatten()
+        cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0, 1.0)
+        theta = torch.acos(cos_theta)
+
+    elif class_name in ["phone", "eggbox", "glue"]:
+        y_180_RT = torch.diag(torch.tensor([-1.0, 1.0, -1.0], device=rot_pred.device))
+        R = rot_gt @ rot_pred.transpose(-1, -2)
+        R_sym = rot_gt @ y_180_RT @ rot_pred.transpose(-1, -2)
+
+        trace_R = torch.clamp((R.trace() - 1) / 2, -1.0, 1.0)
+        trace_R_sym = torch.clamp((R_sym.trace() - 1) / 2, -1.0, 1.0)
+
+        theta = torch.min(torch.acos(trace_R), torch.acos(trace_R_sym))
+
+    else:
+        R_rel = rot_pred.transpose(-1, -2) @ rot_gt
+        trace = torch.clamp((torch.einsum("...ii", R_rel) - 1) / 2, -1.0, 1.0)
+        theta = torch.acos(trace)
+
+    if do_reduce:
+        theta = theta.mean()
+    if do_return_deg:
+        theta = theta * 180 / torch.pi
+    return theta
 
 
 def compute_adds_loss(pose_pred, pose_gt, pts):
@@ -97,7 +143,7 @@ def compute_add_loss(pose_pred, pose_gt, pts):
     else:
         transform_fn = transform_pts_batch
     lib = pick_library(pts)
-    dists = lib.mean((transform_fn(pose_gt, pts) - transform_fn(pose_pred, pts)) ** 2)
+    dists = lib.mean((transform_fn(pts, pose_gt) - transform_fn(pts, pose_pred)) ** 2)
     return dists
 
 
@@ -234,7 +280,11 @@ def get_rot_loss(rot_loss_name):
     elif rot_loss_name == "geodesic":
         criterion_rot = geodesic_loss
     elif rot_loss_name == "geodesic_mat":
-        criterion_rot = geodesic_mat_loss
+        criterion_rot = geodesic_loss_mat
+    elif rot_loss_name == "geodesic_mat_sym":
+        criterion_rot = geodesic_loss_mat_sym
+    elif rot_loss_name == "adds":
+        criterion_rot = compute_adds_loss
     elif rot_loss_name == "mse":
         criterion_rot = nn.MSELoss()
     elif rot_loss_name == "rmse":
