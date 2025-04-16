@@ -113,7 +113,7 @@ def get_parser():
         type=str,
         default="mse",
         help="Rotation loss name",
-        choices=["geodesic", "mse", "rmse", "mae", "huber", "videopose", "displacement", "geodesic_mat"],
+        choices=["geodesic", "mse", "rmse", "mae", "huber", "videopose", "displacement", "geodesic_mat", "adds"],
     )
     train_args.add_argument(
         "--opt_only",

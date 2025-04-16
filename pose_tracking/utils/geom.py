@@ -676,8 +676,9 @@ def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):
     # abs 2d center to abs 3d center
     t_pred_2d_denorm = t_pred.detach().clone()
     if hw is not None:
-        t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * hw[1]
-        t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * hw[0]
+        h, w = hw.unbind(-1) if is_tensor(hw) else hw
+        t_pred_2d_denorm[:, 0] = t_pred_2d_denorm[:, 0] * w
+        t_pred_2d_denorm[:, 1] = t_pred_2d_denorm[:, 1] * h
 
     t_pred_2d_backproj = []
     for sample_idx in range(len(t_pred)):

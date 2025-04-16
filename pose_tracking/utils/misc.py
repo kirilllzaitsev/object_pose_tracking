@@ -236,14 +236,14 @@ def print_error_locals():
     print("========================================")
 
 
-def wrap_with_futures(arr, func, use_threads=True, max_workers=None):
+def wrap_with_futures(arr, func, use_threads=True, max_workers=None, disable_tqdm=False):
     if use_threads:
         executor_cls = concurrent.futures.ThreadPoolExecutor
     else:
         executor_cls = concurrent.futures.ProcessPoolExecutor
-    disable = len(arr) <= 5
+    disable_tqdm = disable_tqdm or len(arr) <= 5
     with executor_cls(max_workers=max_workers) as executor:
-        res = list(tqdm(executor.map(func, arr), total=len(arr), disable=disable))
+        res = list(tqdm(executor.map(func, arr), total=len(arr), disable=disable_tqdm))
         res = [x for x in res if x is not None]
     return res
 

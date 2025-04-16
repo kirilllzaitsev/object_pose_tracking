@@ -827,7 +827,6 @@ def get_datasets(
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
-        test_ds_kwargs["use_mask_for_visibility_check"] = False
         test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_test) and "bg" in transform_names
         test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
         test_dataset = get_video_ds(
