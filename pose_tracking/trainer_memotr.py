@@ -11,7 +11,10 @@ from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
 from pose_tracking.utils.common import detach_and_cpu, extract_idxs
-from pose_tracking.utils.detr_utils import postprocess_detr_outputs
+from pose_tracking.utils.detr_utils import (
+    postprocess_detr_boxes,
+    postprocess_detr_outputs,
+)
 from pose_tracking.utils.geom import convert_2d_t_to_3d, egocentric_delta_pose_to_pose
 from pose_tracking.utils.misc import is_empty, reduce_dict
 from pose_tracking.utils.pose import convert_r_t_to_rt
@@ -22,12 +25,19 @@ from pose_tracking.utils.rotation_conversions import (
 )
 from tqdm import tqdm
 
+from memotr.models.runtime_tracker import RuntimeTracker
+
 try:
     from memotr.structures.track_instances import TrackInstances
     from memotr.submit_engine import filter_by_area, filter_by_score
     from memotr.utils.nested_tensor import tensor_list_to_nested_tensor
 except:
     pass
+
+
+def filter_by_score(tracks: TrackInstances, thresh: float = 0.7):
+    keep = torch.max(tracks.scores, dim=-1).values > thresh
+    return tracks[keep]
 
 
 class TrainerMemotr(TrainerDeformableDETR):
@@ -120,6 +130,19 @@ class TrainerMemotr(TrainerDeformableDETR):
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
         failed_ts = []
 
+        if not is_train:
+            tracker = RuntimeTracker(
+                det_score_thresh=0.5,
+                track_score_thresh=0.5,
+                miss_tolerance=30,
+                use_motion=False,
+                motion_min_length=0,
+                motion_max_length=0,
+                visualize=False,
+                use_dab=self.config["USE_DAB"],
+                matcher=self.criterion.matcher,
+            )
+
         for t in ts_pbar:
             batch_t = self.get_seq_slice_for_dict_seq(batched_seq, t)
 
@@ -136,32 +159,33 @@ class TrainerMemotr(TrainerDeformableDETR):
             )
             out = model_forward_res["out"]
 
-            try:
-                criterion_res = self.criterion.process_single_frame(
-                    model_outputs=out, tracked_instances=tracks, frame_idx=t
-                )
-            except Exception as e:
-                print(f"Error in process_single_frame: {e}")
-                print(f"{out=}")
-                print(f"{tracks=}")
-                print(f"{t=}")
-                print(f"{batch_t=}")
-                raise e
-            previous_tracks, new_tracks, unmatched_dets, indices = (
-                criterion_res["tracked_instances"],
-                criterion_res["new_trackinstances"],
-                criterion_res["unmatched_detections"],
-                criterion_res["matched_idxs"],
-            )
             if is_train:
-                # TODO: why -1 in original?
+                try:
+                    criterion_res = self.criterion.process_single_frame(
+                        model_outputs=out, tracked_instances=tracks, frame_idx=t
+                    )
+                except Exception as e:
+                    print(f"Error in process_single_frame: {e}")
+                    print(f"{out=}")
+                    print(f"{tracks=}")
+                    print(f"{t=}")
+                    print(f"{batch_t=}")
+                    raise e
+                previous_tracks, new_tracks, unmatched_dets, indices = (
+                    criterion_res["tracked_instances"],
+                    criterion_res["new_trackinstances"],
+                    criterion_res["unmatched_detections"],
+                    criterion_res["matched_idxs"],
+                )
+                # TODO: why -1 in original? they don't calc metrics, hence do not need tracks
                 if t < seq_length:
                     tracks = self.model_without_ddp.postprocess_single_frame(
                         previous_tracks, new_tracks, unmatched_dets
                     )
             else:
+                previous_tracks2, new_tracks2 = tracker.update(model_outputs=out, tracks=tracks, batch=batch_t)
                 tracks: list[TrackInstances] = self.model_without_ddp.postprocess_single_frame(
-                    previous_tracks, new_tracks, None
+                    previous_tracks2, new_tracks2, None
                 )
                 # tracks_result = tracks[0].to(torch.device("cpu"))
                 # tracks_result = filter_by_score(tracks_result, thresh=self.result_score_thresh)
@@ -335,30 +359,44 @@ class TrainerMemotr(TrainerDeformableDETR):
             if save_preds:
                 assert self.use_pose
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                target_sizes = torch.stack([x["size"] for x in batch_t["target"]])
-                out_formatted = postprocess_detr_outputs(
-                    out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
-                )
-                bboxs = []
-                labels = []
-                scores = []
-                for bidx, out_b in enumerate(out_formatted):
-                    keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
-                    # keep = torch.ones_like(res['scores']).bool()
-                    if sum(keep) == 0:
-                        failed_ts.append(t)
-                        continue
-                    boxes_b = out_b["boxes"][keep]
-                    scores_b = out_b["scores"][keep]
-                    labels_b = out_b["labels"][keep]
-                    bboxs.append(boxes_b)
-                    labels.append(labels_b)
-                    scores.append(scores_b)
+                target_sizes = torch.stack([x["size"] for x in batch_t["target"]]).cpu()
+                # out_formatted = postprocess_detr_outputs(
+                #     out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
+                # )
+                # bboxs = []
+                # labels = []
+                # scores = []
+                # for bidx, out_b in enumerate(out_formatted):
+                #     keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
+                #     # keep = torch.ones_like(res['scores']).bool()
+                #     if sum(keep) == 0:
+                #         failed_ts.append(t)
+                #         continue
+                #     boxes_b = out_b["boxes"][keep]
+                #     scores_b = out_b["scores"][keep]
+                #     labels_b = out_b["labels"][keep]
+                #     bboxs.append(boxes_b)
+                #     labels.append(labels_b)
+                #     scores.append(scores_b)
+                tracks_result = tracks[0].to(torch.device("cpu"))
+                # ori_h, ori_w = ori_image.shape[1], ori_image.shape[2]
+                # box = [x, y, w, h]
+                # tracks_result.area = tracks_result.boxes[:, 2] * ori_w * \
+                #                      tracks_result.boxes[:, 3] * ori_h
+                # tracks_result = filter_by_area(tracks_result)
+                result_score_thresh = self.result_score_thresh
+                tracks_result = filter_by_score(tracks_result, thresh=result_score_thresh)
+                # to xyxy:
+                tracks_result.boxes = postprocess_detr_boxes(tracks_result.boxes, target_sizes=target_sizes)
                 det_res = {
-                    "bbox": bboxs,
-                    "labels": labels,
-                    "scores": scores,
+                    "bbox": tracks_result.boxes,
+                    "labels": tracks_result.labels,
+                    "scores": tracks_result.scores,
+                    "track_ids": tracks_result.ids,
                 }
+                pose_mat_pred_abs = self.pose_to_mat_converter_fn(
+                    torch.cat([tracks_result.ts, tracks_result.rots], dim=-1)
+                )
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
@@ -367,6 +405,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                     rgb_path=batch_t["rgb_path"],
                     preds_dir=preds_dir,
                     det_res=det_res,
+                    mesh_bbox=tracks_result.other_attrs["mesh_bbox"],
                 )
 
             if do_vis:
