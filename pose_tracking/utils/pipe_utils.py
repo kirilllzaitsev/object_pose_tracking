@@ -88,6 +88,7 @@ def get_model(args, num_classes=None):
             img_feature_dim=args.encoder_out_dim,
             # multi_frame=False,
             multi_frame=True,
+            use_bn="bn" in args.norm_layer_type,
         )
 
         model = PizzaWrapper(model_pizza)
@@ -714,6 +715,7 @@ def get_datasets(
         do_skip_invisible_single_obj=not is_tracker_model,
         target_hw=target_hw,
         use_allocentric_pose=use_allocentric_pose,
+        use_mask_for_visibility_check=True,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -829,6 +831,7 @@ def get_datasets(
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
         test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_test) and "bg" in transform_names
         test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
+        test_ds_kwargs["use_mask_for_visibility_check"] = False
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
             ds_name=ds_name,
@@ -1004,6 +1007,8 @@ def get_ds_root_dirs(args):
 def get_num_classes(args, ds_video_dir_train):
     if any(x in args.ds_alias for x in ["cube_", "dextreme"]):
         num_classes = 1
+    elif "custom_sim_cube_scaled_1500_random_multiobj" in args.ds_folder_name_train:
+        num_classes = 3
     elif "ikea" in args.ds_name:
         metadata = json.load(open(f"{ds_video_dir_train}/metadata.json"))
         if args.ds_alias == "cube_large":

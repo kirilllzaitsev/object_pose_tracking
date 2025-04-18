@@ -30,12 +30,7 @@ def postprocess_detr_outputs(outputs, target_sizes, is_focal_loss=True):
     if out_bbox is None:
         boxes = torch.zeros((out_logits.shape[0], out_logits.shape[1], 4), device=out_logits.device)
     else:
-        boxes = box_cxcywh_to_xyxy(out_bbox)
-
-    # and from relative [0, 1] to absolute [0, height] coordinates
-    img_h, img_w = target_sizes.unbind(1)
-    scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
-    boxes = boxes * scale_fct[:, None, :]
+        boxes = postprocess_detr_boxes(out_bbox, target_sizes)
 
     use_pose = "rot" in outputs and "t" in outputs
     results = []
@@ -55,6 +50,15 @@ def postprocess_detr_outputs(outputs, target_sizes, is_focal_loss=True):
         results.append(res)
 
     return results
+
+
+def postprocess_detr_boxes(out_bbox, target_sizes):
+    boxes = box_cxcywh_to_xyxy(out_bbox)
+    # and from relative [0, 1] to absolute [0, height] coordinates
+    img_h, img_w = target_sizes.unbind(1)
+    scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+    boxes = boxes * scale_fct[:, None, :]
+    return boxes
 
 
 def postprocess_bbox(bbox, hw=None, format="cxcywh", is_normalized=True):
