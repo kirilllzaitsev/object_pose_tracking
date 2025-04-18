@@ -295,7 +295,7 @@ class TrainerPizza(Trainer):
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
             mask = batch_t["mask"]
-            pose_gt_abs = batch_t["pose"]
+            pose_gt_abs = batch_t["pose"].squeeze(1)
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
             intrinsics = batch_t["intrinsics"]
@@ -305,102 +305,65 @@ class TrainerPizza(Trainer):
             t_gt_abs = pose_gt_abs[..., :3]
             rot_gt_abs = pose_gt_abs[..., 3:]
 
-            if self.do_predict_rel_pose:
-                if t == 0:
-                    if self.do_perturb_init_gt_for_rel_pose:
-                        noise_t = (
-                            torch.rand_like(t_gt_abs)
-                            * 0.02
-                            * (torch.randint(0, 2, t_gt_abs.shape) * 2 - 1).to(self.device)
-                        )
-                        noise_rot_mat = torch.stack([torch.eye(3) for _ in range(batch_size)])
-                        for i in range(batch_size):
-                            j = torch.randint(0, 3, (1,))
-                            angle = np.random.uniform(1) * 5
-                            if j == 0:
-                                angles = [angle, 0, 0]
-                            elif j == 1:
-                                angles = [0, angle, 0]
-                            else:
-                                angles = [0, 0, angle]
+            if t == 0:
+                pose_prev_pred_abs = {"t": t_gt_abs, "rot": rot_gt_abs}
+                pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
 
-                            noise_rot_mat[i] = torch.tensor(
-                                Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
-                            )
-                        noise_rot_mat = noise_rot_mat.to(self.device)
-                        rot_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])[
-                            ..., :3, :3
-                        ]
-                        rot_mat_gt_abs = torch.bmm(rot_mat_gt_abs, noise_rot_mat)
-                        rot_gt_abs = self.rot_mat_to_vector_converter_fn(rot_mat_gt_abs)
-                    else:
-                        noise_t = 0
-
-                    pose_prev_pred_abs = {"t": t_gt_abs + noise_t, "rot": rot_gt_abs}
-
-                    pose_mat_prev_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
-
-                    # prev_latent = torch.cat(
-                    #     [self.model_without_ddp.encoder_img(rgb), self.model_without_ddp.encoder_depth(depth)], dim=1
-                    # )
-
-                    if save_preds:
-                        assert preds_dir is not None, "preds_dir must be provided for saving predictions"
-                        save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
-
-                    do_skip_first_step = True
-                    continue
-
-            if self.use_prev_pose_condition:
-                prev_pose = pose_prev_pred_abs if self.do_predict_rel_pose else out_prev
-            else:
-                prev_pose = None
+                if save_preds:
+                    assert preds_dir is not None, "preds_dir must be provided for saving predictions"
+                    save_results(batch_t, pose_mat_prev_gt_abs, preds_dir, gt_pose=pose_mat_prev_gt_abs)
+                do_skip_first_step = True
+                continue
 
             out = out_ts[t - 1]
 
             # POSTPROCESS OUTPUTS
 
-            rot_pred, t_pred = out["rot"], out["t"]
+            rot_pred = out["rot"]
 
-            if self.do_predict_2d_t:
-                center_depth_pred = out["center_depth"].squeeze(-1)
-                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics.float(), hw=hw)
-                t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
+            scale_pred = (out["center_depth"].squeeze(-1))
+            center_depth_pred = (torch.exp(scale_pred) + 0) * pose_prev_pred_abs["t"][..., 2:3]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
-            rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
+            rot_mat_gt_abs = pose_mat_gt_abs[..., :3, :3]
 
+            t_pred = torch.zeros_like(t_gt_abs)
+            t_pred[..., :2] = out["t"]
+            t_pred[..., 2] = center_depth_pred - pose_prev_pred_abs["t"][..., 2]
             pose_mat_pred = torch.stack(
                 [self.pose_to_mat_converter_fn(rt) for rt in torch.cat([t_pred, rot_pred], dim=1)]
             )
-            rot_mat_pred = pose_mat_pred[:, :3, :3]
+            rot_mat_pred = pose_mat_pred[..., :3, :3]
 
             if self.do_predict_rel_pose:
                 pose_mat_prev_pred_abs = torch.stack(
                     [
                         self.pose_to_mat_converter_fn(rt)
-                        for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
+                        for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=-1)
                     ]
                 )
+
                 pose_mat_pred_abs = egocentric_delta_pose_to_pose(
                     pose_mat_prev_pred_abs,
-                    trans_delta=pose_mat_pred[:, :3, 3],
-                    rot_mat_delta=pose_mat_pred[:, :3, :3],
+                    trans_delta=pose_mat_pred[..., :3, 3],
+                    rot_mat_delta=pose_mat_pred[..., :3, :3],
                     do_couple_rot_t=False,
                 )
             else:
                 pose_mat_pred_abs = pose_mat_pred
 
-            t_pred_abs = pose_mat_pred_abs[:, :3, 3]
-            rot_mat_pred_abs = pose_mat_pred_abs[:, :3, :3]
+            t_pred_abs = pose_mat_pred_abs[..., :3, 3]
+            rot_mat_pred_abs = pose_mat_pred_abs[..., :3, :3]
             if self.do_predict_rel_pose:
                 t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_prev_gt_abs, pose_mat_gt_abs)
 
             # LOSSES
             # -- t_pred/rot_pred can be rel or abs
+            t_pred_2d = out["t"]
 
             if self.use_pose_loss:
                 if self.do_predict_rel_pose:
+                    # what does it mean to have a pose with delta t?
                     pose_mat_gt_rel = convert_r_t_to_rt(rot_gt_rel_mat, t_gt_rel)
                     loss_pose = self.criterion_pose(pose_mat_pred, pose_mat_gt_rel, pts)
                 else:
@@ -409,26 +372,10 @@ class TrainerPizza(Trainer):
             else:
                 # t loss
 
-                if self.do_predict_2d_t:
-                    t_pred_2d = out["t"]
-                    if self.do_predict_rel_pose:
-                        loss_uv = self.criterion_trans(t_pred_2d[:, :2], t_gt_rel[:, :2])
-                        # trickier for depth (should be change in scale)
-                        loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2])
-                        loss_t = loss_uv + loss_z
-                    else:
-
-                        t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
-
-                        loss_t_2d = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
-                        loss_center_depth = self.criterion_trans(center_depth_pred, depth_gt)
-                        loss_t = loss_t_2d + loss_center_depth
-                else:
-                    if self.do_predict_rel_pose:
-                        rel_t_scaler = 1
-                        loss_t = self.criterion_trans(t_pred * rel_t_scaler, t_gt_rel * rel_t_scaler)
-                    else:
-                        loss_t = self.criterion_trans(t_pred_abs, t_gt_abs)
+                loss_uv = self.criterion_trans(t_pred_2d[..., :2], t_gt_rel[..., :2]) * (1e3)
+                scale_gt = t_gt_abs[..., 2:] / pose_mat_prev_gt_abs[..., 2, 3]
+                loss_z = self.criterion_trans(scale_pred, torch.log(scale_gt)) * (1e3)
+                loss_t = loss_uv + loss_z
 
                 # rot loss
 
