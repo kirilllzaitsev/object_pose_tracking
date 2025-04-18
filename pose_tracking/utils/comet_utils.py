@@ -350,12 +350,21 @@ def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
     """Recursively logs the package code to the experiment."""
     import pose_tracking
 
-    pkg_dir = Path(pose_tracking.__file__).parent
+    import memotr.models
+    import trackformer.models.detr
+
+    pkg_dir_pt = Path(pose_tracking.__file__).parent
+    pkg_dir_memotr = Path(memotr.models.__file__).parent
     current_dir = os.getcwd()
-    os.chdir(pkg_dir)
-    for code_file in glob.glob(str(pkg_dir / "**/*.py"), recursive=True):
-        code_file = Path(code_file)
-        exp.log_code(file_name=code_file.relative_to(pkg_dir), overwrite=overwrite)
+    for pkg_dir in [pkg_dir_pt, pkg_dir_memotr]:
+        os.chdir(pkg_dir)
+        for code_file in glob.glob(str(pkg_dir / "**/*.py"), recursive=True):
+            code_file = Path(code_file)
+            exp.log_code(file_name=code_file.relative_to(pkg_dir), overwrite=overwrite)
+    tf_path = Path(trackformer.models.detr.__file__).parent
+    os.chdir(tf_path)
+    for code_file in ["detr.py", "__init__.py"]:
+        exp.log_code(file_name=code_file, overwrite=overwrite)
     os.chdir(current_dir)
 
 
