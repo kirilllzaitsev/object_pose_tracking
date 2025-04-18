@@ -23,16 +23,6 @@ def geodesic_loss(pred_quat, true_quat):
     return torch.mean(angles)
 
 
-def geodesic_loss_mat(pred_rot, true_rot, do_reduce=True):
-    R_diffs = pred_rot @ true_rot.transpose(-1, -2)
-    traces = R_diffs.diagonal(dim1=-2, dim2=-1).sum(-1)
-    dists = torch.acos(torch.clamp((traces - 1) / 2, -1, 1))
-    res = dists
-    if do_reduce:
-        res = res.mean()
-    return res
-
-
 def rot_pts_displacement_loss(pred_rot_mat, true_rot_mat, pts, dist_loss="mse"):
     pred = rotate_pts_batch(pred_rot_mat, pts)
     true = rotate_pts_batch(true_rot_mat, pts)
@@ -60,9 +50,7 @@ def videopose_loss(pred_quat, true_quat, eps=1e-8):
     return quat_loss + quat_reg_loss
 
 
-def geodesic_loss_mat_sym(
-    rot_pred, rot_gt, handle_visibility=False, class_name="", do_return_deg=False, do_reduce=True
-):
+def geodesic_loss_mat(rot_pred, rot_gt, sym_type=None, do_return_deg=False, do_reduce=True, **kwargs):
     """
     rot_pred, rot_gt: torch.Tensor of shape (3, 3)
     Returns: rotation error in degrees (scalar)
@@ -70,8 +58,8 @@ def geodesic_loss_mat_sym(
 
     if rot_pred.ndim == 3:
         thetas = [
-            geodesic_loss_mat_sym(
-                rot_pred[i], rot_gt[i], handle_visibility, class_name, do_return_deg=do_return_deg, do_reduce=do_reduce
+            geodesic_loss_mat(
+                rot_pred[i], rot_gt[i], sym_type=sym_type, do_return_deg=do_return_deg, do_reduce=do_reduce
             )
             for i in range(rot_pred.shape[0])
         ]
@@ -81,36 +69,29 @@ def geodesic_loss_mat_sym(
         return thetas
 
     y = torch.tensor([0.0, 1.0, 0.0], device=rot_pred.device)
+    eps = 1e-6
 
-    if class_name in ["bottle", "can", "bowl"]:
+    if sym_type == "full":
         y1 = rot_gt @ y
         y2 = rot_pred @ y
         y1 = y1.flatten()
         y2 = y2.flatten()
-        cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0, 1.0)
+        cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0 + eps, 1.0 - eps)
         theta = torch.acos(cos_theta)
 
-    elif class_name == "mug" and handle_visibility:
-        y1 = rot_gt @ y
-        y2 = rot_pred @ y
-        y1 = y1.flatten()
-        y2 = y2.flatten()
-        cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0, 1.0)
-        theta = torch.acos(cos_theta)
-
-    elif class_name in ["phone", "eggbox", "glue"]:
+    elif sym_type == "partial":
         y_180_RT = torch.diag(torch.tensor([-1.0, 1.0, -1.0], device=rot_pred.device))
         R = rot_gt @ rot_pred.transpose(-1, -2)
         R_sym = rot_gt @ y_180_RT @ rot_pred.transpose(-1, -2)
 
-        trace_R = torch.clamp((R.trace() - 1) / 2, -1.0, 1.0)
-        trace_R_sym = torch.clamp((R_sym.trace() - 1) / 2, -1.0, 1.0)
+        trace_R = torch.clamp((R.trace() - 1) / 2, -1.0 + eps, 1.0 - eps)
+        trace_R_sym = torch.clamp((R_sym.trace() - 1) / 2, -1.0 + eps, 1.0 - eps)
 
         theta = torch.min(torch.acos(trace_R), torch.acos(trace_R_sym))
 
     else:
         R_rel = rot_pred.transpose(-1, -2) @ rot_gt
-        trace = torch.clamp((torch.einsum("...ii", R_rel) - 1) / 2, -1.0, 1.0)
+        trace = torch.clamp((torch.einsum("...ii", R_rel) - 1) / 2, -1.0 + eps, 1.0 - eps)
         theta = torch.acos(trace)
 
     if do_reduce:
@@ -121,12 +102,14 @@ def geodesic_loss_mat_sym(
 
 
 def compute_adds_loss(pose_pred, pose_gt, pts):
+    assert len(pose_pred) == len(pose_gt), f"{len(pose_pred)=} vs {len(pose_gt)=}"
+    assert len(pose_pred) > 0
     if pose_pred.shape[-2:] == (3, 3):
         transform_fn = rotate_pts
     else:
         transform_fn = transform_pts_batch
-    TXO_gt_points = transform_fn(pose_gt, pts)
-    TXO_pred_points = transform_fn(pose_pred, pts)
+    TXO_gt_points = transform_fn(pts, pose_gt)
+    TXO_pred_points = transform_fn(pts, pose_pred)
     dists_squared = (TXO_gt_points.unsqueeze(1) - TXO_pred_points.unsqueeze(2)) ** 2
     dists = dists_squared
     dists_norm_squared = dists_squared.sum(dim=-1)
@@ -281,8 +264,6 @@ def get_rot_loss(rot_loss_name):
         criterion_rot = geodesic_loss
     elif rot_loss_name == "geodesic_mat":
         criterion_rot = geodesic_loss_mat
-    elif rot_loss_name == "geodesic_mat_sym":
-        criterion_rot = geodesic_loss_mat_sym
     elif rot_loss_name == "adds":
         criterion_rot = compute_adds_loss
     elif rot_loss_name == "mse":
