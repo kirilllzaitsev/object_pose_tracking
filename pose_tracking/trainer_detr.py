@@ -65,6 +65,7 @@ class TrainerDeformableDETR(Trainer):
         num_classes,
         aux_loss,
         num_dec_layers,
+        args,
         opt_only=None,
         focal_alpha=0.25,
         kpt_spatial_dim=2,
@@ -72,8 +73,14 @@ class TrainerDeformableDETR(Trainer):
         use_pose_tokens=False,
         **kwargs,
     ):
+        if "detr_kpt" in args.model_name:
+            self.encoder_module_prefix = "extractor"
+        elif any(x in args.model_name for x in ["detr", "trackformer", "memotr"]):
+            self.encoder_module_prefix = "backbone"
+        else:
+            self.encoder_module_prefix = None
 
-        super().__init__(*args_, **kwargs)
+        super().__init__(*args_, args=args, **kwargs)
 
         self.do_calibrate_kpt = do_calibrate_kpt
         self.use_pose_tokens = use_pose_tokens
@@ -111,15 +118,10 @@ class TrainerDeformableDETR(Trainer):
         else:
             self.model_without_ddp = self.model
 
-        if "detr_kpt" in self.args.model_name:
-            self.encoder_module_prefix = "extractor"
-        elif any(x in self.args.model_name for x in ["detr", "trackformer", "memotr"]):
-            self.encoder_module_prefix = "backbone"
-        else:
-            self.encoder_module_prefix = None
-
         if self.args.do_freeze_encoders:
             self.freeze_encoder()
+
+        self.init_optimizer()
 
         params_wo_grad = [
             (i, n) for i, (n, p) in enumerate(self.model_without_ddp.named_parameters()) if not p.requires_grad
@@ -127,14 +129,6 @@ class TrainerDeformableDETR(Trainer):
         if len(params_wo_grad):
             self.logger.warning(f"Params without grad: {params_wo_grad}")
             self.logger.warning(f"{len(params_wo_grad)=}")
-
-        param_dicts = self.get_param_dicts()
-
-        self.optimizer = torch.optim.AdamW(
-            param_dicts,
-            lr=self.args.lr,
-            weight_decay=self.args.weight_decay,
-        )
 
     def get_param_dicts(self):
         param_dicts = [
