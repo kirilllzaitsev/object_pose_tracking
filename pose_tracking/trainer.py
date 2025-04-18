@@ -217,6 +217,17 @@ class Trainer:
         if criterion_rot_name in ["geodesic"]:
             assert not (do_predict_3d_rot or do_predict_6d_rot)
 
+        self.init_optimizer()
+
+    def init_optimizer(self):
+        param_dicts = self.get_param_dicts()
+
+        self.optimizer = torch.optim.AdamW(
+            param_dicts,
+            lr=self.args.lr,
+            weight_decay=self.args.weight_decay,
+        )
+
     def __repr__(self):
         return print_cls(self, excluded_attrs=["processed_data", "model", "args", "model_without_ddp"])
 
@@ -386,7 +397,7 @@ class Trainer:
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
             mask = batch_t["mask"]
-            pose_gt_abs = batch_t["pose"]
+            pose_gt_abs = batch_t["pose"].squeeze(1)
             depth = batch_t["depth"]
             pts = batch_t["mesh_pts"]
             intrinsics = batch_t["intrinsics"]

@@ -416,18 +416,18 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     log_artifacts(artifacts, exp, logdir, epoch=epoch, suffix="best", do_log_session=True)
                     printer.saved_artifacts(epoch)
 
-            if args.use_lrs:
-                last_lrs_before = lr_scheduler.get_last_lr()
-                if args.lrs_type == "step":
-                    lr_scheduler.step()
-                else:
-                    lr_scheduler.step(history["val"]["loss"][-1])
-                last_lrs_after = lr_scheduler.get_last_lr()
-                for param_group in optimizer.param_groups:
-                    param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
-                for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
-                    if lr_before != lr_after and lr_after > args.lrs_min_lr:
-                        logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
+                if args.use_lrs:
+                    last_lrs_before = lr_scheduler.get_last_lr()
+                    if args.lrs_type == "step":
+                        lr_scheduler.step()
+                    else:
+                        lr_scheduler.step(history["val"]["loss"][-1])
+                    last_lrs_after = lr_scheduler.get_last_lr()
+                    for param_group in optimizer.param_groups:
+                        param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
+                    for gidx, (lr_before, lr_after) in enumerate(zip(last_lrs_before, last_lrs_after)):
+                        if lr_before != lr_after and lr_after > args.lrs_min_lr:
+                            logger.warning(f"Changing lr from {lr_before} to {lr_after} for {gidx=}")
 
         if is_main_process and args.do_save_artifacts and epoch % args.save_epoch_freq == 0:
             log_artifacts(artifacts, exp, logdir, epoch, suffix="last", do_log_session=True)
