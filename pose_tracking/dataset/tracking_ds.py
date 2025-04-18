@@ -43,7 +43,7 @@ from torch.utils.data import Dataset
 
 class TrackingDataset(Dataset):
 
-    ds_name = None
+    ds_name = "base"
 
     def __init__(
         self,
@@ -91,6 +91,7 @@ class TrackingDataset(Dataset):
         factors=None,
         do_skip_invisible_single_obj=True,
         do_filter_invisible_single_obj_frames=False,
+        use_mask_for_visibility_check=True,
         use_bg_augm=False,
     ):
         if do_subtract_bg:
@@ -114,6 +115,8 @@ class TrackingDataset(Dataset):
         self.do_load_mesh_in_memory = do_load_mesh_in_memory
         self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
         self.use_bg_augm = use_bg_augm
+        self.use_mask_for_visibility_check = use_mask_for_visibility_check
+        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -157,8 +160,6 @@ class TrackingDataset(Dataset):
         self.mesh_pts = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
-        self.use_mask_for_visibility_check = include_mask
-        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames and include_mask
         self.t_dim = 3 if t_repr == "3d" else 2
 
         if shorter_side is not None:
@@ -183,7 +184,7 @@ class TrackingDataset(Dataset):
                     self.K[1] *= img_res_scaler[0]
                 else:
                     self.K[:2] *= self.downscale
-            else:
+            elif self.ds_name not in ["ycbv"]:
                 print(f"Could not find intrinsics file at {intrinsics_path}")
 
         if do_filter_invisible_single_obj_frames:
