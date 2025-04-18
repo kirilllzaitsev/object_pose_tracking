@@ -143,6 +143,7 @@ class TrainerPizza(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        assert self.do_predict_2d_t and self.do_predict_3d_rot and self.do_predict_rel_pose
 
     def loader_forward(
         self,
@@ -321,8 +322,8 @@ class TrainerPizza(Trainer):
 
             rot_pred = out["rot"]
 
-            scale_pred = (out["center_depth"].squeeze(-1))
-            center_depth_pred = (torch.exp(scale_pred) + 0) * pose_prev_pred_abs["t"][..., 2:3]
+            scale_pred = out["center_depth"].squeeze(-1)
+            center_depth_pred = (torch.exp(scale_pred) + 0) * pose_prev_pred_abs["t"][..., 2]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[..., :3, :3]
