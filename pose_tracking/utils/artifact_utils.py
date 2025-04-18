@@ -18,12 +18,15 @@ from pose_tracking.utils.comet_utils import (
     log_tags,
 )
 from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy
-from pose_tracking.utils.misc import DeviceType
+from pose_tracking.utils.misc import DeviceType, is_empty
 
 
 def save_results(batch_t, pose_pred, preds_dir, gt_pose):
     # batch_t contains data for the t-th timestep in N sequences
     bsize = len(batch_t["rgb"])
+    if pose_pred.ndim == 4:
+        pose_pred = pose_pred.squeeze(1)  # 1 obj only
+    assert pose_pred.ndim == 3, pose_pred.shape
     for bidx in range(bsize):
         rgb = cast_to_numpy(batch_t["rgb"][bidx])
         intrinsics = cast_to_numpy(batch_t["intrinsics"][bidx])
@@ -33,19 +36,15 @@ def save_results(batch_t, pose_pred, preds_dir, gt_pose):
         pose = cast_to_numpy(pose)
         gt_pose_formatted = cast_to_numpy(gt_pose[bidx])
         seq_dir = preds_dir if bsize == 1 else preds_dir / f"seq_{bidx}"
-        pose_path = seq_dir / "poses" / f"{name}.txt"
-        gt_path = seq_dir / "poses_gt" / f"{name}.txt"
+        pose_path = seq_dir / "poses" / f"{name}.npy"
+        gt_path = seq_dir / "poses_gt" / f"{name}.npy"
         intrinsics_path = seq_dir / "intrinsics.txt"
         rgb_path = seq_dir / "rgb" / f"{name}.png"
         pose_path.parent.mkdir(parents=True, exist_ok=True)
         rgb_path.parent.mkdir(parents=True, exist_ok=True)
         gt_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pose_path, "w") as f:
-            for row in pose:
-                f.write(" ".join(map(str, row)) + "\n")
-        with open(gt_path, "w") as f:
-            for row in gt_pose_formatted:
-                f.write(" ".join(map(str, row)) + "\n")
+        np.save(pose_path, pose)
+        np.save(gt_path, gt_pose_formatted)
         rgb = adjust_img_for_plt(rgb)
         rgb = rgb[..., ::-1]
         rgb_path = str(rgb_path)
@@ -53,7 +52,7 @@ def save_results(batch_t, pose_pred, preds_dir, gt_pose):
         np.savetxt(intrinsics_path, intrinsics)
 
 
-def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, det_res=None):
+def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, det_res=None, mesh_bbox=None):
     # batch_t contains data for the t-th timestep in N sequences
     bsize = len(rgb)
     assert bsize == 1
@@ -76,8 +75,26 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, de
         if det_res is not None:
             bbox_path = seq_dir / "bbox" / f"{name}.json"
             bbox_path.parent.mkdir(parents=True, exist_ok=True)
+            det_res_formatted = copy.deepcopy(det_res)
+            bbox_key = [k for k in det_res_formatted.keys() if "box" in k][0]
+            if isinstance(det_res_formatted[bbox_key], list) or det_res_formatted[bbox_key].ndim == 3:
+                det_res_formatted[bbox_key] = det_res_formatted[bbox_key][bidx]
+            for k in ["labels", "scores", "track_ids"]:
+                if (
+                    k in det_res_formatted
+                    and not is_empty(det_res_formatted[k])
+                    and (isinstance(det_res_formatted[k], list) or det_res_formatted[k].ndim == 2)
+                ):
+                    det_res_formatted[k] = det_res_formatted[k][bidx]
             with open(bbox_path, "w") as f:
-                json.dump({k: v[bidx].tolist() for k, v in det_res.items() if len(v) > 0}, f)
+                json.dump({k: v.tolist() for k, v in det_res_formatted.items()}, f)
+        if mesh_bbox is not None:
+            extras_path = seq_dir / "extras" / f"{name}.json"
+            extras_path.parent.mkdir(parents=True, exist_ok=True)
+            if mesh_bbox.ndim == 4:
+                mesh_bbox = mesh_bbox[bidx]
+            with open(extras_path, "w") as f:
+                json.dump({"mesh_bbox": mesh_bbox.tolist()}, f)
         np.save(pose_path, pose)
         np.save(gt_path, gt_pose_formatted)
         rgb = adjust_img_for_plt(rgb)
