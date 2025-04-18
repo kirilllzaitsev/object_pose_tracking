@@ -192,7 +192,7 @@ def draw_poses_on_video(
             rgb,
             K,
             pose_pred,
-            bbox=bbox,
+            bbox=bbox[frame_idx] if isinstance(bbox, list) else bbox,
             bbox_color=bbox_color,
             scale=scale,
             pose_gt=pose_gt,
@@ -219,6 +219,7 @@ def draw_pose_on_img(
     if len(pose_pred.shape) == 3:
         final_frame = None
         if bbox is not None:
+            bbox = np.array(bbox) if isinstance(bbox, list) else bbox
             assert len(bbox.shape) == 3, f"{bbox.shape=}"
         for idx in range(len(pose_pred)):
             final_frame = draw_pose_on_img(
@@ -259,6 +260,7 @@ def vis_bbox_2d(
     score=None,
     label_place="top",
     final_frame=None,
+    track_id=None,
 ):
     img = adjust_img_for_plt(img) if final_frame is None else final_frame
     bbox = cast_to_numpy(bbox).squeeze()
@@ -295,9 +297,11 @@ def vis_bbox_2d(
         width,
     )
     if label is not None:
-        text = f"{label}"
+        text = f"cls:{label}"
+        if track_id is not None:
+            text += f",id:{track_id}"
         if score is not None:
-            text += f", {score:.2f}"
+            text += f",prob:{score:.2f}"
         if label_place == "top":
             label_xy = (int(bbox_xy_ul[0]), int(bbox_xy_ul[1]) - 10)
         else:
@@ -525,13 +529,15 @@ def PIL_image_grid(imgs, rows, cols):
     return grid
 
 
-def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False):
+def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False, do_return_fig=False):
     """
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row
     """
     if len(imgs) == 0:
         print("No images to plot")
+    if imgs[0].max() <= 1:
+        imgs = [adjust_img_for_plt(img) for img in imgs]
     imgs = torch.as_tensor(np.asarray(imgs))
     if imgs.shape[-1] == 3:
         imgs = imgs.permute(0, 3, 1, 2)
@@ -551,7 +557,8 @@ def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, u
         plt.axis("off")
         plt.imshow(grid)
         plt.show()
-    return grid
+    if do_return_fig:
+        return grid
 
 
 def plot_seq(
@@ -687,7 +694,7 @@ def plot_seq(
                 grid_img = adjust_img_for_plt(img)
                 dtype = np.uint8
             arr.append(grid_img)
-        res = make_grid_image(arr, nrow=nrow, padding=5, dtype=dtype, use_existing_fig=True)
+        res = make_grid_image(arr, nrow=nrow, padding=5, dtype=dtype, use_existing_fig=True, do_return_fig=True)
         plt.figure(figsize=(5 * 5, 5 * take_n))
         plt.imshow(res)
         plt.axis("off")
@@ -876,11 +883,22 @@ def vis_pose_pred(pose_pred, pose_gt=None, *args, **kwargs):
     return img
 
 
-def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), rot_repr="quaternion"):
+def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), rot_repr="quaternion", extra_text=None):
     color = adjust_img_for_plt(color)
     if pose.shape[-2:] != (4, 4):
         pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=bbox_color, scale=scale)
+    if extra_text is not None:
+        color_with_pose = cv2.putText(
+            color_with_pose,
+            extra_text,
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 0, 255),
+            2,
+            cv2.LINE_AA,
+        )
     return color_with_pose
 
 
