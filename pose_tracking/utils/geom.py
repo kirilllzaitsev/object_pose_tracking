@@ -75,8 +75,6 @@ def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
     h, w = hw
     x_min, y_min = np.min(u), np.min(v)
     x_max, y_max = np.max(u), np.max(v)
-    x_min, y_min, x_max, y_max = max(0, x_min), max(0, y_min), min(w, x_max), min(h, y_max)
-    x_max, y_max = max(0, x_max), max(0, y_max)
     bbox_2d = np.array([[x_min, y_min], [x_max, y_max]])
     return bbox_2d
 
@@ -244,6 +242,8 @@ def egocentric_delta_pose_to_pose(
     )
     if prev_pose_mat.ndim == 3:
         cur_pose_mat = cur_pose_mat[None].repeat(len(prev_pose_mat), 1, 1)
+    if prev_pose_mat.ndim == 4:
+        cur_pose_mat = cur_pose_mat[None][None].repeat(len(prev_pose_mat), len(prev_pose_mat[0]), 1, 1)
     if do_couple_rot_t:
         # both deltas are in the global frame
         cur_pose_mat[..., :3, 3] = (
@@ -452,7 +452,7 @@ def look_at_rotation(point):
     return R2 @ R1
 
 
-def transform_pts_batch(pose: torch.Tensor, pts: torch.Tensor) -> torch.Tensor:
+def transform_pts_batch(pts: torch.Tensor, pose: torch.Tensor) -> torch.Tensor:
     """
     Args:
         pose: (bsz, 4, 4) or (bsz, dim2, 4, 4)
