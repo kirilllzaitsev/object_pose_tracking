@@ -88,6 +88,7 @@ class BOPDataset(Dataset):
                     frame_obj_flat["frame_id"].apply(lambda x: format_frame_id(x) in self.keyframes[scene_id_format])
                 ]
             self.trajs.append((scene_id, frame_obj_flat))
+        self.h, self.w = 480, 640
 
     def __len__(self):
         return len(self.trajs)
@@ -114,8 +115,8 @@ class BOPDataset(Dataset):
                 "idx_obj",
                 "pose",
                 "visib_fract",
-                "bbox_obj",
-                "bbox_visib",
+                # "bbox_obj",
+                # "bbox_visib",
                 "mask_path",
                 "mask_visib_path",
             ]
@@ -155,8 +156,10 @@ class BOPDataset(Dataset):
 
     def parse_sample(self, traj, frame_idx):
         sample_raw = traj[frame_idx].to_dict(orient="list")
-        sample_raw["pose"] = [parse_tensor_from_str(x, shape=(4, 4)) for x in sample_raw["pose"]]
-        sample_raw["intrinsics"] = [parse_tensor_from_str(x, shape=(3, 3)) for x in sample_raw["intrinsic"]]
+        sample_raw["pose"] = np.stack([parse_tensor_from_str(x, shape=(4, 4)) for x in sample_raw["pose"]])
+        sample_raw["intrinsics"] = np.stack([parse_tensor_from_str(x, shape=(3, 3)) for x in sample_raw["intrinsic"]])[0]
+        for k in ['intrinsic', 'bbox_obj', 'bbox_visib']:
+            del sample_raw[k]
 
         if self.include_rgb:
             rgb = load_color(sample_raw["rgb_path"][0])
@@ -172,7 +175,8 @@ class BOPDataset(Dataset):
             sample_raw["mask"] = masks
             sample_raw["mask_visib"] = masks_visib
 
-        sample = process_raw_sample(sample_raw, transforms=self.transforms)
+        sample_raw["rgb"] = np.ones((self.h, self.w, 3), dtype=np.uint8) * 255
+        sample = process_raw_sample(sample_raw)
 
         return sample
 
