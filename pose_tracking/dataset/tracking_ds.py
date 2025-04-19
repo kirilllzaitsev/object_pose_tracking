@@ -541,7 +541,7 @@ class TrackingDatasetEval:
 
 def check_is_visible_at_least_one_obj(idx, ds):
     mask = ds.get_mask(idx)
-    is_visible = ds.get_visibility(mask)
+    is_visible = ds.get_visibility(mask, i=idx)
     if ds.max_num_objs == 1:
         is_visible = [is_visible]
     return any(is_visible)

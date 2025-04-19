@@ -45,7 +45,33 @@ YCBV_OBJ_NAME_TO_ID = {
     "foam_brick": 21,
 }
 YCBV_OBJ_ID_TO_NAME = {v: k for k, v in YCBV_OBJ_NAME_TO_ID.items()}
-YCBV_SYMMETRY_OBJ_NAMES = {"bowl", "wood_block", "large_clamp", "extra_large_clamp", "foam_brick"}
+YCBV_SYMMETRY_OBJ_NAMES = ["bowl", "wood_block", "large_clamp", "extra_large_clamp", "foam_brick"]
+# YCBV_SYMMETRY_OBJ_NAMES = ["bowl", "wood_block", "large_clamp", "extra_large_clamp", "foam_brick"] + ["master_chef_can", "large_marker"] # for bop
+# 0=no, 1=partial, 2=full
+YCBV_OBJ_NAME_TO_SYMMETRY = {
+    "master_chef_can": 1,
+    "cracker_box": 0,
+    "sugar_box": 0,
+    "tomato_soup_can": 1,
+    "mustard_bottle": 0,
+    "tuna_fish_can": 1,
+    "pudding_box": 0,
+    "gelatin_box": 0,
+    "potted_meat_can": 1,
+    "banana": 0,
+    "pitcher_base": 0,
+    "bleach_cleanser": 0,
+    "bowl": 2,
+    "mug": 0,
+    "power_drill": 0,
+    "wood_block": 2,
+    "scissors": 0,
+    "large_marker": 0,
+    "large_clamp": 2,
+    "extra_large_clamp": 2,
+    "foam_brick": 2,
+}
+
 
 TLESS_OBJ_NAME_TO_ID = {
     "obj01": 1,
