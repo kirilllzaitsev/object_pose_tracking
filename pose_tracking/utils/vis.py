@@ -214,6 +214,8 @@ def draw_pose_on_img(
     pose_gt=None,
     final_frame=None,
 ):
+    if bbox is not None:
+        bbox = np.array(bbox) if isinstance(bbox, list) else bbox
     if pose_pred.shape[0] == 1 and bbox is not None and bbox.ndim < pose_pred.ndim:
         bbox = bbox[None]
     if len(pose_pred.shape) == 3:
@@ -529,7 +531,9 @@ def PIL_image_grid(imgs, rows, cols):
     return grid
 
 
-def make_grid_image(imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False, do_return_fig=False):
+def make_grid_image(
+    imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False, do_return_fig=False
+):
     """
     @imgs: (B,H,W,C) np array
     @nrow: num of images per row

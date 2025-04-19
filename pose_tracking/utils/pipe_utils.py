@@ -55,6 +55,7 @@ from pose_tracking.models.cnnlstm import (
     RecurrentCNNVanilla,
 )
 from pose_tracking.models.cvae import CVAE
+from pose_tracking.models.encoders import get_encoders
 from pose_tracking.models.pizza import PIZZA, PizzaWrapper
 from pose_tracking.utils.artifact_utils import (
     load_from_ckpt,
@@ -310,6 +311,12 @@ def get_model(args, num_classes=None):
             use_depth=args.use_depth,
             num_samples=args.cvae_num_samples,
         )
+    elif args.model_name == "rnd":
+        from pose_tracking.trainer_rnd import RNDNet
+        model = RNDNet(
+            use_depth=args.mt_use_depth,
+            out_dim=args.encoder_out_dim,
+        )
     else:
         num_pts = 256
         priv_dim = num_pts * 3
@@ -514,6 +521,10 @@ def get_trainer(
         trainer_cls = TrainerDeformableDETR
     elif "cvae" in args.model_name:
         trainer_cls = TrainerCVAE
+    elif "rnd" in args.model_name:
+        from pose_tracking.trainer_rnd import TrainerRND
+
+        trainer_cls = TrainerRND
     elif any(x in args.model_name for x in ["cnn_kpt", "kpt_kpt"]):
         trainer_cls = TrainerKeypoints
     elif "memotr" in args.model_name:
@@ -1033,17 +1044,7 @@ class Printer:
         self.log_fn(f"## {stage.upper()} ##")
         LOSS_METRICS = [k for k in train_stats if "loss" in k]
         ERROR_METRICS = [k for k in train_stats if "err" in k]
-        ADDITIONAL_METRICS = [
-            "add",
-            "adds",
-            "miou",
-            "5deg5cm",
-            "2deg2cm",
-            "add_abs",
-            "5deg5cm_abs",
-            "t_log_likelihood",
-            "rot_log_likelihood",
-        ]
+        ADDITIONAL_METRICS = [k for k in train_stats if k not in LOSS_METRICS + ERROR_METRICS]
 
         for stat_group in [LOSS_METRICS, ERROR_METRICS, ADDITIONAL_METRICS]:
             msg = []

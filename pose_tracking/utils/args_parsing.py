@@ -279,6 +279,7 @@ def get_parser():
             "trackformer",
             "memotr",
             "cvae",
+            "rnd",
         ],
     )
     model_args.add_argument("--rnn_type", type=str, default="gru", help="RNN type", choices=["gru", "lstm"])
