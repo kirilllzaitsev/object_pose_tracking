@@ -30,6 +30,9 @@ class YCBvDataset(TrackingMultiObjDataset):
         self,
         *args,
         ycb_meshes_dir=f"{YCBV_SCENE_DIR}/models",
+        keyframe_path=f"{YCBV_SCENE_DIR}/keyframe.txt",
+        use_keyframes=False,
+        selected_obj_names=None,
         **kwargs,
     ):
         self.resize = 1
@@ -61,9 +64,21 @@ class YCBvDataset(TrackingMultiObjDataset):
         else:
             self.obj_ids = self.get_instance_ids_in_image(0)
             self.obj_names = [YCBV_OBJ_ID_TO_NAME[k] for k in self.obj_ids]
+        if selected_obj_names is not None:
+            selected_obj_ids = [YCBV_OBJ_NAME_TO_ID[k] for k in selected_obj_names]
+            self.obj_ids = [oid for oid in self.obj_ids if oid in selected_obj_ids]
+            self.obj_names = [k for k in self.obj_names if k in selected_obj_names]
         for i, ob_id in enumerate(self.obj_ids):
             self.obj_id_to_names[ob_id] = self.obj_names[i]
             self.name_to_ob_id[self.obj_names[i]] = ob_id
+
+        if use_keyframes:
+            keyframes = [l.strip() for l in open(keyframe_path, "r").readlines()]
+            video_id = str(video_dir).split("/")[-1].replace("0000", "00")
+            keyframes_video = [k for k in keyframes if f"{video_id}/" in k]
+            color_file_id_strs = [k.split("/")[-1] for k in keyframes_video]
+        else:
+            color_file_id_strs = None
 
         super().__init__(
             *args,
@@ -71,13 +86,15 @@ class YCBvDataset(TrackingMultiObjDataset):
             obj_names=self.obj_names,
             segm_labels_to_color=YCBV_OBJ_NAME_TO_COLOR,
             pose_dirname="annotated_poses",
+            color_file_id_strs=color_file_id_strs,
             **kwargs,
         )
-        self.scene_gt = {
-            k: v
-            for k, v in self.scene_gt.items()
-            if self.start_frame_idx + self.first_idx <= int(k) < self.end_frame_idx + self.first_idx
-        }
+        if not use_keyframes:
+            self.scene_gt = {
+                k: v
+                for k, v in self.scene_gt.items()
+                if self.start_frame_idx + self.first_idx <= int(k) < self.end_frame_idx + self.first_idx
+            }
 
         if ycb_meshes_dir is not None:
             mesh_paths_obj = [f"{ycb_meshes_dir}/obj_{oid:06d}.ply" for oid in self.obj_ids]
