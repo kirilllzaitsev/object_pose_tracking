@@ -20,6 +20,7 @@ class PIZZA(nn.Module):
         num_heads_transformer=8,
         num_encoder_layers_transformer=1,
         dropout_transformer=0.0,
+        use_bn=True,
     ):
         super(PIZZA, self).__init__()
         # RGB image encoder
@@ -29,13 +30,13 @@ class PIZZA(nn.Module):
         # MLP for rotation
         self.MLP_rotation = nn.Sequential(
             nn.Linear(img_feature_dim + img_feature_dim, 800),
-            nn.BatchNorm1d(800),
+            nn.BatchNorm1d(800) if use_bn else nn.Identity(),
             nn.ReLU(inplace=True),
             nn.Linear(800, 400),
-            nn.BatchNorm1d(400),
+            nn.BatchNorm1d(400) if use_bn else nn.Identity(),
             nn.ReLU(inplace=True),
             nn.Linear(400, 200),
-            nn.BatchNorm1d(200),
+            nn.BatchNorm1d(200) if use_bn else nn.Identity(),
             nn.ReLU(inplace=True),
             nn.Linear(200, 3),
         )
@@ -44,13 +45,13 @@ class PIZZA(nn.Module):
             # MLP for translation
             self.MLP_translation = nn.Sequential(
                 nn.Linear(img_feature_dim + img_feature_dim, 800),
-                nn.BatchNorm1d(800),
+                nn.BatchNorm1d(800) if use_bn else nn.Identity(),
                 nn.ReLU(inplace=True),
                 nn.Linear(800, 400),
-                nn.BatchNorm1d(400),
+                nn.BatchNorm1d(400) if use_bn else nn.Identity(),
                 nn.ReLU(inplace=True),
                 nn.Linear(400, 200),
-                nn.BatchNorm1d(200),
+                nn.BatchNorm1d(200) if use_bn else nn.Identity(),
                 nn.ReLU(inplace=True),
             )
             self.fc_translation2d = nn.Linear(200, 2)
