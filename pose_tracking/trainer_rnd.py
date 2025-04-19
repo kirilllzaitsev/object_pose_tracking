@@ -1,65 +1,55 @@
-import functools
-import math
 import os
-import sys
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import yaml
-from cycler import K
-from pose_tracking.config import TF_DIR, default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
-from pose_tracking.dataset.ds_common import from_numpy
-from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
-from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
-from pose_tracking.metrics import (
-    calc_metrics,
-    calc_r_error,
-    calc_t_error,
-    eval_batch_det,
-)
-from pose_tracking.models.encoders import (
-    FrozenBatchNorm2d,
-    get_encoders,
-    is_param_part_of_encoders,
-)
-from pose_tracking.models.matcher import HungarianMatcher
-from pose_tracking.models.set_criterion import SetCriterion
+from pose_tracking.models.encoders import get_encoders
 from pose_tracking.trainer import Trainer
-from pose_tracking.utils.artifact_utils import save_results, save_results_v2
-from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
-from pose_tracking.utils.detr_utils import postprocess_detr_outputs
-from pose_tracking.utils.geom import (
-    cam_to_2d,
-    convert_2d_t_to_3d,
-    egocentric_delta_pose_to_pose,
-    pose_to_egocentric_delta_pose,
-    rot_mat_from_6d,
-    rotate_pts_batch,
-)
-from pose_tracking.utils.misc import (
-    is_tensor,
-    match_module_by_name,
-    print_cls,
-    reduce_dict,
-    reduce_metric,
-    split_arr,
-)
-from pose_tracking.utils.pipe_utils import get_trackformer_args
-from pose_tracking.utils.pose import convert_pose_vector_to_matrix, convert_r_t_to_rt
-from pose_tracking.utils.rotation_conversions import (
-    matrix_to_axis_angle,
-    matrix_to_quaternion,
-    matrix_to_rotation_6d,
-    quaternion_to_axis_angle,
-    quaternion_to_matrix,
-    rotation_6d_to_matrix,
-)
-from torch.nn.parallel import DistributedDataParallel as DDP
+from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
+from torch import nn
 from tqdm import tqdm
+
+
+class RNDNet(nn.Module):
+    def __init__(self, use_depth=False, out_dim=512):
+        super().__init__()
+        self.use_depth = use_depth
+        self.out_dim = out_dim
+
+        self.encoder_rgb, self.encoder_depth = get_encoders(
+            model_name="resnet18", norm_layer_type="id", weights_rgb=None, weights_depth=None, out_dim=self.out_dim
+        )
+        self.target_rgb, self.target_depth = get_encoders(
+            model_name="resnet18", norm_layer_type="id", weights_rgb=None, weights_depth=None, out_dim=self.out_dim
+        )
+        for param in self.target_rgb.parameters():
+            param.requires_grad = False
+        for param in self.target_depth.parameters():
+            param.requires_grad = False
+
+        if not self.use_depth:
+            self.encoder_depth = None
+            self.target_depth = None
+
+    def forward(self, rgb, depth=None):
+        res = {}
+        with torch.no_grad():
+            if self.use_depth:
+                target_depth_out = self.target_depth(depth)
+                res["target_depth_out"] = target_depth_out
+            target_rgb_out = self.target_rgb(rgb)
+            res["target_rgb_out"] = target_rgb_out
+
+        if self.use_depth:
+            depth_out = self.encoder_depth(depth)
+            res["depth_out"] = depth_out
+        rgb_out = self.encoder_rgb(rgb)
+        res["rgb_out"] = rgb_out
+
+        return res
 
 
 class TrainerRND(Trainer):
@@ -68,35 +58,19 @@ class TrainerRND(Trainer):
         self,
         *args_,
         args,
-        opt_only=None,
-        focal_alpha=0.25,
-        kpt_spatial_dim=2,
-        do_calibrate_kpt=False,
-        use_pose_tokens=False,
         **kwargs,
     ):
-        self.encoder_module_prefix = "backbone"
+        self.encoder_module_prefix = "encoder"
 
         super().__init__(*args_, args=args, **kwargs)
         self.criterion = F.mse_loss
 
         self.use_pose = False
 
-        self.target_net = get_encoders(
-            model_name="resnet18", norm_layer_type="id", weights_rgb=None, out_dim=self.args.encoder_out_dim
-        )[0].to(self.device)
-        for param in self.target_net.parameters():
-            param.requires_grad = False
-
-        if self.use_ddp:
-            self.model_without_ddp = self.model.module
-        else:
-            self.model_without_ddp = self.model
-
-        self.init_optimizer()
-
         params_wo_grad = [
-            (i, n) for i, (n, p) in enumerate(self.model_without_ddp.named_parameters()) if not p.requires_grad
+            (i, n)
+            for i, (n, p) in enumerate(self.model_without_ddp.named_parameters())
+            if not p.requires_grad and "target" not in n
         ]
         if len(params_wo_grad):
             self.logger.warning(f"Params without grad: {params_wo_grad}")
@@ -107,7 +81,7 @@ class TrainerRND(Trainer):
     def get_param_dicts(self):
         param_dicts = [
             {
-                "params": [p for name, p in self.model_without_ddp.named_parameters()],
+                "params": [p for name, p in self.model_without_ddp.named_parameters() if "target" not in name],
                 "lr": self.args.lr,
             },
         ]
@@ -227,18 +201,19 @@ class TrainerRND(Trainer):
         image = batch_t["rgb"]
         depth = batch_t["depth"]
 
-        with torch.no_grad():
-            target = self.target_net(image)
-
-        # extra_kwargs = {}
-        # extra_kwargs["depth"] = depth
-
         out = self.model(
             image,
-            # **extra_kwargs,
+            depth=depth,
         )
 
-        loss_dict = {"loss": self.criterion(out, target)}
-        metrics_dict = {"cos_sim": F.cosine_similarity(out, target, dim=1).mean()}
-
+        loss_rgb = self.criterion(out["rgb_out"], out["target_rgb_out"])
+        loss = loss_rgb
+        loss_dict = {"loss_rgb": loss_rgb}
+        metrics_dict = {"cos_sim_rgb": F.cosine_similarity(out["rgb_out"], out["target_rgb_out"])}
+        if self.model_without_ddp.use_depth:
+            loss_depth = self.criterion(out["depth_out"], out["target_depth_out"])
+            loss += loss_depth
+            loss_dict["loss_depth"] = loss_depth
+            metrics_dict["cos_sim_depth"] = F.cosine_similarity(out["depth_out"], out["target_depth_out"])
+        loss_dict["loss"] = loss
         return {"out": out, "loss_dict": loss_dict, "metrics_dict": metrics_dict}
