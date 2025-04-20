@@ -1,5 +1,6 @@
 import functools
 
+import numpy as np
 import torch
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.geom import rotate_pts, rotate_pts_batch, transform_pts_batch
@@ -50,11 +51,17 @@ def videopose_loss(pred_quat, true_quat, eps=1e-8):
     return quat_loss + quat_reg_loss
 
 
-def geodesic_loss_mat(rot_pred, rot_gt, sym_type=None, do_return_deg=False, do_reduce=True, **kwargs):
+def geodesic_loss_mat(rot_pred, rot_gt, sym_type=None, do_return_deg=False, do_reduce=True, use_eps=True, **kwargs):
     """
     rot_pred, rot_gt: torch.Tensor of shape (3, 3)
+    sym_type: full/partial wrt vertical axis
     Returns: rotation error in degrees (scalar)
     """
+
+    if isinstance(rot_pred, np.ndarray):
+        rot_pred = torch.tensor(rot_pred).float()
+    if isinstance(rot_gt, np.ndarray):
+        rot_gt = torch.tensor(rot_gt).float()
 
     if rot_pred.ndim == 3:
         thetas = [
@@ -69,17 +76,19 @@ def geodesic_loss_mat(rot_pred, rot_gt, sym_type=None, do_return_deg=False, do_r
         return thetas
 
     y = torch.tensor([0.0, 1.0, 0.0], device=rot_pred.device)
-    eps = 1e-6
+    eps = 1e-6 if use_eps else 0
 
     if sym_type == "full":
-        y1 = rot_gt @ y
-        y2 = rot_pred @ y
+        # eg, "bottle", "can", "bowl"
+        y1 = rot_pred @ y
+        y2 = rot_gt @ y
         y1 = y1.flatten()
         y2 = y2.flatten()
         cos_theta = torch.clamp(torch.dot(y1, y2) / (y1.norm() * y2.norm()), -1.0 + eps, 1.0 - eps)
         theta = torch.acos(cos_theta)
 
     elif sym_type == "partial":
+        # eg, "phone", "eggbox", "glue"
         y_180_RT = torch.diag(torch.tensor([-1.0, 1.0, -1.0], device=rot_pred.device))
         R = rot_gt @ rot_pred.transpose(-1, -2)
         R_sym = rot_gt @ y_180_RT @ rot_pred.transpose(-1, -2)
