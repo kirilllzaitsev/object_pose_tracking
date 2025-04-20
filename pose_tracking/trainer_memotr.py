@@ -391,7 +391,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                 det_res = {
                     "bbox": tracks_result.boxes,
                     "labels": tracks_result.labels,
-                    "scores": tracks_result.scores,
+                    "scores": torch.max(tracks_result.scores, dim=-1).values,
                     "track_ids": tracks_result.ids,
                 }
                 pose_mat_pred_abs = self.pose_to_mat_converter_fn(

@@ -3,7 +3,6 @@ from collections import defaultdict
 
 import numpy as np
 import torch
-from pose_tracking.losses import geodesic_loss_mat
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.detr_utils import postprocess_bbox
 from pose_tracking.utils.geom import transform_pts, world_to_cam
@@ -145,9 +144,9 @@ def calc_adds_pts(pts_pred, pts_gt):
     return e
 
 
-def calc_auc(errs, max_val=0.1):
+def calc_auc(errs, max_val=0.1, step=0.001, do_convert_to_percent=True):
     errs = np.sort(np.array(errs))
-    X = np.linspace(0, max_val, 100)
+    X = np.arange(0, max_val + step, step=step)
     Y = np.ones(len(X))
     for i, x in enumerate(X):
         y = (errs <= x).sum() / len(errs)
@@ -155,6 +154,8 @@ def calc_auc(errs, max_val=0.1):
         if y >= 1:
             break
     auc = metrics.auc(X, Y) / (max_val)
+    if do_convert_to_percent:
+        auc *= 100
     return {
         "auc": auc,
         "recall": Y,
@@ -203,6 +204,7 @@ def calc_t_error(T1, T2, do_reduce=True):
 
 
 def calc_r_error(rot_pred, rot_gt, sym_type=None):
+    from pose_tracking.losses import geodesic_loss_mat
     return geodesic_loss_mat(rot_pred=rot_pred, rot_gt=rot_gt, do_return_deg=True, use_eps=False, sym_type=sym_type)
 
 
