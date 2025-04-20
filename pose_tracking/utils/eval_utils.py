@@ -43,7 +43,11 @@ def calc_auc_from_metrics_per_obj(metrics_all_per_obj, metric_name_for_auc, max_
     auc_per_obj = defaultdict(dict)
     for obj_id, obj_metrics in metrics_all_per_obj.items():
         values = np.array(obj_metrics[metric_name_for_auc])
+        if len(values) == 0:
+            print(f"Warning: {metric_name_for_auc} for {obj_id} is empty")
+            continue
         values_cm = values / 10
+        values_m = values_cm / 10
         auc_res = calc_auc(values_cm, max_val=max_val_cm, step=step_cm)
         auc = auc_res["auc"]
         thresholds = auc_res["thresholds"]

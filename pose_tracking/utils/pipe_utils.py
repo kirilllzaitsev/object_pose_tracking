@@ -999,7 +999,7 @@ def get_ds_root_dirs(args):
         ds_video_dir_train = YCBINEOAT_SCENE_DIR
         ds_video_dir_val = YCBINEOAT_SCENE_DIR
     elif args.ds_name in ["ycbv", "ycbv_synt"]:
-        if YCBV_SYNT_SCENE_DIR.exists():
+        if args.ds_name == "ycbv_synt":
             ds_video_dir_train = YCBV_SYNT_SCENE_DIR / "train_synt"
         else:
             ds_video_dir_train = YCBV_SCENE_DIR / "train_real"
