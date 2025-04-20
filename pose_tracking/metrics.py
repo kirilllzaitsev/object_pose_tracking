@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from pose_tracking.losses import geodesic_loss_mat
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.detr_utils import postprocess_bbox
 from pose_tracking.utils.geom import transform_pts, world_to_cam
@@ -19,20 +20,21 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 def calc_metrics(
     pred_rt,
     gt_rt,
-    class_name=None,
     model=None,
     pts=None,
     bbox_3d=None,
-    handle_visibility=False,
     use_miou=False,
     use_symmetry=True,
     diameter=None,
     is_meters=True,
     log_fn=print,
     include_adds=False,
+    sym_type=None,
+    class_name=None,
+    handle_visibility=None,
 ):
     """
-    Calculate required metrics for pose estimation. Metric units are mm and degrees.
+    Calculate required metrics for pose estimation. Metric units are mm and degrees. Inputs are in m
     Args:
         pred_rt: predicted pose
         gt_rt: ground truth pose
@@ -84,13 +86,12 @@ def calc_metrics(
             pred_rt,
             gt_rt,
             bbox=bbox_3d,
-            handle_visibility=handle_visibility,
-            class_name=class_name,
+            sym_type=sym_type,
             use_symmetry=use_symmetry,
         )
         res["miou"] = miou
 
-    rt_errors = calc_rt_errors(pred_rt, gt_rt, class_name=class_name, handle_visibility=handle_visibility)
+    rt_errors = calc_rt_errors(pred_rt, gt_rt, sym_type=sym_type)
     rt_errors["t_err"] *= dist_scaler_to_mm
     res.update(rt_errors)
 
@@ -162,7 +163,7 @@ def calc_auc(errs, max_val=0.1, step=0.001):
     }
 
 
-def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
+def calc_rt_errors(pred_rt, gt_rt, sym_type=None):
     """Calculate rotation and translation errors between two poses.
     Can handle symmetries in Linemod objects.
     """
@@ -172,7 +173,7 @@ def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
     if len(pred_rt.shape) == 3:
         errors = defaultdict(list)
         for i in range(pred_rt.shape[0]):
-            error = calc_rt_errors(pred_rt[i], gt_rt[i], handle_visibility, class_name)
+            error = calc_rt_errors(pred_rt[i], gt_rt[i], sym_type=sym_type)
             for k, v in error.items():
                 errors[k].append(v)
         return {k: np.mean(v) for k, v in errors.items()}
@@ -182,7 +183,7 @@ def calc_rt_errors(pred_rt, gt_rt, handle_visibility=False, class_name=""):
     rot_pred = pred_rt[:3, :3]
     rot_gt = gt_rt[:3, :3]
 
-    theta = calc_r_error(rot_pred, rot_gt, handle_visibility=handle_visibility, class_name=class_name)
+    theta = calc_r_error(rot_pred, rot_gt, sym_type=sym_type)
     shift = calc_t_error(T1, T2)
     result = {"r_err": theta, "t_err": shift}
 
@@ -232,14 +233,14 @@ def calc_n_deg_m_cm_errors(rt_error):
     return res
 
 
-def calc_3d_iou_new(rt1, rt2, bbox, handle_visibility, class_name, use_symmetry=True):
+def calc_3d_iou_new(rt1, rt2, bbox, sym_type=None, use_symmetry=True):
     """Computes IoU overlaps between two 3d bboxes."""
 
     if bbox.ndim == 3:
         bbox = bbox.squeeze(0)
     assert bbox.shape == (8, 3), bbox.shape
 
-    if use_symmetry and (class_name in ["bottle", "bowl", "can"]) or (class_name == "mug" and handle_visibility == 0):
+    if use_symmetry and sym_type == "full":
 
         def y_rotation_matrix(theta):
             return np.array(
