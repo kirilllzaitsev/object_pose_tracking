@@ -314,7 +314,7 @@ def vis_bbox_2d(
             label_xy,
             cv2.FONT_HERSHEY_SIMPLEX,
             0.75,
-            color,
+            (0, 0, 0),
             2,
             cv2.LINE_AA,
         )

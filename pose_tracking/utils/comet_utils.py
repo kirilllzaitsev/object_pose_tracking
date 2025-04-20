@@ -354,7 +354,7 @@ def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
     import trackformer.models.detr
 
     pkg_dir_pt = Path(pose_tracking.__file__).parent
-    pkg_dir_memotr = Path(memotr.models.__file__).parent
+    pkg_dir_memotr = Path(memotr.__file__).parent
     current_dir = os.getcwd()
     for pkg_dir in [pkg_dir_pt, pkg_dir_memotr]:
         os.chdir(pkg_dir)

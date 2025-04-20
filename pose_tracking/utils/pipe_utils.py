@@ -132,7 +132,7 @@ def get_model(args, num_classes=None):
             t_out_dim=args.t_out_dim,
         )
     elif args.model_name == "memotr":
-        from memotr.models import build_model
+        from memotr.models.memotr import build_model
         from memotr.models.utils import load_pretrained_model
 
         memotr_args = get_memotr_args(args)
@@ -190,7 +190,7 @@ def get_model(args, num_classes=None):
 
         args.memotr_args = memotr_args
     elif args.model_name == "trackformer":
-        from trackformer.models import build_model
+        from trackformer.models.build import build_model
 
         detr_args = get_trackformer_args(args)
         if args.tf_use_pretrained_model:
