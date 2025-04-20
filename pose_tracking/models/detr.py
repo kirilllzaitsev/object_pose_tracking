@@ -206,7 +206,7 @@ class DETRBase(nn.Module):
         self.do_predict_2d_t = t_out_dim == 2
         self.use_factors = factors is not None
 
-        self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens)
+        self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens * (2 if use_depth else 1))
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -312,7 +312,8 @@ class DETRBase(nn.Module):
             self.factor_mlps = {}
             for k in factors:
                 self.factor_mlps[k] = get_clones(
-                    MLPFactors(roi_feature_dim, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()), n_layers
+                    MLPFactors(roi_feature_dim, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()),
+                    n_layers,
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
@@ -355,10 +356,20 @@ class DETRBase(nn.Module):
         if self.encoding_type == "learned":
             pos_enc = self.pe_encoder(extract_res["img_features"])
             pos_enc = rearrange(pos_enc, "b c h w -> b (h w) c")
+            if self.use_depth:
+                pos_enc_depth = self.pe_encoder(extract_res["depth_features"])
+                pos_enc_depth = rearrange(pos_enc_depth, "b c h w -> b (h w) c")
+                pos_enc = torch.cat([pos_enc, pos_enc_depth], dim=1)
         elif self.encoding_type == "sin":
             pos_enc = self.pe_encoder(tokens)
+            if self.use_depth:
+                pos_enc_depth = self.pe_encoder(extract_res["tokens_depth"])
+                pos_enc = torch.cat([pos_enc, pos_enc_depth], dim=0)
         else:
             raise ValueError(f"Unknown encoding type {self.encoding_type}")
+
+        if self.use_depth:
+            tokens = torch.cat([tokens, extract_res["tokens_depth"]], dim=-1)
 
         return self.forward_tokens(
             tokens,
@@ -503,7 +514,9 @@ class DETRBase(nn.Module):
                 out["factors"] = factors
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
-                u_in = torch.cat([o.unsqueeze(-1).detach(), pose_token.unsqueeze(-1).detach(), all_factor_latents], dim=-1)
+                u_in = torch.cat(
+                    [o.unsqueeze(-1).detach(), pose_token.unsqueeze(-1).detach(), all_factor_latents], dim=-1
+                )
                 u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](u_in)
                 u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
@@ -584,7 +597,9 @@ class DETR(DETRBase):
         else:
             self.backbone_depth = None
 
-        self.conv1x1 = nn.Conv2d(conv_1_in_dim, self.d_model, kernel_size=1, stride=1)
+        self.proj = nn.Linear(self.final_feature_dim, self.d_model)
+        if self.use_depth:
+            self.proj_depth = nn.Linear(self.final_feature_dim, self.d_model)
 
         self.backbone_rgb_feats = {}
 
@@ -605,19 +620,20 @@ class DETR(DETRBase):
         _ = self.backbone(rgb)
         tokens = self.backbone_rgb_feats["layer4"]
 
+        res = {}
+        res["img_features"] = tokens
+        tokens = rearrange(tokens, "b c h w -> b (h w) c")
+
         if self.use_depth:
             _ = self.backbone_depth(depth)
             tokens_depth = self.backbone_depth_feats["layer4"]
-            tokens = torch.cat([tokens, tokens_depth], dim=1)
+            res["depth_features"] = tokens_depth
+            tokens_depth = rearrange(tokens_depth, "b c h w -> b (h w) c")
+            tokens_depth = self.proj_depth(tokens_depth)
+            res["tokens_depth"] = rearrange(tokens_depth, "b n d -> b d n")
 
-        res = {}
-        if self.use_roi:
-            res["img_features"] = tokens
-        res["img_features"] = tokens
-
-        tokens = self.conv1x1(tokens)
-        tokens = rearrange(tokens, "b c h w -> b c (h w)")
-        res["tokens"] = tokens
+        tokens = self.proj(tokens)
+        res["tokens"] = rearrange(tokens, "b n d -> b d n")
         return res
 
 
