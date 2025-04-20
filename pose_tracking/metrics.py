@@ -145,10 +145,9 @@ def calc_adds_pts(pts_pred, pts_gt):
     return e
 
 
-def calc_auc(errs, max_val=0.1, step=0.001):
-
+def calc_auc(errs, max_val=0.1):
     errs = np.sort(np.array(errs))
-    X = np.arange(0, max_val + step, step)
+    X = np.linspace(0, max_val, 100)
     Y = np.ones(len(X))
     for i, x in enumerate(X):
         y = (errs <= x).sum() / len(errs)
