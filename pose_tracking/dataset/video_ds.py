@@ -1,5 +1,6 @@
 import functools
 
+from pose_tracking.config import IS_CLUSTER
 import torch
 from pose_tracking.dataset.dataloading import preload_ds
 from pose_tracking.dataset.ds_common import adjust_img_for_torch
@@ -99,7 +100,7 @@ class VideoDataset(Dataset):
         idxs = [seq_start + t * seq_step for t in range(timesteps)]
         if self.do_preload:
             seq = [self.seq[idx] for idx in idxs]
-        elif timesteps > 2:
+        elif timesteps > 2 and not IS_CLUSTER:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             for t in range(timesteps):
@@ -158,7 +159,7 @@ class VideoDatasetTracking(VideoDataset):
 
         if self.do_preload:
             seq = [self.seq[idx] for idx in idxs]
-        elif timesteps > 2:
+        elif timesteps > 2 and not IS_CLUSTER:
             seq = preload_ds(self.ds, idxs=idxs)
         else:
             seq = [self.ds[idx] for idx in idxs]
@@ -202,6 +203,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["bbox_2d"] = sample.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["class_id"] = sample["class_id"]
             new_sample["is_sym"] = sample.get("is_sym")
+            new_sample["obj_name"] = sample.get("obj_name")
             new_sample["intrinsics"] = sample["intrinsics"]
             new_sample["size"] = torch.tensor(sample["rgb"].shape[-2:])
             pose = sample["pose"]
@@ -216,7 +218,8 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
             new_sample["prev_bbox_2d"] = sample_prev.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["prev_class_id"] = sample_prev["class_id"]
-            new_sample["prev_class_name"] = sample_prev.get("is_sym")
+            new_sample["prev_is_sym"] = sample_prev.get("is_sym")
+            new_sample["prev_obj_name"] = sample_prev.get("obj_name")
             new_sample["prev_intrinsics"] = sample_prev["intrinsics"]
             new_sample["prev_size"] = torch.tensor(sample_prev["rgb"].shape[-2:])
 
@@ -328,6 +331,7 @@ class VideoDatasetTracking(VideoDataset):
                     "factors",
                     "visible_obj_idxs",
                     "is_sym",
+                    "obj_name",
                 ]
                 + mesh_keys
                 if k in new_sample
