@@ -416,11 +416,11 @@ class DETRBase(nn.Module):
                     time_pos_embed = torch.cat(
                         [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
                     ).to(pose_token.device)
-                    prev_pose_tokens_pos = prev_pose_tokens_layer + time_pos_embed[:-1].unsqueeze(1).unsqueeze(1)
-                    prev_pose_tokens_pos = einops.rearrange(prev_pose_tokens_pos, "t b q d -> b (t q) d")
-                    pose_tokens = torch.cat([prev_pose_tokens_pos, pose_token + time_pos_embed[-1:]], dim=1)
+                    pose_tokens = torch.cat([prev_pose_tokens_layer, pose_token.unsqueeze(1)], dim=1)
+                    pose_tokens = einops.rearrange(pose_tokens, "b t q d -> (b q) t d")
                     pose_tokens_enc = self.pose_token_transformer(pose_tokens)
-                    pose_token = pose_tokens_enc[:, -self.n_queries :]
+                    pose_tokens_enc = einops.rearrange(pose_tokens_enc, "(b q) t d -> b t q d", b=b, d=self.d_model)
+                    pose_token = pose_tokens_enc[:, -1]
             else:
                 pose_token = o
 
