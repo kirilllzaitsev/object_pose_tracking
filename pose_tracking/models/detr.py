@@ -11,12 +11,11 @@ from pose_tracking.models.cnnlstm import MLP, MLPFactors
 from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
-    DepthPositionalEncoding,
     PosEncoding,
     PosEncodingCoord,
-    PositionEmbeddingLearned,
+    PosEncodingDepth,
     SpatialPosEncoding,
-    sinusoidal_embedding,
+    timestep_embedding,
 )
 from pose_tracking.utils.detr_utils import get_crops
 from pose_tracking.utils.geom import backproj_2d_pts, calibrate_2d_pts_batch
@@ -413,9 +412,7 @@ class DETRBase(nn.Module):
                     # time_pos_embed = sinusoidal_embedding(len(prev_pose_tokens), self.d_model)
                     prev_pose_tokens_layer = prev_pose_tokens[layer_idx]
                     num_prev_tokens, b, *_ = prev_pose_tokens_layer.shape
-                    time_pos_embed = torch.cat(
-                        [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
-                    ).to(pose_token.device)
+                    time_pos_embed = timestep_embedding(torch.arange(num_prev_tokens + 1).to(o.device), self.d_model)
                     pose_tokens = torch.cat([prev_pose_tokens_layer, pose_token.unsqueeze(1)], dim=1)
                     pose_tokens = einops.rearrange(pose_tokens, "b t q d -> (b q) t d")
                     pose_tokens_enc = self.pose_token_transformer(pose_tokens)
@@ -427,14 +424,14 @@ class DETRBase(nn.Module):
             if self.do_refinement_with_attn:
                 # uses pose tokens from prev layers, pos-embedded in time
                 num_prev_tokens = layer_idx
-                time_pos_embed = torch.cat(
-                    [sinusoidal_embedding(i, self.d_model) for i in range(num_prev_tokens + 1)], dim=0
-                ).to(pose_token.device)
+                time_pos_embed = timestep_embedding(torch.arange(num_prev_tokens + 1).to(o.device), self.d_model)
                 prev_layers_pose_tokens = torch.stack([o["pose_token"] for o in outs[:layer_idx]] + [pose_token], dim=1)
                 layers_pose_tokens_pe = prev_layers_pose_tokens + time_pos_embed.unsqueeze(1)
                 layers_pose_tokens = einops.rearrange(layers_pose_tokens_pe, "b l q d -> (b q) l d")
                 pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens)
-                pose_layers_tokens_enc = einops.rearrange(pose_layers_tokens_enc, "(b q) l d -> b l q d", b=pose_token.shape[0], d=self.d_model)
+                pose_layers_tokens_enc = einops.rearrange(
+                    pose_layers_tokens_enc, "(b q) l d -> b l q d", b=pose_token.shape[0], d=self.d_model
+                )
                 pose_token = pose_layers_tokens_enc[:, -1]
 
             t_mlp_in = pose_token.clone()
@@ -517,7 +514,11 @@ class DETRBase(nn.Module):
         raise NotImplementedError
 
     def __repr__(self):
-        return print_cls(self, extra_str=super().__repr__(), excluded_attrs=["decoder_outs", "backbone_feats", "backbone_rgb_feats", "backbone_depth_feats"])
+        return print_cls(
+            self,
+            extra_str=super().__repr__(),
+            excluded_attrs=["decoder_outs", "backbone_feats", "backbone_rgb_feats", "backbone_depth_feats"],
+        )
 
     def to(self, *args, **kwargs):
         self = super().to(*args, **kwargs)
@@ -636,7 +637,7 @@ class KeypointDETR(DETRBase):
         if use_mask_as_obj_indicator:
             self.token_dim += 1
         if self.use_depth:
-            self.pe_depth = DepthPositionalEncoding(self.d_model)
+            self.pe_depth = PosEncodingDepth(self.d_model)
         self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
