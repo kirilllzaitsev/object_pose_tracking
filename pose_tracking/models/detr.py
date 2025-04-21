@@ -692,9 +692,9 @@ class KeypointDETR(DETRBase):
         if self.do_backproj_kpts_to_3d or self.do_calibrate_kpt:
             assert intrinsics is not None
             K_norm = intrinsics.clone().float()
-            K_norm[..., 0] /= w
-            K_norm[..., 1] /= h
+            K_norm[..., 0, 0] /= w
             K_norm[..., 0, 2] /= w
+            K_norm[..., 1, 1] /= h
             K_norm[..., 1, 2] /= h
             if self.do_backproj_kpts_to_3d:
                 assert depth is not None
@@ -705,10 +705,14 @@ class KeypointDETR(DETRBase):
         tokens = descriptors  # B x N x D
 
         if self.use_mask_as_obj_indicator:
-            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask)
+            # TODO: n objs (kpts on each obj)
+            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask.squeeze(1))
             tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
         if self.use_depth:
-            tokens = tokens + self.pe_depth(depth_1d.unsqueeze(-1))
+            depth_1d_pe = self.pe_depth(depth_1d.unsqueeze(-1))
+            if self.use_mask_as_obj_indicator:
+                depth_1d_pe = torch.cat([depth_1d_pe, torch.zeros_like(obj_indicator).transpose(-2, -1)], dim=-1)
+            tokens = tokens + depth_1d_pe
 
         tokens = self.conv1x1(tokens.transpose(-1, -2))
 
