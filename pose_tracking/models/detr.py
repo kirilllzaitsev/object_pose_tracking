@@ -164,9 +164,7 @@ class DETRBase(nn.Module):
         t_out_dim=3,
         use_pose_tokens=False,
         use_roi=False,
-        do_refinement=False,
         do_refinement_with_attn=False,
-        do_refinement_with_pose_token=False,
         use_depth=False,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
@@ -178,8 +176,6 @@ class DETRBase(nn.Module):
         self.use_pose_tokens = use_pose_tokens
         self.use_roi = use_roi
         self.use_depth = use_depth
-        self.do_refinement = do_refinement
-        self.do_refinement_with_pose_token = do_refinement_with_pose_token
         self.do_refinement_with_attn = do_refinement_with_attn
 
         self.num_classes = num_classes
@@ -246,8 +242,6 @@ class DETRBase(nn.Module):
             )
         if self.use_t:
             t_mlp_in_dim = d_model
-            if do_refinement:
-                t_mlp_in_dim += self.d_model if do_refinement_with_pose_token else self.t_out_dim
             self.t_mlp_in_dim = t_mlp_in_dim
             self.t_mlps = get_clones(
                 MLP(t_mlp_in_dim, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
@@ -256,8 +250,6 @@ class DETRBase(nn.Module):
             rot_mlp_in_dim = d_model
             if use_roi:
                 rot_mlp_in_dim += roi_feature_dim
-            if do_refinement:
-                rot_mlp_in_dim += self.d_model if do_refinement_with_pose_token else self.rot_out_dim
             self.rot_mlp_in_dim = rot_mlp_in_dim
             self.rot_mlps = get_clones(
                 MLP(rot_mlp_in_dim, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
@@ -463,24 +455,6 @@ class DETRBase(nn.Module):
                 rot_mlp_in = torch.cat([pose_token, crop_feats], dim=-1)
             else:
                 rot_mlp_in = pose_token
-            if self.do_refinement:
-                if layer_idx > 0:
-                    if self.do_refinement_with_pose_token:
-                        prev_layer_t_refine_in = outs[-1]["pose_token"]
-                        prev_layer_rot_refine_in = outs[-1]["pose_token"]
-                    else:
-                        # concat pose preds from l-1
-                        prev_layer_t_refine_in = outs[-1]["t"]
-                        prev_layer_rot_refine_in = outs[-1]["rot"]
-                else:
-                    if self.do_refinement_with_pose_token:
-                        prev_layer_t_refine_in = torch.zeros_like(t_mlp_in)[..., : self.d_model]
-                        prev_layer_rot_refine_in = torch.zeros_like(rot_mlp_in)[..., : self.d_model]
-                    else:
-                        prev_layer_t_refine_in = torch.zeros_like(t_mlp_in)[..., : self.t_out_dim]
-                        prev_layer_rot_refine_in = torch.zeros_like(rot_mlp_in)[..., : self.rot_out_dim]
-                t_mlp_in = torch.cat([t_mlp_in, prev_layer_t_refine_in], dim=-1)
-                rot_mlp_in = torch.cat([rot_mlp_in, prev_layer_rot_refine_in], dim=-1)
             if self.use_rot:
                 pred_rot = self.rot_mlps[layer_idx](rot_mlp_in)
                 out["rot"] = pred_rot
@@ -549,7 +523,7 @@ class DETRBase(nn.Module):
         raise NotImplementedError
 
     def __repr__(self):
-        return print_cls(self, extra_str=super().__repr__(), excluded_attrs=["decoder_outs", "backbone_feats"])
+        return print_cls(self, extra_str=super().__repr__(), excluded_attrs=["decoder_outs", "backbone_feats", "backbone_rgb_feats", "backbone_depth_feats"])
 
     def to(self, *args, **kwargs):
         self = super().to(*args, **kwargs)

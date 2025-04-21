@@ -284,7 +284,7 @@ def get_model(args, num_classes=None):
             model = KeypointDETR(
                 kpt_spatial_dim=args.mt_kpt_spatial_dim,
                 use_mask_on_input=args.mt_use_mask_on_input,
-                use_mask_as_obj_indicator=False,
+                use_mask_as_obj_indicator=args.mt_use_mask_as_obj_indicator,
                 do_calibrate_kpt=args.mt_do_calibrate_kpt,
                 **detr_args,
             )
