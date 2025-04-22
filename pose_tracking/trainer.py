@@ -41,6 +41,7 @@ from pose_tracking.utils.kpt_utils import (
     get_pose_from_matches,
 )
 from pose_tracking.utils.misc import (
+    distributed_rank,
     is_empty,
     match_module_by_name,
     print_cls,
@@ -59,6 +60,7 @@ from pose_tracking.utils.rotation_conversions import (
     rotation_6d_to_matrix,
 )
 from scipy.spatial.transform import Rotation
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 
@@ -175,6 +177,12 @@ class Trainer:
             self.seq_len_curriculum_step_epoch_freq = None
 
         if self.use_ddp:
+            local_rank = distributed_rank()
+            self.model = DDP(
+                self.model,
+                device_ids=[local_rank] if args.use_cuda else None,
+                broadcast_buffers=False,
+            )
             self.model_without_ddp = self.model.module
         else:
             self.model_without_ddp = self.model
@@ -263,6 +271,9 @@ class Trainer:
     ):
         if stage == "train":
             self.train_epoch_count += 1
+            self.model.train()
+        else:
+            self.model.eval()
         running_stats = defaultdict(list)
         seq_pbar = tqdm(loader, desc="Seq", leave=False, disable=len(loader) == 1)
         do_vis = self.do_vis and (self.train_epoch_count) % self.vis_epoch_freq == 0 and stage in ["train"]

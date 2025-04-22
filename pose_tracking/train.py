@@ -285,13 +285,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     model = get_model(args, num_classes=num_classes).to(device)
     logger.info(model)
 
-    if args.use_ddp:
-        model = DDP(
-            model,
-            device_ids=[local_rank] if args.use_cuda else None,
-            broadcast_buffers=False,  # how does this affect training on diff subsets
-        )
-
     trainer = get_trainer(
         args,
         model,
@@ -354,7 +347,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         patience=max(1, args.es_patience_epochs // args.val_epoch_freq), delta=args.es_delta, verbose=True
     )
     artifacts = {
-        "model": model.module if args.use_ddp else model,
+        "model": model,
         "optimizer": optimizer,
         "scheduler": lr_scheduler,
     }
@@ -373,7 +366,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         eval_loaders["train_as_val"] = train_as_val_loader
 
     def run_eval(trainer):
-        model.eval()
         stage_stats = {}
         with torch.no_grad():
             for stage, loader in eval_loaders.items():
@@ -387,7 +379,6 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         return stage_stats
 
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
-        model.train()
         if args.use_ddp:
             train_loader.sampler.set_epoch(epoch)
         train_stats = trainer.loader_forward(
