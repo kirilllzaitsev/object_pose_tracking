@@ -126,7 +126,9 @@ def get_parser():
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     poseformer_args.add_argument("--mt_use_roi", action="store_true", help="Apply RoI for rot mlp in DETR basic")
+    poseformer_args.add_argument("--mt_use_mask_as_obj_indicator", action="store_true", help="Indicate which kpts are on-object")
     poseformer_args.add_argument("--mt_use_depth", action="store_true", help="Use RGBD")
+    poseformer_args.add_argument("--mt_do_freeze_kpt_detector", action="store_true", help="Make detector frozen")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
@@ -349,6 +351,11 @@ def get_parser():
         "--num_samples",
         type=int,
         help="Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step",
+    )
+    data_args.add_argument(
+        "--num_samples_val",
+        type=int,
+        help="(val) Number of times to fetch sequences (len(video_ds)). Defaults to len(ds)//seq_step",
     )
     data_args.add_argument("--max_random_seq_step", type=int, default=4, help="Max random step when sampling sequences")
     data_args.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")

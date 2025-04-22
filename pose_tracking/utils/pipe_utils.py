@@ -249,8 +249,6 @@ def get_model(args, num_classes=None):
             use_pose_tokens=args.mt_use_pose_tokens,
             use_roi=args.mt_use_roi,
             use_depth=args.mt_use_depth,
-            do_refinement=args.mt_do_refinement,
-            do_refinement_with_pose_token=args.mt_do_refinement_with_pose_token,
             do_refinement_with_attn=args.mt_do_refinement_with_attn,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
@@ -286,6 +284,7 @@ def get_model(args, num_classes=None):
                 use_mask_on_input=args.mt_use_mask_on_input,
                 use_mask_as_obj_indicator=args.mt_use_mask_as_obj_indicator,
                 do_calibrate_kpt=args.mt_do_calibrate_kpt,
+                do_freeze_kpt_detector=args.mt_do_freeze_kpt_detector,
                 **detr_args,
             )
     elif args.model_name == "cvae":
@@ -656,6 +655,7 @@ def get_datasets(
     transform_prob=0.0,
     mask_pixels_prob=0.0,
     num_samples=None,
+    num_samples_val=None,
     ds_types=("train", "val", "train_as_val"),
     do_predict_kpts=False,
     use_priv_decoder=False,
