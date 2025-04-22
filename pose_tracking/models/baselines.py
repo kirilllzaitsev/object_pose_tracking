@@ -106,7 +106,7 @@ class CNN(nn.Module):
         if use_prev_latent:
             self.t_mlp_in_dim += self.input_dim
             self.rot_mlp_in_dim += self.input_dim
-
+            
         if do_predict_t:
             self.t_mlp = MLP(
                 in_dim=self.t_mlp_in_dim,
@@ -191,6 +191,15 @@ class CNN(nn.Module):
         else:
             t = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
         res["t"] = t
+
+        if self.do_predict_2d_t:
+            depth_in = latent_t
+            if self.use_prev_pose_condition:
+                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2]], dim=1)
+            if self.use_prev_latent:
+                depth_in = torch.cat([depth_in, prev_latent], dim=1)
+            center_depth = self.depth_mlp(depth_in)
+            res["center_depth"] = center_depth
 
         if self.do_predict_rot:
             rot = self.rot_mlp(rot_in)
