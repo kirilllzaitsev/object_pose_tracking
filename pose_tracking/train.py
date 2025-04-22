@@ -156,6 +156,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         transform_prob=args.transform_prob,
         mask_pixels_prob=args.mask_pixels_prob,
         num_samples=args.num_samples,
+        num_samples_val=args.num_samples_val,
         do_predict_kpts=args.do_predict_kpts,
         use_priv_decoder=args.use_priv_decoder,
         do_overfit=args.do_overfit,

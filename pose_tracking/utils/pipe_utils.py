@@ -809,6 +809,8 @@ def get_datasets(
             val_ds_kwargs = copy.deepcopy(ds_kwargs)
             val_ds_kwargs.pop("mask_pixels_prob")
             val_ds_kwargs["video_dir"] = Path(ds_video_dir_val)
+            val_ds_kwargs["use_bg_augm"] = False
+            num_samples_val = num_samples_val or num_samples
             val_ds_kwargs_full = dict(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
@@ -816,7 +818,7 @@ def get_datasets(
                 seq_step=seq_step,
                 seq_start=None,
                 ds_kwargs=val_ds_kwargs,
-                num_samples=num_samples,
+                num_samples=num_samples_val,
                 do_preload=do_preload_ds,
                 mesh_paths_to_take_stems=mesh_paths_orig_stems_train,
                 video_ds_cls=video_ds_cls,
@@ -840,8 +842,8 @@ def get_datasets(
         test_ds_kwargs = copy.deepcopy(ds_kwargs)
         test_ds_kwargs.pop("mask_pixels_prob")
         test_ds_kwargs["video_dir"] = Path(ds_video_dir_test)
-        test_ds_kwargs["use_bg_augm"] = "dextreme" in str(ds_video_dir_test) and "bg" in transform_names
-        test_ds_kwargs["do_filter_invisible_single_obj_frames"] = True
+        test_ds_kwargs["use_bg_augm"] = False
+        test_ds_kwargs["do_filter_invisible_single_obj_frames"] = False
         test_ds_kwargs["use_mask_for_visibility_check"] = False
         test_dataset = get_video_ds(
             ds_video_subdirs=ds_video_subdirs_test,
