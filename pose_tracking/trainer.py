@@ -522,7 +522,7 @@ class Trainer:
             state = out["state"]
 
             if self.do_predict_2d_t:
-                center_depth_pred = out["center_depth"]
+                center_depth_pred = out["center_depth"].squeeze(1)
                 convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics.float(), hw=hw)
                 t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
@@ -603,7 +603,7 @@ class Trainer:
                         loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2:3])
                     else:
                         t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
-                        loss_uv = self.criterion_trans(t_pred_2d, t_gt_2d_norm)
+                        loss_uv = self.criterion_trans(t_pred_2d, t_gt_2d_norm.squeeze(1))
                         loss_z = self.criterion_trans(center_depth_pred, depth_gt)
                     loss_t = loss_uv + loss_z
                 else:
