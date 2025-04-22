@@ -617,9 +617,11 @@ class KeypointDETR(DETRBase):
         use_mask_on_input=False,
         use_mask_as_obj_indicator=False,
         do_calibrate_kpt=False,
+        do_freeze_kpt_detector=True,
         **kwargs,
     ):
         self.do_calibrate_kpt = do_calibrate_kpt
+        self.do_freeze_kpt_detector = do_freeze_kpt_detector
 
         self.use_mask_on_input = use_mask_on_input
         self.use_mask_as_obj_indicator = use_mask_as_obj_indicator
@@ -637,11 +639,15 @@ class KeypointDETR(DETRBase):
         if use_mask_as_obj_indicator:
             self.token_dim += 1
         if self.use_depth:
-            self.pe_depth = PosEncodingDepth(self.d_model)
+            self.pe_depth = PosEncodingDepth(self.d_model, use_mlp=False)
         self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
+
+        if do_freeze_kpt_detector:
+            for param in self.extractor.parameters():
+                param.requires_grad = False
 
     def forward(self, x, pose_tokens=None, prev_tokens=None, **kwargs):
         extract_res = self.extract_tokens(x, **kwargs)
