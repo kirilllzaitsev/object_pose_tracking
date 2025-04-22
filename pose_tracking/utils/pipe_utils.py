@@ -102,7 +102,7 @@ def get_model(args, num_classes=None):
 
         detr_args = yaml.load(
             open(
-                f"{RELATED_DIR}/transformers/Deformable-DETR/deformable_detr/config.yaml",
+                f"{RELATED_DIR}/obj_det/Deformable-DETR/deformable_detr/config.yaml",
                 "r",
             ),
             Loader=yaml.Loader,
@@ -489,6 +489,7 @@ def get_trackformer_args(args):
     tf_args.backbone = args.encoder_name
     tf_args.head_num_layers = args.rt_mlps_num_layers
     tf_args.r_num_layers_inc = args.r_num_layers_inc
+    tf_args.use_only_det = args.tf_use_only_det
 
     if args.tf_use_kpts_as_img:
         tf_args.num_feature_levels = 2

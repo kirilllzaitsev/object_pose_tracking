@@ -11,6 +11,7 @@ import matplotlib
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+from pose_tracking.utils.misc import is_empty
 import pyrender
 import torch
 import torchvision
@@ -214,6 +215,8 @@ def draw_pose_on_img(
     pose_gt=None,
     final_frame=None,
 ):
+    if is_empty(pose_pred):
+        return adjust_img_for_plt(rgb)
     if bbox is not None:
         bbox = np.array(bbox) if isinstance(bbox, list) else bbox
     if pose_pred.shape[0] == 1 and bbox is not None and bbox.ndim < pose_pred.ndim:

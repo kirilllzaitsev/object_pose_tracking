@@ -193,6 +193,7 @@ def get_parser():
     tf_args = parser.add_argument_group("Trackformer arguments")
     tf_args.add_argument("--tf_use_deformable", action="store_true", help="Use deformable detr")
     tf_args.add_argument("--tf_use_dab", action="store_true", help="Use DAB")
+    tf_args.add_argument("--tf_use_only_det", action="store_true", help="No tracking part")
     tf_args.add_argument("--tf_use_multi_frame_encoding", action="store_true", help="Use multi_frame_encoding")
     tf_args.add_argument("--tf_do_merge_frame_features", action="store_true", help="Concat frame features at t-1 and t")
     tf_args.add_argument("--tf_use_box_refine", action="store_true", help="Use box refinement")
