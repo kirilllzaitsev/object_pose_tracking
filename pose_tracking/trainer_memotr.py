@@ -130,7 +130,8 @@ class TrainerMemotr(TrainerDeformableDETR):
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
         failed_ts = []
 
-        if not is_train:
+        is_test = stage == "test"
+        if is_test:
             tracker = RuntimeTracker(
                 det_score_thresh=0.5,
                 track_score_thresh=0.5,
@@ -159,7 +160,7 @@ class TrainerMemotr(TrainerDeformableDETR):
             )
             out = model_forward_res["out"]
 
-            if is_train:
+            if not is_test:
                 try:
                     criterion_res = self.criterion.process_single_frame(
                         model_outputs=out, tracked_instances=tracks, frame_idx=t
