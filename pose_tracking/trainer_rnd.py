@@ -9,6 +9,7 @@ from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.models.encoders import get_encoders
 from pose_tracking.trainer import Trainer
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
+from pose_tracking.utils.misc import is_empty
 from torch import nn
 from tqdm import tqdm
 
@@ -103,13 +104,7 @@ class TrainerRND(Trainer):
         do_opt_every_ts = is_train and self.use_optim_every_ts
 
         seq_length = len(batched_seq)
-        batch_size = len(batched_seq[0]["image"])
-        if self.do_debug:
-            for batch_t in batched_seq:
-                for k, v in batch_t.items():
-                    if k not in ["image", "intrinsics", "mesh_bbox", "bbox_2d", "class_id"]:
-                        continue
-                    self.processed_data[k].append(v)
+        batch_size = len(batched_seq[0]["rgb"])
         batched_seq = transfer_batch_to_device(batched_seq, self.device)
 
         seq_stats = defaultdict(list)
@@ -170,12 +165,23 @@ class TrainerRND(Trainer):
 
             if do_vis:
                 # save inputs to the exp dir
-                vis_keys = ["image", "mesh_bbox", "mask", "depth"]
+                vis_keys = ["rgb", "mask", "depth"]
                 for k in vis_keys:
                     if len(batch_t.get(k, [])) == 0:
                         continue
                     vis_data[k].append(detach_and_cpu(batch_t[k]))
                 vis_data["out"].append(detach_and_cpu(out))
+            if self.do_debug:
+                for k, v in batch_t.items():
+                    if k not in ["rgb", "mask", "depth"] or is_empty(v):
+                        continue
+                    self.processed_data[k].append(v)
+                for k, v in out.items():
+                    if k not in ["rgb_out", "depth_out", "target_rgb_out", "target_depth_out"] or is_empty(v):
+                        continue
+                    self.processed_data[k].append(v)
+                for k, v in {**loss_dict, **model_forward_res["metrics_dict"]}.items():
+                    self.processed_data[k].append(v)
 
         for stats in [seq_stats, seq_metrics]:
             for k, v in stats.items():

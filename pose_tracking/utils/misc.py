@@ -259,3 +259,16 @@ def get_scale_factor(mesh_path):
         elif abs(bbox[0, 0]) == 0.299:
             scale_factor = 1.08
     return scale_factor
+
+
+def is_distributed():
+    if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
+        return False
+    return True
+
+
+def distributed_rank():
+    if not is_distributed():
+        return 0
+    else:
+        return torch.distributed.get_rank()
