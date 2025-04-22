@@ -62,6 +62,7 @@ class TrainerDeformableDETR(Trainer):
     def __init__(
         self,
         *args_,
+        model,
         num_classes,
         aux_loss,
         num_dec_layers,
@@ -80,7 +81,10 @@ class TrainerDeformableDETR(Trainer):
         else:
             self.encoder_module_prefix = None
 
-        super().__init__(*args_, args=args, **kwargs)
+        if args.do_freeze_encoders:
+            self.freeze_encoder(model_without_ddp=model)
+
+        super().__init__(*args_, model=model, args=args, **kwargs)
 
         self.do_calibrate_kpt = do_calibrate_kpt
         self.use_pose_tokens = use_pose_tokens
@@ -113,14 +117,6 @@ class TrainerDeformableDETR(Trainer):
                 use_rel_pose=self.args.do_predict_rel_pose,
             )
 
-        if self.use_ddp:
-            self.model_without_ddp = self.model.module
-        else:
-            self.model_without_ddp = self.model
-
-        if self.args.do_freeze_encoders:
-            self.freeze_encoder()
-
         self.init_optimizer()
 
         params_wo_grad = [
@@ -152,8 +148,8 @@ class TrainerDeformableDETR(Trainer):
 
         return param_dicts
 
-    def freeze_encoder(self):
-        for name, p in self.model_without_ddp.named_parameters():
+    def freeze_encoder(self, model_without_ddp):
+        for name, p in model_without_ddp.named_parameters():
             if is_param_part_of_encoders(name, self.encoder_module_prefix):
                 p.requires_grad = False
 

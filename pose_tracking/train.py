@@ -347,7 +347,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         patience=max(1, args.es_patience_epochs // args.val_epoch_freq), delta=args.es_delta, verbose=True
     )
     artifacts = {
-        "model": model,
+        "model": trainer.model_without_ddp,
         "optimizer": optimizer,
         "scheduler": lr_scheduler,
     }

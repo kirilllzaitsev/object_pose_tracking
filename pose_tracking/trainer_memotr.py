@@ -65,12 +65,12 @@ class TrainerMemotr(TrainerDeformableDETR):
         param_groups, lr_names = get_param_groups(config=self.config, model=self.model)
         return param_groups
 
-    def freeze_encoder(self):
-        for name, p in self.model_without_ddp.named_parameters():
+    def freeze_encoder(self, model_without_ddp):
+        for name, p in model_without_ddp.named_parameters():
             if (
                 is_param_part_of_encoders(name, self.encoder_module_prefix)
                 or ("transformer" in name and "bbox_embed" not in name)
-                or any(x in name for x in ["feature_projs"])
+                or any(x in name for x in ["feature_projs", "decoder", "class_embed"])
             ):
                 p.requires_grad = False
 
