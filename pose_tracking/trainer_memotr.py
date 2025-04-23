@@ -395,9 +395,17 @@ class TrainerMemotr(TrainerDeformableDETR):
                     "scores": torch.max(tracks_result.scores, dim=-1).values,
                     "track_ids": tracks_result.ids,
                 }
-                pose_mat_pred_abs = self.pose_to_mat_converter_fn(
-                    torch.cat([tracks_result.ts, tracks_result.rots], dim=-1)
-                )
+                track_ts = tracks_result.ts
+                if len(track_ts) > 0:
+                    if self.do_predict_2d_t:
+                        center_depth_pred = track_ts[..., 2:]
+                        t_pred_2d = track_ts[..., :2]
+                        convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                            t_pred_2d, center_depth_pred, [i.cpu() for i in intrinsics], hw=(h, w)
+                        )
+                        track_ts = convert_2d_t_pred_to_3d_res["t_pred"]
+
+                pose_mat_pred_abs = self.pose_to_mat_converter_fn(torch.cat([track_ts, tracks_result.rots], dim=-1))
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
