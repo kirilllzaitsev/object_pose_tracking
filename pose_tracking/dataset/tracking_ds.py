@@ -159,8 +159,11 @@ class TrackingDataset(Dataset):
         self.mesh_diameter = None
         self.mesh_pts = None
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
-        self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
         self.t_dim = 3 if t_repr == "3d" else 2
+        self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
+        self.is_mask_provided = os.path.exists(self.color_files[0].replace("rgb", "masks"))
+        self.use_mask_for_visibility_check = use_mask_for_visibility_check and self.is_mask_provided
+        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames and self.is_mask_provided
 
         if shorter_side is not None:
             self.downscale = shorter_side / min(self.h, self.w)
