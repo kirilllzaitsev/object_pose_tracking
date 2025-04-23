@@ -399,7 +399,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     for k, v in stats.items():
                         history[stage][k].append(v)
 
-                cur_val_loss = history["val"]["loss"][-1]
+                cur_val_loss = history["val"].get("loss", [np.inf])[-1]
                 best_val_loss = min(best_val_loss, cur_val_loss)
                 if args.use_es_val:
                     early_stopping(loss=cur_val_loss)
@@ -413,7 +413,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
                     if args.lrs_type == "step":
                         lr_scheduler.step()
                     else:
-                        lr_scheduler.step(history["val"]["loss"][-1])
+                        lr_scheduler.step(history["val"].get("loss", [np.inf])[-1])
                     last_lrs_after = lr_scheduler.get_last_lr()
                     for param_group in optimizer.param_groups:
                         param_group["lr"] = max(param_group["lr"], args.lrs_min_lr)
@@ -426,7 +426,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             printer.saved_artifacts(epoch)
 
         if args.use_es_train and is_main_process:
-            early_stopping(loss=history["train"]["loss"][-1])
+            early_stopping(loss=history["train"].get("loss", [np.inf])[-1])
 
         if is_main_process:
             for i, pg in enumerate(optimizer.param_groups):
@@ -462,7 +462,10 @@ if __name__ == "__main__":
     if not IS_CLUSTER:
         import matplotlib
 
-        matplotlib.use("TkAgg")
+        try:
+            matplotlib.use("TkAgg")
+        except:
+            pass
 
     args, args_to_group_map = parse_args()
     import datetime as dt
