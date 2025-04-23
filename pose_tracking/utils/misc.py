@@ -86,7 +86,7 @@ def reduce_dict(input_dict, average=True, device=None):
     input_dict, after reduction.
     """
     world_size = get_world_size()
-    if world_size < 2:
+    if world_size < 2 or is_empty(input_dict):
         return input_dict
     with torch.no_grad():
         names = []
@@ -194,6 +194,8 @@ def is_empty(v):
         return all(is_empty(x) for x in v.values())
     elif isinstance(v, list) and len(v) > 0:
         return all(is_empty(x) for x in v)
+    elif is_tensor(v):
+        return v.ndim > 0 and len(v) == 0
     elif hasattr(v, "__len__"):
         return len(v) == 0
     else:

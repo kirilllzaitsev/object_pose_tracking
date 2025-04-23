@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import trimesh
-from bop_toolkit_lib.transform import euler_matrix
 from pose_tracking.utils.common import istensor
 from pose_tracking.utils.rotation_conversions import (
     axis_angle_to_matrix,
@@ -110,6 +109,7 @@ def sample_views_icosphere(n_views, subdivisions=None, radius=1):
 
 
 def symmetry_tfs_from_info(info, rot_angle_discrete=5):
+    from bop_toolkit_lib.transform import euler_matrix
     symmetry_tfs = [np.eye(4)]
     if "symmetries_discrete" in info:
         tfs = np.array(info["symmetries_discrete"]).reshape(-1, 4, 4)

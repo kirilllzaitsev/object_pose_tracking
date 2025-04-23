@@ -416,6 +416,8 @@ def get_memotr_args(args):
     config["BACKBONE"] = args.encoder_name
     config["rot_out_dim"] = args.rot_out_dim
     config["t_out_dim"] = args.t_out_dim
+    config["dropout"] = args.dropout
+    config["dropout_heads"] = args.dropout_heads
     config["NUM_DET_QUERIES"] = args.mt_num_queries
     config["NUM_DEC_LAYERS"] = args.mt_n_layers
     config["NUM_ENC_LAYERS"] = args.mt_n_layers

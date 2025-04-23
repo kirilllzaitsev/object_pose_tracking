@@ -11,9 +11,11 @@ from pose_tracking.utils.misc import is_tensor, pick_library
 from pose_tracking.utils.pose import matrix_to_quaternion
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from scipy.spatial.transform import Rotation as R
-from transforms3d.axangles import axangle2mat
-from transforms3d.quaternions import axangle2quat, mat2quat, qmult, quat2mat
-
+try:
+    from transforms3d.axangles import axangle2mat
+    from transforms3d.quaternions import axangle2quat, mat2quat, qmult, quat2mat
+except ImportError:
+    print("Warning: transforms3d not installed. Some functions may not work.")
 
 def world_to_2d(pts, K, rt):
     # returns N x 2 pts
