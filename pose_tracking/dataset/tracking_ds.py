@@ -95,7 +95,7 @@ class TrackingDataset(Dataset):
         use_bg_augm=False,
     ):
         if do_subtract_bg:
-            assert do_subtract_bg and include_mask, do_subtract_bg
+            assert not use_bg_augm
 
         self.include_rgb = include_rgb
         self.include_mask = include_mask
@@ -115,8 +115,6 @@ class TrackingDataset(Dataset):
         self.do_load_mesh_in_memory = do_load_mesh_in_memory
         self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
         self.use_bg_augm = use_bg_augm
-        self.use_mask_for_visibility_check = use_mask_for_visibility_check
-        self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -232,7 +230,11 @@ class TrackingDataset(Dataset):
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
 
-        if self.use_mask_for_visibility_check or self.include_mask or self.use_occlusion_augm or self.use_bg_augm:
+        if (
+            self.use_mask_for_visibility_check
+            or self.include_mask
+            or (self.use_occlusion_augm or self.use_bg_augm or self.do_subtract_bg)
+        ):
             mask = self.get_mask(i)
             is_visible = self.get_visibility(mask, i)
             sample["is_visible"] = is_visible if self.max_num_objs > 1 else [is_visible]
@@ -245,7 +247,7 @@ class TrackingDataset(Dataset):
             print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
             return None
 
-        if self.use_bg_augm or self.use_occlusion_augm:
+        if self.use_bg_augm or self.use_occlusion_augm or self.do_subtract_bg:
             if "ycbv" not in str(self.video_dir) and ("dextreme" in str(self.video_dir) or self.max_num_objs > 1):
                 sem_mask = load_semantic_mask(
                     self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h)
@@ -268,6 +270,10 @@ class TrackingDataset(Dataset):
                 sample["rgb"] = real_rgb
             if self.use_occlusion_augm:
                 sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=fg_mask)
+            if self.do_subtract_bg:
+                sample["rgb"] = sample["rgb"] * fg_mask[..., None]
+                if self.include_depth:
+                    sample["depth"] = sample["depth"] * fg_mask
 
         if self.include_depth:
             depth = self.get_depth(i)
@@ -275,11 +281,6 @@ class TrackingDataset(Dataset):
                 depth /= self.max_depth
                 sample["max_depth"] = self.max_depth
             sample["depth"] = depth
-
-        if self.do_subtract_bg:
-            sample["rgb"] = sample["rgb"] * sample["mask"][..., None]
-            if self.include_depth:
-                sample["depth"] = sample["depth"] * sample["mask"]
 
         if self.include_nocs:
             ...
@@ -499,7 +500,7 @@ class TrackingMultiObjDataset(TrackingDataset):
         mesh_paths = copy.deepcopy(mesh_path)
         mesh_paths_orig = copy.deepcopy(mesh_path)
 
-        load_mesh_res = wrap_with_futures(mesh_path, functools.partial(load_mesh, is_mm=is_mm), max_workers=8)
+        load_mesh_res = wrap_with_futures(mesh_path, functools.partial(load_mesh, is_mm=is_mm), max_workers=2)
         for idx, load_res in enumerate(load_mesh_res):
             mesh = load_res["mesh"]
             meshes.append(mesh)
