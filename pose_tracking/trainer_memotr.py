@@ -255,8 +255,11 @@ class TrainerMemotr(TrainerDeformableDETR):
                     if self.do_predict_2d_t:
                         center_depth_pred = t_pred[..., 2:]
                         t_pred_2d = t_pred[..., :2]
+                        intrinsics_rep = []
+                        for bidx in range(batch_size):
+                            intrinsics_rep.extend(intrinsics[bidx].unsqueeze(0).repeat(len(matched_idx_pred[bidx]), 1, 1))
                         convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                            t_pred_2d, center_depth_pred, intrinsics, hw=(h, w)
+                            t_pred_2d, center_depth_pred, intrinsics_rep, hw=(h, w)
                         )
                         t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
