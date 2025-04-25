@@ -198,6 +198,39 @@ def dice_loss(inputs, targets, num_boxes):
     return loss.sum() / num_boxes
 
 
+def silog_loss(pred, target, eps: float = 1e-4):
+    """Computes the Scale-Invariant Logarithmic (SI-Log) loss between
+    prediction and target.
+
+    Args:
+        pred (Tensor): Predicted output.
+        target (Tensor): Ground truth.
+        weight (Optional[Tensor]): Optional weight to apply on the loss.
+        eps (float): Epsilon value to avoid division and log(0).
+        reduction (Union[str, None]): Specifies the reduction to apply to the
+            output: 'mean', 'sum' or None.
+        avg_factor (Optional[int]): Optional average factor for the loss.
+
+    Returns:
+        Tensor: The calculated SI-Log loss.
+    """
+    pred, target = pred.flatten(1), target.flatten(1)
+    valid_mask = (target > eps).detach().float()
+
+    diff_log = torch.log(target.clamp(min=eps)) - torch.log(pred.clamp(min=eps))
+
+    valid_mask = (target > eps).detach() & (~torch.isnan(diff_log))
+    diff_log[~valid_mask] = 0.0
+    valid_mask = valid_mask.float()
+
+    diff_log_sq_mean = (diff_log.pow(2) * valid_mask).sum(dim=1) / valid_mask.sum(dim=1).clamp(min=eps)
+    diff_log_mean = (diff_log * valid_mask).sum(dim=1) / valid_mask.sum(dim=1).clamp(min=eps)
+
+    loss = torch.sqrt(diff_log_sq_mean - 0.5 * diff_log_mean.pow(2))
+
+    return loss.mean()
+
+
 class MixedTranslationLoss(nn.Module):
     def __init__(self):
         super(MixedTranslationLoss, self).__init__()
