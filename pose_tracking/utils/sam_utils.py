@@ -10,10 +10,14 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.sam2_video_predictor import SAM2VideoPredictor
 
 
-def get_sam_predictor(use_video=False):
+def get_sam_predictor(use_video=False, model_size="large"):
     sam_base = Path(f"{WORKSPACE_DIR}/related_work/data/segment-anything-2")
-    checkpoint = sam_base / "./checkpoints/sam2_hiera_large.pt"
-    model_cfg = "sam2_hiera_l.yaml"
+    if model_size == "large":
+        checkpoint = sam_base / "./checkpoints/sam2_hiera_large.pt"
+        model_cfg = "sam2_hiera_l.yaml"
+    else:
+        checkpoint = sam_base / "./checkpoints/sam2_hiera_small.pt"
+        model_cfg = "sam2_hiera_s.yaml"
     if use_video:
         predictor = build_sam2_video_predictor(model_cfg, checkpoint)
     else:

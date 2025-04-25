@@ -19,6 +19,8 @@ DATA_DIR = Path(os.environ['DATA_DIR']) if 'DATA_DIR' in os.environ else PROJ_DI
 RELATED_DIR = WORKSPACE_DIR / "related_work"
 TF_DIR = RELATED_DIR / "obj_det/trackformer"
 MEMOTR_DIR = RELATED_DIR / "obj_det/MeMOTR/memotr"
+if os.path.exists("/home/arjun"):
+    MEMOTR_DIR = Path("/home/arjun/Desktop/repo/nvidia-dexterous-repos/pose_tracking_inference")
 
 ARTIFACTS_DIR = PROJ_DIR / "artifacts"
 BENCHMARK_DIR = PROJ_DIR.parent / "benchmark"
