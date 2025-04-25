@@ -141,7 +141,8 @@ def get_model(args, num_classes=None):
             memotr_args["NUM_DET_QUERIES"] = 300
             memotr_args["USE_DAB"] = True
             model = build_model(memotr_args, num_classes=num_classes)
-            load_pretrained_model(model, pretrained_path=f"{MEMOTR_DIR}/dab_deformable_detr.pth", show_details=True)
+            if not(args.ckpt_path or args.ckpt_exp_name):
+                load_pretrained_model(model, pretrained_path=f"{MEMOTR_DIR}/dab_deformable_detr.pth", show_details=False)
             model.n_det_queries = args.mt_num_queries
             model.transformer.decoder.n_det_queries = args.mt_num_queries
             memotr_args["NUM_DET_QUERIES"] = args.mt_num_queries
@@ -389,7 +390,7 @@ def get_model(args, num_classes=None):
     ckpt_load_fn = (
         load_model_from_ckpt
         if args.model_name not in ["memotr"]
-        else functools.partial(load_pretrained_model, show_details=True)
+        else functools.partial(load_pretrained_model, show_details=False)
     )
     if args.ckpt_path:  # eval from a locally loaded ckpt
         print(f"Loading model from {args.ckpt_path}")
@@ -425,8 +426,10 @@ def get_memotr_args(args):
     config["WITH_BOX_REFINE"] = True
     config["opt_only"] = args.opt_only
     config["rot_loss_name"] = args.rot_loss_name
+    config["LONG_MEMORY_LAMBDA"] = args.mem_long_memory_lambda
 
     config["r_num_layers_inc"] = args.r_num_layers_inc
+    config["use_roi"] = args.mt_use_roi
 
     config["LR_BACKBONE"] = args.lr_encoders
     config["LR_POINTS"] = args.lr * 1e-1

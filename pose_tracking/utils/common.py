@@ -78,7 +78,7 @@ def cast_to_torch(x, device=None, include_top_list=False):
 
 
 def detach_and_cpu(x):
-    if isinstance(x, list):
+    if type(x) in [list, tuple]:
         return [detach_and_cpu(xx) for xx in x]
     elif isinstance(x, dict):
         return {k: detach_and_cpu(v) for k, v in x.items()}

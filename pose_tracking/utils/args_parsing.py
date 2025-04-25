@@ -13,7 +13,7 @@ def parse_args():
     args_raw, unknown_args = parser.parse_known_args()
     if unknown_args:
         print(f"WARNING. Unknown arguments: {unknown_args}")
-    args = postprocess_args(args_raw)
+    args = postprocess_args(args_raw, use_if_provided=True)
     args_to_group_map = map_args_to_groups(parser, args)
     return args, args_to_group_map
 
@@ -126,7 +126,9 @@ def get_parser():
     poseformer_args = parser.add_argument_group("PoseFormer arguments")
     poseformer_args.add_argument("--mt_do_calibrate_kpt", action="store_true", help="Calibrate keypoints")
     poseformer_args.add_argument("--mt_use_roi", action="store_true", help="Apply RoI for rot mlp in DETR basic")
-    poseformer_args.add_argument("--mt_use_mask_as_obj_indicator", action="store_true", help="Indicate which kpts are on-object")
+    poseformer_args.add_argument(
+        "--mt_use_mask_as_obj_indicator", action="store_true", help="Indicate which kpts are on-object"
+    )
     poseformer_args.add_argument("--mt_use_depth", action="store_true", help="Use RGBD")
     poseformer_args.add_argument("--mt_do_freeze_kpt_detector", action="store_true", help="Make detector frozen")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
@@ -190,6 +192,12 @@ def get_parser():
         help="Number of transformer heads",
     )
 
+    mem_args = parser.add_argument_group("Memotr arguments")
+    mem_args.add_argument(
+        "--mem_long_memory_lambda",
+        default=0.01,
+        type=float,
+    )
     tf_args = parser.add_argument_group("Trackformer arguments")
     tf_args.add_argument("--tf_use_deformable", action="store_true", help="Use deformable detr")
     tf_args.add_argument("--tf_use_dab", action="store_true", help="Use DAB")
@@ -385,7 +393,18 @@ def get_parser():
         type=str,
         default="ycbi",
         help="Dataset name",
-        choices=["ycbi", "cube_sim", "ikea", "ho3d_v3", "ikea_multiobj", "nocs", "ycbv", "ycbv_synt", "custom", "custom_test"],
+        choices=[
+            "ycbi",
+            "cube_sim",
+            "ikea",
+            "ho3d_v3",
+            "ikea_multiobj",
+            "nocs",
+            "ycbv",
+            "ycbv_synt",
+            "custom",
+            "custom_test",
+        ],
     )
     data_args.add_argument(
         "--end_frame_idx", type=int, help="Optional index of the last frame of each tracking ds for train set"
@@ -408,7 +427,7 @@ def get_parser():
     return parser
 
 
-def postprocess_args(args, use_if_provided=True):
+def postprocess_args(args, use_if_provided=False):
 
     args = fix_outdated_args(args)
 
@@ -459,9 +478,6 @@ def postprocess_args(args, use_if_provided=True):
 
     assert not (args.do_predict_6d_rot and args.do_predict_3d_rot), "Cannot predict both 6D and 3D rotation"
     assert not (args.do_predict_rel_pose and args.t_loss_name == "mixed"), "Mixed t loss is not working with rel pose"
-
-    if args.mt_use_roi:
-        assert args.model_name in ["detr_basic"]
 
     if args.do_predict_abs_pose:
         assert args.do_predict_rel_pose, "do_predict_abs_pose is used in conjunction with do_predict_abs_pose"

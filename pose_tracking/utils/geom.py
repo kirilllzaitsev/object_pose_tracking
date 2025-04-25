@@ -7,15 +7,17 @@ import numpy as np
 import torch
 from pose_tracking.config import logger
 from pose_tracking.utils.common import cast_to_numpy
-from pose_tracking.utils.misc import is_tensor, pick_library
+from pose_tracking.utils.misc import is_empty, is_tensor, pick_library
 from pose_tracking.utils.pose import matrix_to_quaternion
 from pose_tracking.utils.rotation_conversions import quaternion_to_matrix
 from scipy.spatial.transform import Rotation as R
+
 try:
     from transforms3d.axangles import axangle2mat
     from transforms3d.quaternions import axangle2quat, mat2quat, qmult, quat2mat
 except ImportError:
     print("Warning: transforms3d not installed. Some functions may not work.")
+
 
 def world_to_2d(pts, K, rt):
     # returns N x 2 pts
@@ -728,6 +730,12 @@ def compute_normals(depth):
 def allocentric_to_egocentric(allo_pose, src_type="mat", dst_type="mat", cam_ray=(0, 0, 1.0)):
     """https://github.com/THU-DA-6D-Pose-Group/GDR-Net/blob/main/core/gdrn_modeling/models/GDRN.py"""
     # Compute rotation between ray to object centroid and optical center ray
+    if is_empty(allo_pose):
+        return allo_pose
+    if allo_pose.ndim == 3:
+        return np.stack(
+            [allocentric_to_egocentric(a, src_type=src_type, dst_type=dst_type, cam_ray=cam_ray) for a in allo_pose]
+        )
     cam_ray = np.asarray(cam_ray)
     if src_type == "mat":
         trans = allo_pose[:3, 3]
