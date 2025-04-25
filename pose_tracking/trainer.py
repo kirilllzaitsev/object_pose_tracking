@@ -12,7 +12,8 @@ from pose_tracking.config import default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
-from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
+from pose_tracking.dataset.transforms import mask_pixels, mask_pixels_torch
+from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss, silog_loss
 from pose_tracking.metrics import (
     calc_metrics,
     calc_r_error,
@@ -224,6 +225,8 @@ class Trainer:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
         if criterion_rot_name in ["geodesic"]:
             assert not (do_predict_3d_rot or do_predict_6d_rot)
+        if self.args.use_belief_decoder:
+            assert self.args.mask_pixels_prob == 0.0
 
         self.init_optimizer()
 
@@ -404,6 +407,7 @@ class Trainer:
         do_skip_first_step = False
         prev_kpts = None
         kpts_key = "bbox_3d_kpts" if self.bbox_num_kpts == 32 else "bbox_3d_kpts_corners"
+        depth_no_noise = None
 
         for t, batch_t in ts_pbar:
             rgb = batch_t["rgb"]
@@ -418,6 +422,9 @@ class Trainer:
             hw = (h, w)
             t_gt_abs = pose_gt_abs[:, :3]
             rot_gt_abs = pose_gt_abs[:, 3:]
+            if self.use_belief_decoder:
+                depth_no_noise = depth.clone()
+                depth = mask_pixels_torch(depth, p=0.2, pixels_masked_max_percent=0.02)
 
             if self.do_predict_rel_pose:
                 if t == 0 and last_step_state is not None:
@@ -465,6 +472,7 @@ class Trainer:
                         state=None,
                         features_rgb=features_rgb,
                         bbox_kpts=batch_t[kpts_key],
+                        depth_no_noise=depth_no_noise,
                     )
                     state = out["state"]
 
@@ -514,6 +522,7 @@ class Trainer:
                 features_rgb=features_rgb,
                 bbox_kpts=batch_t[kpts_key],
                 bbox_kpts_prev=batched_seq[t - 1][kpts_key] if t > 0 else None,
+                depth_no_noise=depth_no_noise,
             )
 
             # POSTPROCESS OUTPUTS
@@ -652,10 +661,9 @@ class Trainer:
 
             # depth loss
             if self.use_belief_decoder:
-                loss_depth = F.mse_loss(out["decoder_out"]["depth_final"], out["latent_depth"])
-                loss += loss_depth
-            else:
-                loss_depth = torch.tensor(0.0).to(self.device)
+                loss_depth = F.mse_loss(out["decoder_out"]["depth_final"], out["depth_no_noise_latent"])
+                loss_depth_rec = silog_loss(out["depth_no_noise_rec"], depth_no_noise)
+                loss += loss_depth + loss_depth_rec
 
             # priv loss
             if "priv_decoded" in out:
@@ -710,7 +718,9 @@ class Trainer:
             # OTHER
 
             seq_stats["loss"].append(loss.item())
-            seq_stats["loss_depth"].append(loss_depth.item())
+            if self.use_belief_decoder:
+                seq_stats["loss_depth"].append(loss_depth.item())
+                seq_stats["loss_depth_rec"].append(loss_depth_rec.item())
             if self.use_pose_loss:
                 seq_stats["loss_pose"].append(loss_pose.item())
             else:
