@@ -1,178 +1,121 @@
-"""A simple U-Net w/ timm backbone encoder
-
-Based off an old version of Unet in https://github.com/qubvel/segmentation_models.pytorch
-
-Hacked together by Ross Wightman
-"""
-
-from typing import List, Optional
+import functools
+from typing import List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm import create_model
 
 
-class Unet(nn.Module):
-    """Unet is a fully convolution neural network for image semantic segmentation
+def double_conv(chan_in, chan_out):
+    return nn.Sequential(
+        nn.Conv2d(chan_in, chan_out, 3, padding=1),
+        nn.LeakyReLU(),
+        nn.Conv2d(chan_out, chan_out, 3, padding=1),
+        nn.LeakyReLU(),
+    )
 
-    Args:
-        encoder_name: name of classification model (without last dense layers) used as feature
-            extractor to build segmentation model.
-        encoder_weights: one of ``None`` (random initialization), ``imagenet`` (pre-training on ImageNet).
-        decoder_channels: list of numbers of ``Conv2D`` layer filters in decoder blocks
-        decoder_use_batchnorm: if ``True``, ``BatchNormalisation`` layer between ``Conv2D`` and ``Activation`` layers
-            is used.
-        num_classes: a number of classes for output (output shape - ``(batch, classes, h, w)``).
-        center: if ``True`` add ``Conv2dReLU`` block on encoder head
 
-    NOTE: This is based off an old version of Unet in https://github.com/qubvel/segmentation_models.pytorch
-    """
-
-    def __init__(
-        self,
-        backbone="resnet50",
-        backbone_kwargs=None,
-        backbone_indices=None,
-        decoder_use_batchnorm=True,
-        decoder_channels=(256, 128, 64, 32, 16),
-        in_chans=1,
-        num_classes=5,
-        center=False,
-        norm_layer=nn.BatchNorm2d,
-    ):
+class DownBlock(nn.Module):
+    def __init__(self, input_channels, filters, downsample=True):
         super().__init__()
-        backbone_kwargs = backbone_kwargs or {}
-        # NOTE some models need different backbone indices specified based on the alignment of features
-        # and some models won't have a full enough range of feature strides to work properly.
-        encoder = create_model(
-            backbone,
-            features_only=True,
-            out_indices=backbone_indices,
-            in_chans=in_chans,
-            pretrained=True,
-            **backbone_kwargs,
-        )
-        encoder_channels = encoder.feature_info.channels()[::-1]
-        self.encoder = encoder
+        self.conv_res = nn.Conv2d(input_channels, filters, 1, stride=(2 if downsample else 1))
 
-        if not decoder_use_batchnorm:
-            norm_layer = None
-        self.decoder = UnetDecoder(
-            encoder_channels=encoder_channels,
-            decoder_channels=decoder_channels,
-            final_channels=num_classes,
-            norm_layer=norm_layer,
-            center=center,
-        )
-
-    def forward(self, x: torch.Tensor):
-        x = self.encoder(x)
-        x.reverse()  # torchscript doesn't work with [::-1]
-        x = self.decoder(x)
-        return x
-
-
-class Conv2dBnAct(nn.Module):
-    def __init__(
-        self, in_channels, out_channels, kernel_size, padding=0, stride=1, act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d
-    ):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False)
-        self.bn = norm_layer(out_channels)
-        self.act = act_layer(inplace=True)
+        self.net = double_conv(input_channels, filters)
+        self.down = nn.Conv2d(filters, filters, 3, padding=1, stride=2) if downsample else None
 
     def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.act(x)
-        return x
+        res = self.conv_res(x)
+        x = self.net(x)
+        unet_res = x
+
+        if self.down is not None:
+            x = self.down(x)
+
+        x = x + res
+        return x, unet_res
 
 
-class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, scale_factor=2.0, act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d):
+class UpBlock(nn.Module):
+    def __init__(self, input_channels, filters, use_skip=False):
         super().__init__()
-        conv_args = dict(kernel_size=3, padding=1, act_layer=act_layer)
-        self.scale_factor = scale_factor
-        if norm_layer is None:
-            self.conv1 = Conv2dBnAct(in_channels, out_channels, **conv_args)
-            self.conv2 = Conv2dBnAct(out_channels, out_channels, **conv_args)
-        else:
-            self.conv1 = Conv2dBnAct(in_channels, out_channels, norm_layer=norm_layer, **conv_args)
-            self.conv2 = Conv2dBnAct(out_channels, out_channels, norm_layer=norm_layer, **conv_args)
+        self.conv_res = nn.ConvTranspose2d(input_channels // 2, filters, 1, stride=2)
+        if not use_skip:
+            input_channels = input_channels // 2
+        self.net = double_conv(input_channels, filters)
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.input_channels = input_channels
+        self.filters = filters
 
-    def forward(self, x, skip: Optional[torch.Tensor] = None):
-        if self.scale_factor != 1.0:
-            x = F.interpolate(x, scale_factor=self.scale_factor, mode="nearest")
-        if skip is not None:
-            x = torch.cat([x, skip], dim=1)
-        x = self.conv1(x)
-        x = self.conv2(x)
+    def forward(self, x, res):
+        *_, h, w = x.shape
+        conv_res = self.conv_res(x, output_size=(h * 2, w * 2))
+        x = self.up(x)
+        if res is not None:
+            res = F.interpolate(res, size=(x.shape[2], x.shape[3]), mode="bilinear", align_corners=False)
+            x = torch.cat((x, res), dim=1)
+        x = self.net(x)
+        x = x + conv_res
         return x
 
 
-class UnetDecoder(nn.Module):
-
-    def __init__(
-        self,
-        encoder_channels,
-        decoder_channels=(256, 128, 64, 32, 16),
-        final_channels=1,
-        norm_layer=nn.BatchNorm2d,
-        center=False,
-    ):
+class UNet(nn.Module):
+    def __init__(self, network_capacity=8, num_init_filters=1, num_layers=8, fmap_max=512, use_skip=True):
         super().__init__()
 
-        if center:
-            channels = encoder_channels[0]
-            self.center = DecoderBlock(channels, channels, scale_factor=1.0, norm_layer=norm_layer)
-        else:
-            self.center = nn.Identity()
+        filters = [num_init_filters] + [(network_capacity) * (2**i) for i in range(num_layers + 1)]
 
-        in_channels = [
-            in_chs
-            for in_chs, skip_chs in zip(
-                [encoder_channels[0]] + list(decoder_channels[:-1]), list(encoder_channels[1:]) + [0]
-            )
-        ]
-        out_channels = decoder_channels
+        set_fmap_max = functools.partial(min, fmap_max)
+        filters = list(map(set_fmap_max, filters))
+        filters[-1] = filters[-2]
 
-        self.blocks = nn.ModuleList()
-        for in_chs, out_chs in zip(in_channels, out_channels):
-            self.blocks.append(DecoderBlock(in_chs, out_chs, norm_layer=norm_layer))
-        self.final_conv = nn.Conv2d(out_channels[-1], final_channels, kernel_size=(1, 1))
+        chan_in_out = list(zip(filters[:-1], filters[1:]))
+        chan_in_out = list(map(list, chan_in_out))
 
-        self._init_weight()
+        down_blocks = []
+        attn_blocks = []
 
-    def _init_weight(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        for ind, (in_chan, out_chan) in enumerate(chan_in_out):
+            is_not_last = ind != (len(chan_in_out) - 1)
 
-    def forward(self, x: List[torch.Tensor]):
-        encoder_head = x[0]
-        x = self.center(encoder_head)
-        for i, b in enumerate(self.blocks):
-            skip = None
-            x = b(x, skip)
-        x = self.final_conv(x)
-        return x
+            block = DownBlock(in_chan, out_chan, downsample=is_not_last)
+            down_blocks.append(block)
+
+        self.down_blocks = nn.ModuleList(down_blocks)
+        self.attn_blocks = nn.ModuleList(attn_blocks)
+
+        last_chan = filters[-1]
+
+        self.conv = double_conv(last_chan, last_chan)
+
+        dec_chan_in_out = chan_in_out[:-1][::-1]
+        self.use_skip = use_skip
+        self.up_blocks = nn.ModuleList(list(map(lambda c: UpBlock(c[1] * 2, c[0], use_skip=use_skip), dec_chan_in_out)))
+        self.conv_out = nn.Conv2d(3, 1, 1)
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        ress = []
+        for down_block in self.down_blocks:
+            x, res = down_block(x)
+            if self.use_skip:
+                ress.append(res)
+            else:
+                ress.append(None)
+
+        mid = self.conv(x) + x
+        mid_pooled = F.adaptive_avg_pool2d(mid, 1).view(b, -1)
+        x = mid
+
+        for res, up_block in zip(ress[:-1][::-1], self.up_blocks):
+            x = up_block(x, res=res)
+
+        dec_out = F.interpolate(x, size=(h, w), mode="bilinear", align_corners=False)
+        dec_out = dec_out.sigmoid()
+        return dec_out, mid_pooled
 
 
 if __name__ == "__main__":
-    model = Unet(
-        backbone="resnet50",
-        backbone_kwargs=None,
-        backbone_indices=None,
-        decoder_use_batchnorm=True,
-        decoder_channels=(256, 128, 64, 32, 16),
-        in_chans=1,
-        num_classes=1,
-        center=False,
-    ).cuda()
-    x = torch.randn(1, 1, 224, 224).cuda()
+    model = UNet(network_capacity=32, num_init_filters=1, num_layers=6, fmap_max=512, use_skip=False).cuda()
+    x = torch.randn(1, 1, 480, 640).cuda()
     y = model(x)
     print(y.shape)
