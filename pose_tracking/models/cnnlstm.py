@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pose_tracking.models.encoders import get_encoders
+from pose_tracking.models.unet import UNet
 from pose_tracking.utils.misc import print_cls
 from torchvision.ops import roi_align
 
@@ -479,6 +480,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         prev_latent=None,
         state=None,
         features_rgb=None,
+        depth_no_noise=None,
         **kwargs,
     ):
 
@@ -491,7 +493,7 @@ class RecurrentCNNVanilla(RecurrentNet):
 
         bs = latent_rgb.size(0)
         state_prev = self.prep_state(state, bs)
-        res = self.extract_img_info(latent_rgb, latent_depth, state_prev)
+        res = self.extract_img_info(latent_rgb, latent_depth, state_prev, depth_no_noise=depth_no_noise)
         extracted_obs = res["extracted_obs"]
         latent = res["latent"]
 
@@ -569,7 +571,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         res["latent_depth"] = latent_depth
         return res
 
-    def extract_img_info(self, latent_rgb, latent_depth, state_prev):
+    def extract_img_info(self, latent_rgb, latent_depth, state_prev, **kwargs):
 
         if self.use_depth:
             latent = torch.cat([latent_rgb, latent_depth], dim=1)
@@ -651,6 +653,7 @@ class RecurrentCNN(RecurrentCNNVanilla):
                 use_rnn=self.use_rnn,
                 dropout=self.dropout,
             )
+            assert self.use_depth
             if use_belief_decoder:
                 assert bdec_priv_decoder_out_dim
                 self.belief_decoder = BeliefDecoder(
@@ -666,10 +669,17 @@ class RecurrentCNN(RecurrentCNNVanilla):
                     use_priv_decoder=use_priv_decoder,
                     dropout=self.dropout,
                 )
+                self.depth_unet = UNet(
+                    network_capacity=32,
+                    num_init_filters=1,
+                    num_layers=5,
+                    fmap_max=512,
+                    use_skip=False,
+                )
             else:
                 self.belief_decoder = None
 
-    def extract_img_info(self, latent_rgb, latent_depth, state_prev):
+    def extract_img_info(self, latent_rgb, latent_depth, state_prev, depth_no_noise=None, **kwargs):
         res = {}
 
         if self.use_obs_belief:
@@ -682,6 +692,10 @@ class RecurrentCNN(RecurrentCNNVanilla):
             extracted_obs = torch.cat([latent_rgb, posterior_belief], dim=1)
 
             if self.use_belief_decoder:
+                assert depth_no_noise is not None
+                depth_no_noise_rec, depth_no_noise_latent = self.depth_unet(depth_no_noise)
+                res["depth_no_noise_rec"] = depth_no_noise_rec
+                res["depth_no_noise_latent"] = depth_no_noise_latent.detach()
                 decoder_out = self.belief_decoder(hx, latent_depth)
                 latent_depth_post = decoder_out["depth_final"]
                 res["decoder_out"] = decoder_out
