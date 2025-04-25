@@ -395,7 +395,6 @@ class TrackingDataset(Dataset):
         sample = process_raw_sample(
             sample,
             transforms_rgb=self.transforms_rgb,
-            mask_pixels_prob=self.mask_pixels_prob,
             rot_repr=self.rot_repr,
             t_repr=self.t_repr,
         )

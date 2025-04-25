@@ -422,9 +422,9 @@ class Trainer:
             hw = (h, w)
             t_gt_abs = pose_gt_abs[:, :3]
             rot_gt_abs = pose_gt_abs[:, 3:]
-            if self.use_belief_decoder:
+            if self.args.mask_pixels_prob > 0:
                 depth_no_noise = depth.clone()
-                depth = mask_pixels_torch(depth, p=0.2, pixels_masked_max_percent=0.02)
+                depth = mask_pixels_torch(depth, p=self.args.mask_pixels_prob, pixels_masked_max_percent=0.02)
 
             if self.do_predict_rel_pose:
                 if t == 0 and last_step_state is not None:
