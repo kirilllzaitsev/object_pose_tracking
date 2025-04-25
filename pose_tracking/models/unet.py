@@ -130,7 +130,7 @@ class UnetDecoder(nn.Module):
             self.center = nn.Identity()
 
         in_channels = [
-            in_chs + skip_chs
+            in_chs
             for in_chs, skip_chs in zip(
                 [encoder_channels[0]] + list(decoder_channels[:-1]), list(encoder_channels[1:]) + [0]
             )
@@ -154,11 +154,9 @@ class UnetDecoder(nn.Module):
 
     def forward(self, x: List[torch.Tensor]):
         encoder_head = x[0]
-        skips = x[1:]
         x = self.center(encoder_head)
         for i, b in enumerate(self.blocks):
-            skip = skips[i] if i < len(skips) else None
-            # skip = None
+            skip = None
             x = b(x, skip)
         x = self.final_conv(x)
         return x
