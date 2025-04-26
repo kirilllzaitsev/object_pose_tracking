@@ -64,6 +64,47 @@ def mask_pixels(img, p=0.5, pixels_masked_max_percent=0.1):
     return img
 
 
+def mask_pixels_torch(img: torch.Tensor, p=0.1, pixels_masked_max_percent=0.1):
+    """
+    Randomly replaces pixels in an image with either 0 or a value in [0, 20].
+
+    Args:
+        img (torch.Tensor): Image tensor of shape (C, H, W).
+        p (float): Probability of applying the masking.
+        pixels_masked_max_percent (float): Max fraction of total pixels to modify.
+
+    Returns:
+        torch.Tensor: Modified image.
+    """
+    if img.ndim == 4:
+        return torch.stack(
+            [mask_pixels_torch(img[i], p, pixels_masked_max_percent) for i in range(img.shape[0])], dim=0
+        )
+    if torch.rand(1).item() > p:
+        return img
+
+    C, H, W = img.shape
+    total_pixels = H * W
+    num_mask = int(total_pixels * torch.rand(1) * pixels_masked_max_percent)
+
+    # Choose pixel indices to modify
+    flat_indices = torch.randperm(total_pixels)[:num_mask]
+    mask = torch.zeros(H * W, dtype=torch.bool, device=img.device)
+    mask[flat_indices] = True
+    mask = mask.view(H, W)
+
+    # Create random replacements (either 0 or a random [0, 20] value)
+    choice_mask = torch.rand(H, W, device=img.device) < 0.5
+    random_vals = torch.rand((C, H, W), device=img.device, dtype=img.dtype) * 20
+
+    new_img = img.clone()
+    for c in range(C):
+        new_img[c][mask & choice_mask] = 0
+        new_img[c][mask & ~choice_mask] = random_vals[c][mask & ~choice_mask]
+
+    return new_img
+
+
 def noisify_pose(pose, angle_mean=0, angle_std=3, t_mean=0, t_std=0.01):
     delta_pose_noise = copy.deepcopy(pose)
     angles = np.random.normal(angle_mean, angle_std, 3)
@@ -76,10 +117,10 @@ def noisify_pose(pose, angle_mean=0, angle_std=3, t_mean=0, t_std=0.01):
 
 def generate_random_mask_on_obj(obj_mask, bbox=None, num_vertices=5):
     from pose_tracking.utils.vis import convert_bbox_to_min_max_corners
+
     if bbox is None:
         bbox = infer_bounding_box(obj_mask)
     bbox_xy_ul, bbox_xy_br = convert_bbox_to_min_max_corners(bbox)
-
 
     h, w = obj_mask.shape[:2]
     mask = np.ones((h, w), dtype=np.uint8) * 255
