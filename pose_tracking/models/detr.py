@@ -473,10 +473,18 @@ class DETRBase(nn.Module):
             else:
                 rot_mlp_in = pose_token
             if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](rot_mlp_in)
+                if self.do_extract_rt_features:
+                    pred_rot, last_latent_rot = self.rot_mlps[layer_idx](rot_mlp_in)
+                    out["last_latent_rot"] = last_latent_rot
+                else:
+                    pred_rot = self.rot_mlps[layer_idx](rot_mlp_in)
                 out["rot"] = pred_rot
             if self.use_t:
-                pred_t = self.t_mlps[layer_idx](t_mlp_in)
+                if self.do_extract_rt_features:
+                    pred_t, last_latent_t = self.t_mlps[layer_idx](t_mlp_in)
+                    out["last_latent_t"] = last_latent_t
+                else:
+                    pred_t = self.t_mlps[layer_idx](t_mlp_in)
                 out["t"] = pred_t
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
@@ -523,8 +531,12 @@ class DETRBase(nn.Module):
         }
         if self.use_rot:
             res["rot"] = last_out["rot"]
+            if self.do_extract_rt_features:
+                res["last_latent_rot"] = last_out["last_latent_rot"]
         if self.use_t:
             res["t"] = last_out["t"]
+            if self.do_extract_rt_features:
+                res["last_latent_t"] = last_out["last_latent_t"]
         if self.do_predict_2d_t:
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
