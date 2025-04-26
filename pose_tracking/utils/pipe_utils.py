@@ -267,6 +267,7 @@ def get_model(args, num_classes=None):
             head_hidden_dim=args.rt_hidden_dim or 256,
             factors=args.factors,
             roi_feature_dim=args.mt_roi_feature_dim,
+            do_extract_rt_features=args.do_extract_rt_features,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -430,6 +431,8 @@ def get_memotr_args(args):
 
     config["r_num_layers_inc"] = args.r_num_layers_inc
     config["use_roi"] = args.mt_use_roi
+    config["head_hidden_dim"] = args.rt_hidden_dim
+    config["head_num_layers"] = args.rt_mlps_num_layers
 
     config["LR_BACKBONE"] = args.lr_encoders
     config["LR_POINTS"] = args.lr * 1e-1
@@ -479,6 +482,8 @@ def get_trackformer_args(args):
     tf_args.hidden_dim = args.tf_transformer_hidden_dim
     tf_args.rot_out_dim = args.rot_out_dim
     tf_args.t_out_dim = args.t_out_dim
+    # tf_args.head_hidden_dim = args.rt_hidden_dim
+    tf_args.head_num_layers = args.rt_mlps_num_layers
 
     tf_args.bbox_loss_coef = args.tf_bbox_loss_coef
     tf_args.giou_loss_coef = args.tf_giou_loss_coef
@@ -492,7 +497,6 @@ def get_trackformer_args(args):
     tf_args.uncertainty_coef = args.mt_uncertainty_coef
 
     tf_args.backbone = args.encoder_name
-    tf_args.head_num_layers = args.rt_mlps_num_layers
     tf_args.r_num_layers_inc = args.r_num_layers_inc
     tf_args.use_only_det = args.tf_use_only_det
 
@@ -971,6 +975,9 @@ def get_ds_dirs(args):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_16"]]
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
+    if "dextreme_2k_v2" in str(ds_video_dir_train):
+        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832"]]
+        ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_4"]]
     # if "dextreme" in str(ds_video_dir_train):
     #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
 
