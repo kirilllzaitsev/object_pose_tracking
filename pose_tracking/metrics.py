@@ -205,6 +205,7 @@ def calc_t_error(T1, T2, do_reduce=True):
 
 def calc_r_error(rot_pred, rot_gt, sym_type=None):
     from pose_tracking.losses import geodesic_loss_mat
+
     return geodesic_loss_mat(rot_pred=rot_pred, rot_gt=rot_gt, do_return_deg=True, use_eps=False, sym_type=sym_type)
 
 
@@ -372,17 +373,27 @@ def eval_batch_det(outs, targets, num_classes=None):
 
 
 def get_rt_errors(pred_poses, gt_poses):
-    # returns deg and centimeters
+    # returns deg and cm
     r_errors = []
     t_errors = []
     for pred, gt in zip(pred_poses, gt_poses):
 
         rot1 = gt[:3, :3]
         rot2 = pred[:3, :3]
-        t1 = gt[:3, 3] * 1000
-        t2 = pred[:3, 3] * 1000
+        t1 = gt[:3, 3]
+        t2 = pred[:3, 3]
         r_err = calc_r_error(rot2, rot1)
         t_err = calc_t_error(t1, t2)
         r_errors.append(r_err)
-        t_errors.append(t_err / 10)
+        t_errors.append(t_err * 100)
     return r_errors, t_errors
+
+
+def calc_metrics_agg(poses_pred, poses_gt, **kwargs):
+    metrics_all = defaultdict(list)
+    for pred_rt, gt_rt in zip(poses_pred, poses_gt):
+        metrics = calc_metrics(pred_rt=pred_rt, gt_rt=[gt_rt], **kwargs)
+        for k, v in metrics.items():
+            metrics_all[k].append(v)
+    metrics_all_agg = {k: np.mean(v) for k, v in metrics_all.items()}
+    return metrics_all_agg
