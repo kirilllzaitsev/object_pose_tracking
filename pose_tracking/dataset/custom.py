@@ -66,9 +66,9 @@ class CustomDatasetTest(CustomDataset):
                 kwargs["include_pose"] = False
                 kwargs["include_bbox_2d"] = False
         mask_dir = f"{kwargs['video_dir']}/masks"
-        kwargs["include_mask"] = os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 0
+        kwargs["include_mask"] = os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1
         depth_dir = f"{kwargs['video_dir']}/depth"
-        kwargs["include_depth"] = os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 0
+        kwargs["include_depth"] = os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 1
         # kwargs["target_hw"] = (480, 640)
         super().__init__(*args, pose_dirname=pose_dirname, **kwargs)
 
