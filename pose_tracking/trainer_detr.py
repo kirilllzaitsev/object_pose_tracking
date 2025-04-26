@@ -104,7 +104,7 @@ class TrainerDeformableDETR(Trainer):
             self.criterion = build_criterion(config=self.config, num_classes=num_classes)
             self.criterion.set_device(self.device)
         else:
-            from trackformer.models import build_criterion
+            from trackformer.models.build import build_criterion
             from trackformer.models.matcher import build_matcher
 
             self.tf_args = get_trackformer_args(self.args)
@@ -211,6 +211,7 @@ class TrainerDeformableDETR(Trainer):
         nan_count = 0
         do_skip_first_step = False
         prev_idx = None
+        failed_ts = []
 
         for t, batch_t in ts_pbar:
             if do_opt_every_ts:
@@ -403,7 +404,7 @@ class TrainerDeformableDETR(Trainer):
                 if "indices" in k:
                     continue
                 seq_stats[k].append(v.item())
-            for k in ["class_error", "cardinality_error", "uncertainty"]:
+            for k in ["class_error", "cardinality_error", "uncertainty", "confidence"]:
                 if k in loss_dict_reduced:
                     v = loss_dict_reduced[k]
                     seq_stats[k].append(v.item())
@@ -522,16 +523,24 @@ class TrainerDeformableDETR(Trainer):
             self.save_vis_paths.append(save_vis_path)
             self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
 
+        if len(failed_ts) > 0:
+            self.logger.error(f"Failed steps: {failed_ts}")
+
         return {
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
 
     def get_req_target_values_for_metrics(self, targets, indices):
-        other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter"]
+        other_values_for_metrics_keys = ["mesh_pts", "mesh_bbox", "mesh_diameter", "is_sym"]
         other_values_for_metrics = {}
         for k in other_values_for_metrics_keys:
-            other_values_for_metrics[k] = torch.cat([t[k][i] for t, i in zip(targets, indices)], dim=0)
+            if targets[0][k] is not None:
+                v = torch.cat([t[k][i] for t, i in zip(targets, indices)], dim=0)
+                if k == "is_sym":
+                    v = ["full" if x else None for x in v]
+                    k = "sym_types"
+                other_values_for_metrics[k] = v
 
         return other_values_for_metrics
 
@@ -561,35 +570,38 @@ class TrainerDeformableDETR(Trainer):
         if self.model_without_ddp.use_depth:
             extra_kwargs["depth"] = depth
 
-        if self.model_name == "detr_kpt":
-            if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
-                extra_kwargs["intrinsics"] = intrinsics.to(self.device)
-            if self.kpt_spatial_dim > 2:
-                extra_kwargs["depth"] = depth
-            out = self.model(
-                image,
-                mask=mask,
-                pose_tokens=pose_tokens,
-                prev_tokens=prev_tokens,
-                **extra_kwargs,
-            )
-        else:
-            out = self.model(image, pose_tokens=pose_tokens, prev_tokens=prev_tokens, **extra_kwargs)
+        try:
+            if self.model_name == "detr_kpt":
+                if self.do_calibrate_kpt or self.kpt_spatial_dim > 2:
+                    extra_kwargs["intrinsics"] = intrinsics.to(self.device)
+                if self.kpt_spatial_dim > 2:
+                    extra_kwargs["depth"] = depth
+                out = self.model(
+                    image,
+                    mask=mask,
+                    pose_tokens=pose_tokens,
+                    prev_tokens=prev_tokens,
+                    **extra_kwargs,
+                )
+            else:
+                out = self.model(image, pose_tokens=pose_tokens, prev_tokens=prev_tokens, **extra_kwargs)
 
-        if use_prev_image:
-            loss_dict = {}
-        else:
-            try:
+            if use_prev_image:
+                loss_dict = {}
+            else:
                 loss_dict = self.criterion(out, targets)
-            except:
-                self.logger.error(f"Loss calculation failed for batch {batch_t=}")
+        except Exception as e:
+            self.logger.error(f"Loss calculation failed for batch {batch_t=}")
+            self.logger.error(f"{targets=}")
+            if "out" in locals():
                 self.logger.error(f"{out=}")
-                self.logger.error(f"{targets=}")
-                raise
+            raise e
 
         return {"out": out, "loss_dict": loss_dict}
 
-    def calc_metrics_batch_mot(self, pose_mat_pred_metrics, pose_mat_gt_metrics, mesh_pts, mesh_bbox, mesh_diameter):
+    def calc_metrics_batch_mot(
+        self, pose_mat_pred_metrics, pose_mat_gt_metrics, mesh_pts, mesh_bbox, mesh_diameter, sym_types=None
+    ):
         m_batch = defaultdict(list)
         for sample_idx, (pred_rt, gt_rt) in enumerate(zip(pose_mat_pred_metrics, pose_mat_gt_metrics)):
             m_sample = calc_metrics(
@@ -601,6 +613,7 @@ class TrainerDeformableDETR(Trainer):
                 bbox_3d=mesh_bbox[sample_idx],
                 diameter=mesh_diameter[sample_idx],
                 is_meters=True,
+                sym_type=sym_types[sample_idx] if sym_types is not None else None,
                 log_fn=print if self.logger is None else self.logger.warning,
             )
             for k, v in m_sample.items():

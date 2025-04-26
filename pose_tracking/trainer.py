@@ -225,8 +225,6 @@ class Trainer:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
         if criterion_rot_name in ["geodesic"]:
             assert not (do_predict_3d_rot or do_predict_6d_rot)
-        if self.args.use_belief_decoder:
-            assert self.args.mask_pixels_prob == 0.0
 
         self.init_optimizer()
 
