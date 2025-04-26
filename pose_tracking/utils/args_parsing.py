@@ -31,6 +31,7 @@ def get_parser():
     pipe_args.add_argument("--do_profile", action="store_true", help="Profile the code")
     pipe_args.add_argument("--do_save_artifacts", action="store_true", help="Save artifacts")
     pipe_args.add_argument("--do_print_seq_stats", action="store_true", help="Print sequence-level stats")
+    pipe_args.add_argument("--use_v1_code", action="store_true", help="Compatibility flag for some legacy models")
     pipe_args.add_argument(
         "--do_ignore_file_args_with_provided", action="store_true", help="Ignore file args if provided via CLI"
     )
@@ -40,6 +41,7 @@ def get_parser():
     pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
     pipe_args.add_argument("--ckpt_path", type=str, help="Path to model checkpoint to load")
     pipe_args.add_argument("--ckpt_exp_name", type=str, help="Name of the experiment to load ckpt from")
+    pipe_args.add_argument("--ckpt_exp_name_artifact_suffix", type=str, default="best", help="Best/last ckpt from the experiment")
     pipe_args.add_argument("--args_from_exp_name", type=str, help="Exp name to load args from")
     pipe_args.add_argument(
         "--ignored_file_args",

@@ -251,6 +251,8 @@ def get_model(args, num_classes=None):
             use_roi=args.mt_use_roi,
             use_depth=args.mt_use_depth,
             do_refinement_with_attn=args.mt_do_refinement_with_attn,
+            use_v1_code=args.use_v1_code,
+            do_extract_rt_features=args.do_extract_rt_features,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -267,7 +269,6 @@ def get_model(args, num_classes=None):
             head_hidden_dim=args.rt_hidden_dim or 256,
             factors=args.factors,
             roi_feature_dim=args.mt_roi_feature_dim,
-            do_extract_rt_features=args.do_extract_rt_features,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -397,10 +398,9 @@ def get_model(args, num_classes=None):
         print(f"Loading model from {args.ckpt_path}")
         model = ckpt_load_fn(model, args.ckpt_path)
     elif args.ckpt_exp_name:  # resume training
-        artifact_suffix = "best"
-        print(f"Loading model from {artifact_suffix} artifact at {args.ckpt_exp_name}")
+        print(f"Loading model from {args.ckpt_exp_name_artifact_suffix} artifact at {args.ckpt_exp_name}")
         model = load_model_from_exp(
-            model, args.ckpt_exp_name, artifact_suffix=artifact_suffix, ckpt_load_fn=ckpt_load_fn
+            model, args.ckpt_exp_name, artifact_suffix=args.ckpt_exp_name_artifact_suffix, ckpt_load_fn=ckpt_load_fn
         )
 
     return model
@@ -431,8 +431,9 @@ def get_memotr_args(args):
 
     config["r_num_layers_inc"] = args.r_num_layers_inc
     config["use_roi"] = args.mt_use_roi
-    config["head_hidden_dim"] = args.rt_hidden_dim
-    config["head_num_layers"] = args.rt_mlps_num_layers
+    if not args.use_v1_code:
+        config["head_hidden_dim"] = args.rt_hidden_dim
+        config["head_num_layers"] = args.rt_mlps_num_layers
 
     config["LR_BACKBONE"] = args.lr_encoders
     config["LR_POINTS"] = args.lr * 1e-1

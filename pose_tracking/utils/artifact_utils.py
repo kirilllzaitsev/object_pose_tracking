@@ -146,6 +146,12 @@ def load_from_ckpt(
         state_dict_model["t_mlp.layers.1.bias"] = state_dict_model.pop("t_mlp.layers.2.bias")
         state_dict_model["rot_mlp.layers.1.weight"] = state_dict_model.pop("rot_mlp.layers.2.weight")
         state_dict_model["rot_mlp.layers.1.bias"] = state_dict_model.pop("rot_mlp.layers.2.bias")
+    actual_state_dict = model.state_dict()
+    if "conv1x1.weight" in state_dict_model and (
+        "conv1x1.weight" not in actual_state_dict and "proj.weight" in actual_state_dict
+    ):
+        state_dict_model["proj.weight"] = state_dict_model.pop("conv1x1.weight").squeeze()
+        state_dict_model["proj.bias"] = state_dict_model.pop("conv1x1.bias")
 
     model.load_state_dict(state_dict_model)
 
