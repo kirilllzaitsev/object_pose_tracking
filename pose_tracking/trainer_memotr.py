@@ -10,12 +10,16 @@ from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
-from pose_tracking.utils.common import detach_and_cpu, extract_idxs
+from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
 from pose_tracking.utils.detr_utils import (
     postprocess_detr_boxes,
     postprocess_detr_outputs,
 )
-from pose_tracking.utils.geom import convert_2d_t_to_3d, egocentric_delta_pose_to_pose
+from pose_tracking.utils.geom import (
+    allocentric_to_egocentric,
+    convert_2d_t_to_3d,
+    egocentric_delta_pose_to_pose,
+)
 from pose_tracking.utils.misc import is_empty, reduce_dict
 from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
@@ -257,7 +261,9 @@ class TrainerMemotr(TrainerDeformableDETR):
                         t_pred_2d = t_pred[..., :2]
                         intrinsics_rep = []
                         for bidx in range(batch_size):
-                            intrinsics_rep.extend(intrinsics[bidx].unsqueeze(0).repeat(len(matched_idx_pred[bidx]), 1, 1))
+                            intrinsics_rep.extend(
+                                intrinsics[bidx].unsqueeze(0).repeat(len(matched_idx_pred[bidx]), 1, 1)
+                            )
                         convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
                             t_pred_2d, center_depth_pred, intrinsics_rep, hw=(h, w)
                         )
@@ -383,6 +389,8 @@ class TrainerMemotr(TrainerDeformableDETR):
                 #     labels.append(labels_b)
                 #     scores.append(scores_b)
                 tracks_result = tracks[0].to(torch.device("cpu"))
+                if len(tracks_result.ids) > 1:
+                    print(f"{t=} {len(tracks_result.ids)=} {tracks_result.ids=}")
                 # ori_h, ori_w = ori_image.shape[1], ori_image.shape[2]
                 # box = [x, y, w, h]
                 # tracks_result.area = tracks_result.boxes[:, 2] * ori_w * \
@@ -407,8 +415,13 @@ class TrainerMemotr(TrainerDeformableDETR):
                             t_pred_2d, center_depth_pred, [i.cpu() for i in intrinsics], hw=(h, w)
                         )
                         track_ts = convert_2d_t_pred_to_3d_res["t_pred"]
+                else:
+                    failed_ts.append(t)
 
-                pose_mat_pred_abs = self.pose_to_mat_converter_fn(torch.cat([track_ts, tracks_result.rots], dim=-1))
+                track_rots = tracks_result.rots
+                pose_mat_pred_abs = self.pose_to_mat_converter_fn(torch.cat([track_ts, track_rots], dim=-1))
+                if self.model_without_ddp.use_roi:
+                    pose_mat_pred_abs = allocentric_to_egocentric(cast_to_numpy(pose_mat_pred_abs))
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
