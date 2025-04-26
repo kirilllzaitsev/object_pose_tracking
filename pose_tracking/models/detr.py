@@ -169,6 +169,8 @@ class DETRBase(nn.Module):
         pose_token_time_encoding="sin",
         factors=None,
         roi_feature_dim=512,
+        do_extract_rt_features=False,
+        use_v1_code=False,
     ):
         super().__init__()
 
@@ -176,6 +178,8 @@ class DETRBase(nn.Module):
         self.use_roi = use_roi
         self.use_depth = use_depth
         self.do_refinement_with_attn = do_refinement_with_attn
+        self.do_extract_rt_features = do_extract_rt_features
+        self.use_v1_code = use_v1_code
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -234,7 +238,7 @@ class DETRBase(nn.Module):
                     in_dim=d_model,
                     out_dim=4,
                     hidden_dim=head_hidden_dim,
-                    num_layers=head_num_layers,
+                    num_layers=3,
                     dropout=dropout_heads,
                 ),
                 n_layers,
@@ -243,7 +247,15 @@ class DETRBase(nn.Module):
             t_mlp_in_dim = d_model
             self.t_mlp_in_dim = t_mlp_in_dim
             self.t_mlps = get_clones(
-                MLP(t_mlp_in_dim, t_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
+                MLP(
+                    t_mlp_in_dim,
+                    t_out_dim,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
+                    do_return_last_latent=do_extract_rt_features,
+                ),
+                n_layers,
             )
         if self.use_rot:
             rot_mlp_in_dim = d_model
@@ -251,11 +263,25 @@ class DETRBase(nn.Module):
                 rot_mlp_in_dim += roi_feature_dim
             self.rot_mlp_in_dim = rot_mlp_in_dim
             self.rot_mlps = get_clones(
-                MLP(rot_mlp_in_dim, rot_out_dim, d_model, head_num_layers, dropout=dropout_heads), n_layers
+                MLP(
+                    rot_mlp_in_dim,
+                    rot_out_dim,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
+                    do_return_last_latent=do_extract_rt_features,
+                ),
+                n_layers,
             )
         if self.do_predict_2d_t:
             self.depth_embed = get_clones(
-                MLP(in_dim=d_model, out_dim=1, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads),
+                MLP(
+                    in_dim=d_model,
+                    out_dim=1,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
+                ),
                 n_layers,
             )
         if use_pose_tokens:
