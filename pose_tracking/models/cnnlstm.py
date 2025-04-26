@@ -142,8 +142,20 @@ class BeliefDecoder(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, num_layers=1, act="leaky_relu", act_out=None, dropout=0.0):
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        hidden_dim,
+        num_layers=1,
+        act="leaky_relu",
+        act_out=None,
+        dropout=0.0,
+        do_return_last_latent=False,
+    ):
         super().__init__()
+
+        self.do_return_last_latent = do_return_last_latent
 
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -181,9 +193,12 @@ class MLP(nn.Module):
             x = self.act(layer(x))
             if layer_idx < len(self.dropouts):
                 x = self.dropouts[layer_idx](x)
-        x = self.layers[-1](x)
+        last_latent = x
+        x = self.layers[-1](last_latent)
         if self.act_out is not None:
             x = self.act_out(x)
+        if self.do_return_last_latent:
+            return x, last_latent
         return x
 
     def __repr__(self):
