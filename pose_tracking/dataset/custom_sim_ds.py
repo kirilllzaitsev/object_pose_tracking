@@ -26,7 +26,7 @@ from pose_tracking.utils.geom import (
     get_inv_pose,
 )
 from pose_tracking.utils.io import load_pose, load_semantic_mask
-from pose_tracking.utils.misc import get_scale_factor
+from pose_tracking.utils.misc import get_scale_factor, wrap_with_futures
 from pose_tracking.utils.pcl import (
     downsample_pcl_via_subsampling,
     downsample_pcl_via_voxels,
@@ -248,7 +248,21 @@ class CustomSimMultiObjDataset(CustomSimDatasetBase, TrackingMultiObjDataset):
                 for c in np.unique(mask.reshape(-1, mask.shape[2]), axis=0).tolist()
                 if c not in self.segm_labels_to_color.values()
             ]
-            assert len(other_colors) == 1, other_colors
+            if len(other_colors) == 0:
+                # obj may be occluded in the first frame
+                idxs = np.linspace(0, len(self.color_files) - 1, 5).astype(int)
+                masks = wrap_with_futures(idxs, self.get_mask)
+                for mask in masks:
+                    other_colors = [
+                        c
+                        for c in np.unique(mask.reshape(-1, mask.shape[2]), axis=0).tolist()
+                        if c not in self.segm_labels_to_color.values()
+                    ]
+                    if len(other_colors) > 0:
+                        break
+            if len(other_colors) == 0:
+                print(f"WARNING: no object_0 color found in {self.video_dir}")
+                other_colors = [np.random.randint(0, 255, size=3).tolist()]
             self.segm_labels_to_color["object_0"] = other_colors[0]
 
         if mesh_path is None:
