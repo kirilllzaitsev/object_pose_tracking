@@ -141,8 +141,10 @@ def get_model(args, num_classes=None):
             memotr_args["NUM_DET_QUERIES"] = 300
             memotr_args["USE_DAB"] = True
             model = build_model(memotr_args, num_classes=num_classes)
-            if not(args.ckpt_path or args.ckpt_exp_name):
-                load_pretrained_model(model, pretrained_path=f"{MEMOTR_DIR}/dab_deformable_detr.pth", show_details=False)
+            if not (args.ckpt_path or args.ckpt_exp_name):
+                load_pretrained_model(
+                    model, pretrained_path=f"{MEMOTR_DIR}/dab_deformable_detr.pth", show_details=False
+                )
             model.n_det_queries = args.mt_num_queries
             model.transformer.decoder.n_det_queries = args.mt_num_queries
             memotr_args["NUM_DET_QUERIES"] = args.mt_num_queries
@@ -315,6 +317,7 @@ def get_model(args, num_classes=None):
         )
     elif args.model_name == "rnd":
         from pose_tracking.trainer_rnd import RNDNet
+
         model = RNDNet(
             use_depth=args.mt_use_depth,
             out_dim=args.encoder_out_dim,
@@ -483,7 +486,8 @@ def get_trackformer_args(args):
     tf_args.hidden_dim = args.tf_transformer_hidden_dim
     tf_args.rot_out_dim = args.rot_out_dim
     tf_args.t_out_dim = args.t_out_dim
-    # tf_args.head_hidden_dim = args.rt_hidden_dim
+    if not args.use_v1_code:
+        tf_args.head_hidden_dim = args.rt_hidden_dim
     tf_args.head_num_layers = args.rt_mlps_num_layers
 
     tf_args.bbox_loss_coef = args.tf_bbox_loss_coef

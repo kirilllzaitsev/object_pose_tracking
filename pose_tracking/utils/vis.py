@@ -902,7 +902,7 @@ def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), ro
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
-            (255, 0, 255),
+            (0, 0, 0),
             2,
             cv2.LINE_AA,
         )
