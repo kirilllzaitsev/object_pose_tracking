@@ -36,6 +36,7 @@ from pose_tracking.utils.geom import (
     rot_mat_from_6d,
     rotate_pts_batch,
 )
+from pose_tracking.utils.kpt_utils import sample_gt_kpts
 from pose_tracking.utils.misc import (
     is_tensor,
     match_module_by_name,
@@ -54,6 +55,7 @@ from pose_tracking.utils.rotation_conversions import (
     quaternion_to_matrix,
     rotation_6d_to_matrix,
 )
+from pose_tracking.utils.segm_utils import mask_morph
 from tqdm import tqdm
 
 
@@ -72,6 +74,7 @@ class TrainerDeformableDETR(Trainer):
         kpt_spatial_dim=2,
         do_calibrate_kpt=False,
         use_pose_tokens=False,
+        use_kpt_loss=False,
         **kwargs,
     ):
         if "detr_kpt" in args.model_name:
@@ -88,6 +91,7 @@ class TrainerDeformableDETR(Trainer):
 
         self.do_calibrate_kpt = do_calibrate_kpt
         self.use_pose_tokens = use_pose_tokens
+        self.use_kpt_loss = use_kpt_loss
 
         self.num_classes = num_classes  # excluding bg class
         self.aux_loss = aux_loss
@@ -239,7 +243,7 @@ class TrainerDeformableDETR(Trainer):
                 model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer, use_prev_image=True)
 
                 out = model_forward_res["out"]
-                pose_tokens_per_layer = [o.unsqueeze(0) for o in out["pose_tokens"]]
+                pose_tokens_per_layer = [o.unsqueeze(1) for o in out["pose_tokens"]]
                 prev_tokens = out["tokens"]
 
             model_forward_res = self.model_forward(
@@ -256,8 +260,8 @@ class TrainerDeformableDETR(Trainer):
                     [o.unsqueeze(0) for o in out["pose_tokens"]]
                     if pose_tokens_per_layer is None
                     else [
-                        torch.cat([pose_tokens_per_layer[i], out["pose_tokens"][i].unsqueeze(0)], dim=0)[
-                            -(self.seq_len - 1) :
+                        torch.cat([pose_tokens_per_layer[i], out["pose_tokens"][i].unsqueeze(1)], dim=1)[
+                            :, -(max(1, self.seq_len - 1)) :
                         ]
                         for i in range(self.num_dec_layers)
                     ]
@@ -269,6 +273,21 @@ class TrainerDeformableDETR(Trainer):
             indices = loss_dict.pop("indices")
             weight_dict = self.criterion.weight_dict
             loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+
+            if self.use_kpt_loss:
+                mask = batch_t["mask"]
+                mask_dilated = mask.clone()
+                score_map = out["score_map"]
+                mask_dilated = F.interpolate(
+                    mask_dilated.unsqueeze(1).float(), size=score_map.shape[-2:], mode="nearest"
+                ).squeeze(1)
+                score_map[score_map < 0] = 0
+                loss_kpt = F.binary_cross_entropy(
+                    score_map,
+                    mask_dilated,
+                )
+                loss += 0.2 * loss_kpt
+                seq_stats["loss_kpt"].append(loss_kpt.item())
 
             # reduce losses over all GPUs for logging purposes
             loss_dict_reduced = reduce_dict(loss_dict)
