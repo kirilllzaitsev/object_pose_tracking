@@ -1,4 +1,5 @@
 import copy
+import random
 
 import albumentations as A
 import cv2
@@ -125,7 +126,6 @@ def generate_random_mask_on_obj(obj_mask, bbox=None, num_vertices=5):
     mask = np.ones((h, w), dtype=np.uint8) * 255
 
     shape_type = np.random.choice(["polygon", "circle", "ellipse", "rectangle"])
-    shape_type = "ellipse"
 
     def sample_pts(num_vertices):
         x_candidates = torch.arange(bbox_xy_ul[0], bbox_xy_br[0] + 1)
@@ -177,8 +177,6 @@ def generate_random_mask_on_obj(obj_mask, bbox=None, num_vertices=5):
         x_ur, y_ur = np.min(pts[:, 0]), np.min(pts[:, 1])
         x_lr, y_lr = np.max(pts[:, 0]), np.max(pts[:, 1])
         cv2.rectangle(mask, (x_ur, y_ur), (x_lr, y_lr), 0, thickness=-1)
-
-    mask = cv2.GaussianBlur(mask, (5, 5), 0)
 
     return mask > 0
 

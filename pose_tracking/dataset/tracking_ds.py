@@ -68,6 +68,13 @@ class TrackingDataset(Dataset):
         do_normalize_depth=False,
         use_allocentric_pose=False,
         use_occlusion_augm=False,
+        is_intrinsics_for_all_samples=True,
+        use_mask_for_bbox_2d=False,
+        do_load_mesh_in_memory=True,
+        do_skip_invisible_single_obj=True,
+        do_filter_invisible_single_obj_frames=False,
+        use_mask_for_visibility_check=True,
+        use_bg_augm=False,
         max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
@@ -79,20 +86,14 @@ class TrackingDataset(Dataset):
         color_file_id_strs=None,
         rot_repr="quaternion",
         t_repr="3d",
-        is_intrinsics_for_all_samples=True,
-        use_mask_for_bbox_2d=False,
         bbox_num_kpts=8,
         dino_features_folder_name=None,
         max_num_objs=1,
         min_pixels_for_visibility=20 * 20,
         target_hw=None,
-        do_load_mesh_in_memory=True,
         is_val=True,
         factors=None,
-        do_skip_invisible_single_obj=True,
-        do_filter_invisible_single_obj_frames=False,
-        use_mask_for_visibility_check=True,
-        use_bg_augm=False,
+        mask_erosion_kernel_size=7,
     ):
         if do_subtract_bg:
             assert not use_bg_augm
@@ -136,6 +137,7 @@ class TrackingDataset(Dataset):
         self.min_pixels_for_visibility = min_pixels_for_visibility
         self.target_hw = target_hw
         self.factors = factors
+        self.mask_erosion_kernel_size = mask_erosion_kernel_size
 
         self.use_occlusion_augm = use_occlusion_augm and not is_val
         self.use_factors = factors is not None
@@ -247,7 +249,7 @@ class TrackingDataset(Dataset):
             print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
             return None
 
-        if self.use_bg_augm or self.use_occlusion_augm or self.do_subtract_bg:
+        if self.use_bg_augm or self.do_subtract_bg:
             if "ycbv" not in str(self.video_dir) and ("dextreme" in str(self.video_dir) or self.max_num_objs > 1):
                 sem_mask = load_semantic_mask(
                     self.color_files[i].replace("rgb", "semantic_segmentation"), wh=(self.w, self.h)
@@ -268,12 +270,12 @@ class TrackingDataset(Dataset):
                 real_rgb = load_color(self.real_bg_paths[random_bg_idx], wh=(self.w, self.h))
                 real_rgb[fg_mask, :] = sample["rgb"][fg_mask, :]
                 sample["rgb"] = real_rgb
-            if self.use_occlusion_augm:
-                sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=fg_mask)
             if self.do_subtract_bg:
                 sample["rgb"] = sample["rgb"] * fg_mask[..., None]
                 if self.include_depth:
                     sample["depth"] = sample["depth"] * fg_mask
+        if self.use_occlusion_augm:
+            sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=mask)
 
         if self.include_depth:
             depth = self.get_depth(i)
@@ -423,7 +425,7 @@ class TrackingDataset(Dataset):
         mask_dirname = "masks_with_hand" if "allegro_real" in str(self.video_dir) else "masks"
         mask = load_mask(self.color_files[i].replace("rgb", mask_dirname), wh=(self.w, self.h))
         if self.do_erode_mask:
-            mask = mask_morph(mask, kernel_size=11)
+            mask = mask_morph(mask, kernel_size=self.mask_erosion_kernel_size)
         return mask
 
     def get_depth(self, i):
