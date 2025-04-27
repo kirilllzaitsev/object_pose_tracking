@@ -64,10 +64,8 @@ def mask_pixels(img, p=0.5, pixels_masked_max_percent=0.1):
     return img
 
 
-def mask_pixels_torch(img: torch.Tensor, p=0.1, pixels_masked_max_percent=0.1):
+def mask_pixels_torch(img: torch.Tensor, p=0.3, pixels_masked_max_percent=0.15, use_noise=False, use_blocks=True):
     """
-    Randomly replaces pixels in an image with either 0 or a value in [0, 20].
-
     Args:
         img (torch.Tensor): Image tensor of shape (C, H, W).
         p (float): Probability of applying the masking.
@@ -83,26 +81,27 @@ def mask_pixels_torch(img: torch.Tensor, p=0.1, pixels_masked_max_percent=0.1):
     if torch.rand(1).item() > p:
         return img
 
-    C, H, W = img.shape
-    total_pixels = H * W
-    num_mask = int(total_pixels * torch.rand(1) * pixels_masked_max_percent)
+    mask = torch.rand_like(img) > torch.rand(1).item() * pixels_masked_max_percent
+    res = img * mask
+    if use_noise:
+        noise = torch.randn_like(img) * 0.01
+        res += noise * ~mask
+    if use_blocks:
+        res = mask_random_block(res, max_num_blocks=20, max_block_size=32)
+    return res
 
-    # Choose pixel indices to modify
-    flat_indices = torch.randperm(total_pixels)[:num_mask]
-    mask = torch.zeros(H * W, dtype=torch.bool, device=img.device)
-    mask[flat_indices] = True
-    mask = mask.view(H, W)
 
-    # Create random replacements (either 0 or a random [0, 20] value)
-    choice_mask = torch.rand(H, W, device=img.device) < 0.5
-    random_vals = torch.rand((C, H, W), device=img.device, dtype=img.dtype) * 20
-
-    new_img = img.clone()
-    for c in range(C):
-        new_img[c][mask & choice_mask] = 0
-        new_img[c][mask & ~choice_mask] = random_vals[c][mask & ~choice_mask]
-
-    return new_img
+def mask_random_block(img, max_num_blocks=20, max_block_size=32):
+    if img.ndim == 4:
+        return torch.stack([mask_random_block(img[i], max_num_blocks, max_block_size) for i in range(img.shape[0])])
+    B, H, W = img.shape
+    num_blocks = random.randint(0, max_num_blocks)
+    for _ in range(num_blocks):
+        block_size = random.randint(1, max_block_size)
+        y = random.randint(0, H - block_size)
+        x = random.randint(0, W - block_size)
+        img[:, y : y + block_size, x : x + block_size] = 0.0
+    return img
 
 
 def noisify_pose(pose, angle_mean=0, angle_std=3, t_mean=0, t_std=0.01):
