@@ -315,6 +315,33 @@ class TrainerMemotr(TrainerDeformableDETR):
                             continue
                         seq_metrics[k].append(v)
 
+            # temporal loss
+            if self.use_temporal_loss and t > 0:
+                # match poses from prev and new tracks
+                prev_track_poses = []
+                new_track_poses = []
+                for bidx, new_track in enumerate(tracks):
+                    prev_track = prev_tracks[bidx]
+                    matched_tids = [tid for tid in new_track.ids if tid != -1 and tid in prev_track.ids]
+                    if len(matched_tids) > 0:
+                        new_matched_id_idxs = [i for i, tid in enumerate(new_track.ids) if tid in matched_tids]
+                        prev_matched_id_idxs = [i for i, tid in enumerate(prev_track.ids) if tid in matched_tids]
+                        new_track_poses.extend(
+                            self.parse_track_pose(new_track, intrinsics, hw=(h, w))[new_matched_id_idxs]
+                        )
+                        prev_track_poses.extend(
+                            self.parse_track_pose(prev_track, intrinsics, hw=(h, w))[prev_matched_id_idxs]
+                        )
+
+                if len(prev_track_poses) > 0:
+                    prev_track_poses = torch.stack(prev_track_poses)
+                    new_track_poses = torch.stack(new_track_poses)
+                    delta_pose = pose_to_egocentric_delta_pose_mat(prev_track_poses, new_track_poses)
+                    delta_pose_lie = Se3.from_matrix(delta_pose).log()
+                    loss_temporal = 0.1 * F.mse_loss(delta_pose_lie, torch.zeros_like(delta_pose_lie))
+                    loss += loss_temporal
+                    seq_stats["loss_temporal"].append(loss_temporal.item())
+
             # UPDATE VARS
 
             if self.use_pose and seq_length > 1:
