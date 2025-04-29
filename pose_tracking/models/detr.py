@@ -678,7 +678,7 @@ class KeypointDETR(DETRBase):
             self.token_dim += 1
         if self.use_depth:
             self.pe_depth = PosEncodingDepth(self.d_model, use_mlp=False)
-        self.conv1x1 = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
+        self.proj = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
 
         self.kpt_extractor_name = kpt_extractor_name
         self.extractor = load_extractor(kpt_extractor_name)
@@ -708,9 +708,10 @@ class KeypointDETR(DETRBase):
             prev_pose_tokens=pose_tokens,
             prev_tokens=prev_tokens,
             img_features=extract_res.get("img_features"),
+            rgb=x,
         )
 
-        for k in ["kpts", "descriptors"]:
+        for k in ["kpts", "descriptors", "score_map"]:
             out[k] = extract_res[k]
 
         return out
@@ -751,7 +752,7 @@ class KeypointDETR(DETRBase):
 
         if self.use_mask_as_obj_indicator:
             # TODO: n objs (kpts on each obj)
-            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask.squeeze(1))
+            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask.squeeze(1)).unsqueeze(1)
             tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
         if self.use_depth:
             depth_1d_pe = self.pe_depth(depth_1d.unsqueeze(-1))
@@ -759,11 +760,12 @@ class KeypointDETR(DETRBase):
                 depth_1d_pe = torch.cat([depth_1d_pe, torch.zeros_like(obj_indicator).transpose(-2, -1)], dim=-1)
             tokens = tokens + depth_1d_pe
 
-        tokens = self.conv1x1(tokens.transpose(-1, -2))
+        tokens = self.proj(tokens.transpose(-1, -2))
 
         return {
             "tokens": tokens,
             "kpts": kpts,
+            "score_map": extracted_kpts['score_map'],
             "descriptors": descriptors,
             "memory_key_padding_mask": memory_key_padding_mask,
         }
