@@ -1,7 +1,7 @@
 import functools
 
-from pose_tracking.config import IS_CLUSTER
 import torch
+from pose_tracking.config import IS_CLUSTER
 from pose_tracking.dataset.dataloading import preload_ds
 from pose_tracking.dataset.ds_common import adjust_img_for_torch
 from pose_tracking.dataset.transforms import (
@@ -190,6 +190,8 @@ class VideoDatasetTracking(VideoDataset):
                             or (hasattr(v, "ndim") and v.ndim == 0 and not isinstance(v, str))
                         ):
                             v = v[None]
+                        elif k in ["mesh"] and type(v) not in [list]:
+                            v = [v]
                         s[k] = v
 
             pose_all_objs = sample["pose"]
@@ -353,6 +355,8 @@ class VideoDatasetTracking(VideoDataset):
         for k, v in s.items():
             if k in ["pose", "class_id"] or "mesh_" in k or "bbox_" in k:
                 s[k] = v[visible_obj_mask]
+            elif k in ["mesh"]:
+                s[k] = [v[i] for i, is_visib in enumerate(visible_obj_mask) if is_visib]
         return s
 
 
