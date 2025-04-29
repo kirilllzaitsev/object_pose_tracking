@@ -288,7 +288,7 @@ def extract_kpts(x, extractor, do_normalize=False, use_zeros_for_pad=True):
                         # duplicate random pts
                         pad_idxs = torch.randint(0, len(kpts[k]), (pad_len,))
                         kpts[k] = torch.cat([kpts[k], kpts[k][pad_idxs]])
-        extracted_kpts = {k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors"]}
+        extracted_kpts = {k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors", "score_map"]}
     else:
         extracted_kpts = extractor.extract(x)
 
@@ -386,3 +386,19 @@ def kabsch_torch_batched(P, Q):
     rmsd = torch.sqrt(torch.sum(torch.square(torch.matmul(p, R.transpose(1, 2)) - q), dim=(1, 2)) / P.shape[1])
 
     return R, t, rmsd
+
+
+def sample_gt_kpts(mask, num_samples=1024):
+    if mask.ndim == 3:
+        return torch.stack([sample_gt_kpts(mask[i], num_samples=num_samples) for i in range(mask.shape[0])], dim=0)
+    ys, xs = torch.where(mask > 0)
+    coords = torch.stack([xs, ys], dim=1)
+
+    P = coords.shape[0]
+    if P == 0:
+        raise ValueError("Mask has no foreground pixels!")
+    if P >= num_samples:
+        idx = torch.randperm(P)[:num_samples]
+    else:
+        idx = torch.randint(0, P, (num_samples,))
+    return coords[idx].float()
