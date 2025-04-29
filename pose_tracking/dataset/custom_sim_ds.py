@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from pose_tracking.config import logger
+from pose_tracking.config import DATA_DIR, PROJ_DIR, logger
 from pose_tracking.dataset.tracking_ds import TrackingDataset, TrackingMultiObjDataset
 from pose_tracking.utils.geom import (
     backproj_depth,
@@ -52,6 +52,7 @@ class CustomSimDatasetBase(object):
         self.cam_init_rot = cam_init_rot
 
         self.do_load_bbox_from_metadata = False if "dextreme" in str(self.video_dir) else do_load_bbox_from_metadata
+        self.do_load_mesh_from_external = "dextreme" in str(self.video_dir)
 
         if cam_pose_path is None:
             if os.path.exists(f"{self.video_dir}/cam_pose.txt"):
@@ -93,13 +94,19 @@ class CustomSimDataset(CustomSimDatasetBase, TrackingDataset):
         super().__init__(*args, **kwargs)
 
         if mesh_path is None:
-            for name in ["mesh", self.obj_name]:
-                mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
-                if os.path.exists(mesh_path_prop):
-                    mesh_path = mesh_path_prop
-                    break
+            if self.do_load_mesh_from_external:
+                mesh_path = f"{PROJ_DIR}/data/custom/allegro_real/mesh/mesh_v2.obj"
+            else:
+                for name in ["mesh", self.obj_name]:
+                    mesh_path_prop = f"{self.video_dir}/mesh/{self.obj_name}/{name}.obj"
+                    if os.path.exists(mesh_path_prop):
+                        mesh_path = mesh_path_prop
+                        break
         if mesh_path is not None:
-            scale_factor = get_scale_factor(mesh_path)
+            if self.do_load_mesh_from_external:
+                scale_factor = 0.0325
+            else:
+                scale_factor = get_scale_factor(mesh_path)
             self.set_up_obj_mesh(mesh_path, scale_factor=scale_factor)
 
     def get_pose(self, idx):
