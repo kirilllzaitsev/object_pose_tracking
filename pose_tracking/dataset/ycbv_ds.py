@@ -141,6 +141,8 @@ class YCBvDataset(TrackingMultiObjDataset):
             sample["mesh_pts"] = self.mesh_pts[mesh_idxs]
             sample["mesh_bbox"] = self.mesh_bbox[mesh_idxs]
             sample["mesh_diameter"] = self.mesh_diameter[mesh_idxs]
+            if self.include_mesh:
+                sample["mesh"] = [self.mesh[midx] for midx in mesh_idxs]
         else:
             return super().add_mesh_data_to_sample(i, sample)
         return sample
