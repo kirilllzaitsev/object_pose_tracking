@@ -61,6 +61,7 @@ class TrackingDataset(Dataset):
         include_bbox_3d=False,
         include_nocs=False,
         include_kpt_projections=False,
+        include_mesh=False,
         do_erode_mask=False,
         do_convert_depth_to_m=True,
         do_normalize_bbox=False,
@@ -94,6 +95,7 @@ class TrackingDataset(Dataset):
         is_val=True,
         factors=None,
         mask_erosion_kernel_size=7,
+        mask_dirname="masks",
     ):
         if do_subtract_bg:
             assert not use_bg_augm
@@ -112,8 +114,9 @@ class TrackingDataset(Dataset):
         self.do_subtract_bg = do_subtract_bg
         self.use_allocentric_pose = use_allocentric_pose
         self.include_nocs = include_nocs
+        self.include_mesh = include_mesh
         self.use_mask_for_bbox_2d = use_mask_for_bbox_2d
-        self.do_load_mesh_in_memory = do_load_mesh_in_memory
+        self.do_load_mesh_in_memory = do_load_mesh_in_memory or include_mesh
         self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
         self.use_bg_augm = use_bg_augm
 
@@ -153,6 +156,7 @@ class TrackingDataset(Dataset):
         self.end_frame_idx = end_frame_idx or len(self.color_files)
         self.color_files = self.color_files[self.start_frame_idx : self.end_frame_idx]
         self.pose_files = self.pose_files[self.start_frame_idx : self.end_frame_idx]
+        self.mask_dirname = mask_dirname
 
         self.mesh = None
         self.mesh_bbox = None
@@ -231,6 +235,12 @@ class TrackingDataset(Dataset):
 
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
+        if self.include_depth:
+            depth = self.get_depth(i)
+            if self.do_normalize_depth:
+                depth /= self.max_depth
+                sample["max_depth"] = self.max_depth
+            sample["depth"] = depth
 
         if (
             self.use_mask_for_visibility_check
@@ -276,13 +286,6 @@ class TrackingDataset(Dataset):
                     sample["depth"] = sample["depth"] * fg_mask
         if self.use_occlusion_augm:
             sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=mask)
-
-        if self.include_depth:
-            depth = self.get_depth(i)
-            if self.do_normalize_depth:
-                depth /= self.max_depth
-                sample["max_depth"] = self.max_depth
-            sample["depth"] = depth
 
         if self.include_nocs:
             ...
@@ -407,6 +410,8 @@ class TrackingDataset(Dataset):
         sample["mesh_pts"] = self.mesh_pts
         sample["mesh_bbox"] = self.mesh_bbox
         sample["mesh_diameter"] = self.mesh_diameter
+        if self.include_mesh:
+            sample["mesh"] = self.mesh
         return sample
 
     def get_intrinsics(self, idx):
@@ -422,8 +427,7 @@ class TrackingDataset(Dataset):
         return load_color(self.color_files[i], wh=(self.w, self.h))
 
     def get_mask(self, i):
-        mask_dirname = "masks_with_hand" if "allegro_real" in str(self.video_dir) else "masks"
-        mask = load_mask(self.color_files[i].replace("rgb", mask_dirname), wh=(self.w, self.h))
+        mask = load_mask(self.color_files[i].replace("rgb", self.mask_dirname), wh=(self.w, self.h))
         if self.do_erode_mask:
             mask = mask_morph(mask, kernel_size=self.mask_erosion_kernel_size)
         return mask
