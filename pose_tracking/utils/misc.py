@@ -156,6 +156,8 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
         if k in excluded_attrs:
             continue
         msg += f"{k}: {v}\n"
+    if len(excluded_attrs) > 0:
+        msg += f"\nAlso contains: {excluded_attrs}"
     if extra_str:
         msg += f"\n{extra_str}"
     msg += "\n" + "-" * 30
@@ -274,3 +276,9 @@ def distributed_rank():
         return 0
     else:
         return torch.distributed.get_rank()
+
+
+def add_batch_dim_to_img(img):
+    if img.ndim == 3:
+        img = img[None]
+    return img

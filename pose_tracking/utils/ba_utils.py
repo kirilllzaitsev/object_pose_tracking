@@ -9,7 +9,11 @@ from pose_tracking.utils.geom import (
     transform_pts,
     transform_pts_batch,
 )
-from pytorch3d.transforms.so3 import _so3_exp_map, hat, so3_log_map
+
+try:
+    from pytorch3d.transforms.so3 import _so3_exp_map, hat, so3_log_map
+except ImportError:
+    print("pytorch3d not installed. some functions will not work.")
 from torch import optim
 from tqdm.auto import tqdm
 

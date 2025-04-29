@@ -133,6 +133,9 @@ def get_parser():
     )
     poseformer_args.add_argument("--mt_use_depth", action="store_true", help="Use RGBD")
     poseformer_args.add_argument("--mt_do_freeze_kpt_detector", action="store_true", help="Make detector frozen")
+    poseformer_args.add_argument("--mt_use_kpt_loss", action="store_true", help="Include loss on kpts")
+    poseformer_args.add_argument("--mt_use_temporal_loss", action="store_true", help="Include temporal loss")
+    poseformer_args.add_argument("--mt_use_pe_loss", action="store_true", help="Include photometric loss")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"

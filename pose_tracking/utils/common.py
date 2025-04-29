@@ -88,7 +88,7 @@ def detach_and_cpu(x):
         return {k: detach_and_cpu(v) for k, v in x.items()}
     elif isinstance(x, np.ndarray) or isinstance(x, (int, float, complex)) or np.isscalar(x):
         return x
-    elif x is None:
+    elif x is None or not hasattr(x, "detach"):
         return x
     return x.detach().cpu()
 

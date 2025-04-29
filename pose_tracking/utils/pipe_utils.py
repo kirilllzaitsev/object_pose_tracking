@@ -618,6 +618,9 @@ def get_trainer(
         use_pnp_for_rot_pred=args.use_pnp_for_rot_pred,
         bbox_num_kpts=args.bbox_num_kpts,
         use_factors=args.use_factors,
+        use_kpt_loss=args.mt_use_kpt_loss,
+        use_temporal_loss=args.mt_use_temporal_loss,
+        use_pe_loss=args.mt_use_pe_loss,
         **extra_kwargs,
     )
 
@@ -680,6 +683,7 @@ def get_datasets(
     include_mask=False,
     include_depth=False,
     include_bbox_2d=False,
+    include_mesh=False,
     do_predict_rel_pose=False,
     use_entire_seq_in_train=False,
     do_normalize_depth=False,
@@ -742,6 +746,7 @@ def get_datasets(
         target_hw=target_hw,
         use_allocentric_pose=use_allocentric_pose,
         use_mask_for_visibility_check=True,
+        include_mesh=include_mesh,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
