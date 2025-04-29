@@ -140,20 +140,29 @@ def compute_add_loss(pose_pred, pose_gt, pts):
 
 
 def compute_chamfer_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    try:
-        from pose_tracking.chamfer_distance import ChamferDistance
-    except Exception as e:
-        print(f"Failed to import a custom ChamferDistance: {e}. Loading an alternative.")
-        ChamferDistance = None
-    if ChamferDistance is None:
-        return torch.tensor(torch.nan)
-    chamfer_dist = ChamferDistance()
-    has_batch_dim = len(x.shape) == 3
-    if not has_batch_dim:
+    assert x.device.type != "cpu"
+    if x.ndim == 2:
         x = x.unsqueeze(0)
+    if y.ndim == 2:
         y = y.unsqueeze(0)
-    dist1, dist2 = chamfer_dist(x, y)
-    loss = (torch.mean(dist1)) + (torch.mean(dist2))
+    try:
+        from chamferdist.chamfer import ChamferDistance
+
+        chamfer_dist = ChamferDistance()
+        loss = 0.5 * chamfer_dist(x, y, bidirectional=True)
+    except Exception as e:
+        print(f"Failed to import from chamferdist: {e}. Loading an alternative.")
+        try:
+            from pose_tracking.chamfer_distance import ChamferDistance
+        except:
+            print(f"Failed to import a custom ChamferDistance: {e}. Loading an alternative.")
+            return torch.tensor(torch.nan)
+        chamfer_dist = ChamferDistance()
+        dist1, dist2 = chamfer_dist(x, y)
+        if dist1.any() == torch.inf or dist2.any() == torch.inf:
+            print("WARNING: Chamfer distance is inf")
+            return torch.tensor(torch.nan)
+        loss = 0.5 * ((torch.mean(dist1)) + (torch.mean(dist2)))
     return loss
 
 
