@@ -90,7 +90,6 @@ class UNet(nn.Module):
         dec_chan_in_out = chan_in_out[:-1][::-1]
         self.use_skip = use_skip
         self.up_blocks = nn.ModuleList(list(map(lambda c: UpBlock(c[1] * 2, c[0], use_skip=use_skip), dec_chan_in_out)))
-        self.conv_out = nn.Conv2d(3, 1, 1)
 
     def forward(self, x):
         b, c, h, w = x.shape

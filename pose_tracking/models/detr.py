@@ -437,12 +437,12 @@ class DETRBase(nn.Module):
                 if prev_pose_tokens is not None and len(prev_pose_tokens) > 0:
                     # time_pos_embed = sinusoidal_embedding(len(prev_pose_tokens), self.d_model)
                     prev_pose_tokens_layer = prev_pose_tokens[layer_idx]
-                    num_prev_tokens, b, *_ = prev_pose_tokens_layer.shape
+                    b, num_prev_tokens, *_ = prev_pose_tokens_layer.shape
                     time_pos_embed = timestep_embedding(torch.arange(num_prev_tokens + 1).to(o.device), self.d_model)
                     pose_tokens = torch.cat([prev_pose_tokens_layer, pose_token.unsqueeze(1)], dim=1)
                     pose_tokens = einops.rearrange(pose_tokens, "b t q d -> (b q) t d")
                     pose_tokens_enc = self.pose_token_transformer(pose_tokens)
-                    pose_tokens_enc = einops.rearrange(pose_tokens_enc, "(b q) t d -> b t q d", b=b, d=self.d_model)
+                    pose_tokens_enc = einops.rearrange(pose_tokens_enc, "(b q) t d -> b t q d", b=b)
                     pose_token = pose_tokens_enc[:, -1]
             else:
                 pose_token = o
@@ -465,7 +465,7 @@ class DETRBase(nn.Module):
                 assert rgb is not None
                 hw = rgb.shape[-2:]
                 pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-                rgb_crop = get_crops(rgb, pred_boxes_xyxy, hw=hw, crop_size=(60 * 1, 80 * 1), padding=5)
+                rgb_crop = get_crops(rgb, pred_boxes_xyxy, hw=hw, crop_size=(60 * 2, 80 * 2), padding=5)
                 crop_feats = self.roi_cnn(rgb_crop)
                 crop_feats = rearrange(crop_feats, "(b q) d -> b q d", q=self.n_queries)
                 # TODO: check allocentric
