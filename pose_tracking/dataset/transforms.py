@@ -19,15 +19,15 @@ def get_transforms(transform_names=None, transform_prob=0.75):
     if "iso" in transform_names:
         ts.append(A.ISONoise(p=0.25))
     if "brightness" in transform_names:
-        ts.append(A.RandomBrightnessContrast(p=0.75, brightness_limit=(-0.1, 0.1), contrast_limit=(-0.2, 0.2)))
+        ts.append(A.RandomBrightnessContrast(p=0.75, brightness_limit=(-0.2, 0.4), contrast_limit=(-0.2, 0.2)))
     if "blur" in transform_names:
         ts.append(A.Blur(p=0.1, blur_limit=(3, 5)))
     if "motion_blur" in transform_names:
-        ts.append(A.MotionBlur(p=0.4, blur_limit=(3, 21)))
+        ts.append(A.MotionBlur(p=0.5, blur_limit=(3, 17)))
     if "gamma" in transform_names:
-        ts.append(A.RandomGamma(p=0.1, gamma_limit=(60, 140)))
+        ts.append(A.RandomGamma(p=0.2, gamma_limit=(60, 140)))
     if "hue" in transform_names:
-        ts.append(A.HueSaturationValue(p=0.1, val_shift_limit=(-40, -20)))
+        ts.append(A.HueSaturationValue(p=0.2, val_shift_limit=(-40, -20)))
     if "norm" in transform_names:
         norm = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ts.append(norm)
