@@ -431,6 +431,8 @@ def get_memotr_args(args):
     config["opt_only"] = args.opt_only
     config["rot_loss_name"] = args.rot_loss_name
     config["LONG_MEMORY_LAMBDA"] = args.mem_long_memory_lambda
+    config["LOSS_WEIGHT_ROT"] = args.tf_rot_loss_coef
+    config["LOSS_WEIGHT_T"] = args.tf_t_loss_coef
 
     config["r_num_layers_inc"] = args.r_num_layers_inc
     config["use_roi"] = args.mt_use_roi

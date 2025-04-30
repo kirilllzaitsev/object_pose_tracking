@@ -14,6 +14,7 @@ from pose_tracking.models.pos_encoding import (
     PosEncoding,
     PosEncodingCoord,
     PosEncodingDepth,
+    PositionEmbeddingLearned,
     SpatialPosEncoding,
     timestep_embedding,
 )

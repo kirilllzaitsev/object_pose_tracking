@@ -244,7 +244,7 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["prev_mask"] = sample_prev.get("mask", [])
             new_sample["prev_is_visible"] = sample_prev.get("is_visible", [])
             new_sample["prev_factors"] = sample_prev.get("factors")
-            mesh_keys = [k for k in sample_prev if k.startswith("mesh_")]
+            mesh_keys = [k for k in sample_prev if k.startswith("mesh")]
             for k, v in sample_prev.items():
                 if k in mesh_keys:
                     new_sample[f"prev_{k}"] = v

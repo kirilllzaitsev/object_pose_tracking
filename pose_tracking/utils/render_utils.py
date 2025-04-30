@@ -195,13 +195,14 @@ def nvdiffrast_render(
     vnormals = mesh_tensors["vnormals"]
     pos_idx = mesh_tensors["faces"]
     has_tex = "tex" in mesh_tensors
+    device = K.device
 
-    ob_in_glcams = torch.tensor(glcam_in_cvcam, device="cuda", dtype=torch.float)[None] @ ob_in_cams
+    ob_in_glcams = torch.tensor(glcam_in_cvcam, device=device, dtype=torch.float)[None] @ ob_in_cams
     if projection_mat is None:
         projection_mat = torch.tensor(
             projection_matrix_from_intrinsics(K.cpu(), height=H, width=W, znear=0.1, zfar=100)
         ).cuda()
-    projection_mat = torch.as_tensor(projection_mat.reshape(-1, 4, 4), device="cuda", dtype=torch.float)
+    projection_mat = torch.as_tensor(projection_mat.reshape(-1, 4, 4), device=device, dtype=torch.float)
     mtx = projection_mat @ ob_in_glcams
 
     if output_size is None:
@@ -215,12 +216,13 @@ def nvdiffrast_render(
         t = H - bbox2d[:, 1]
         r = bbox2d[:, 2]
         b = H - bbox2d[:, 3]
-        tf = torch.eye(4, dtype=torch.float, device="cuda").reshape(1, 4, 4).expand(len(ob_in_cams), 4, 4).contiguous()
+        tf = torch.eye(4, dtype=torch.float, device=device).reshape(1, 4, 4).expand(len(ob_in_cams), 4, 4).contiguous()
         tf[:, 0, 0] = W / (r - l)
         tf[:, 1, 1] = H / (t - b)
         tf[:, 3, 0] = (W - r - l) / (r - l)
         tf[:, 3, 1] = (H - t - b) / (t - b)
         pos_clip = pos_clip @ tf
+
     rast_out, _ = dr.rasterize(glctx, pos_clip, pos_idx, resolution=np.asarray(output_size))
     xyz_map, _ = dr.interpolate(pts_cam, rast_out, pos_idx)
     depth = xyz_map[..., 2]
@@ -279,6 +281,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
     mesh = batch["mesh"]
     poses_pred = convert_pose_vector_to_matrix(poses_pred)
     assert poses_pred.ndim == 3, poses_pred.shape
+    assert poses_pred.device.type == "cuda", poses_pred.device.type
     bs = poses_pred.shape[0]
     input_resize = h, w
     rgb_rs = []
@@ -294,13 +297,13 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
             assert len(mesh_bidx) == 1, len(mesh_bidx)  # only one obj for now
             mesh_bidx = mesh_bidx[0]
 
-        mesh_tensors = make_mesh_tensors(mesh_bidx, device="cuda")
+        mesh_tensors = make_mesh_tensors(mesh_bidx, device=poses_pred.device)
         extra = {}
         r_res = nvdiffrast_render(
             K=K[bidx].to(poses_pred.device),
             H=h,
             W=w,
-            ob_in_cams=poses_pred[bidx : bidx + 1].cuda(),
+            ob_in_cams=poses_pred[bidx : bidx + 1].to(poses_pred.device),
             context="cuda",
             get_normal=False,
             glctx=glctx,

@@ -116,7 +116,12 @@ def process_raw_sample(sample, **kwargs):
     # add keys present in sample but not in ds_sample
     for k, v in sample.items():
         if k not in ds_sample:
-            if v is not None and not any(x in k for x in ("name", "path")) and not isinstance(v, torch.Tensor):
+            if (
+                v is not None
+                and not any(x in k for x in ("name", "path"))
+                and not isinstance(v, torch.Tensor)
+                and not k in ["mesh"]
+            ):
                 if isinstance(v, dict):
                     v = cast_to_torch(v)
                 else:
