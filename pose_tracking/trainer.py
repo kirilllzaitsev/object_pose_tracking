@@ -351,6 +351,9 @@ class Trainer:
             running_stats[k] = np.mean(v)
         running_stats = reduce_dict(running_stats, device=self.device)
 
+        if self.do_debug:
+            running_stats["full"] = seq_stats
+
         if self.do_log:
             for k, v in running_stats.items():
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
@@ -420,9 +423,11 @@ class Trainer:
             hw = (h, w)
             t_gt_abs = pose_gt_abs[:, :3]
             rot_gt_abs = pose_gt_abs[:, 3:]
-            if self.args.mask_pixels_prob > 0:
-                depth_no_noise = depth.clone()
-                depth = mask_pixels_torch(depth, p=self.args.mask_pixels_prob, pixels_masked_max_percent=0.02)
+            depth_no_noise = depth if isinstance(depth, list) else depth.clone()
+            if self.args.mask_pixels_prob > 0 and is_train:
+                depth = mask_pixels_torch(
+                    depth, p=self.args.mask_pixels_prob, pixels_masked_max_percent=0.1, use_noise=True, use_blocks=True
+                )
 
             if self.do_predict_rel_pose:
                 if t == 0 and last_step_state is not None:

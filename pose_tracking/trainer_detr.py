@@ -277,6 +277,8 @@ class TrainerDeformableDETR(Trainer):
             if self.use_kpt_loss:
                 mask = batch_t["mask"]
                 mask_dilated = mask.clone()
+                if mask_dilated.shape[-1] == 3:
+                    mask_dilated = mask_dilated.any(dim=-1)
                 score_map = out["score_map"]
                 mask_dilated = F.interpolate(
                     mask_dilated.unsqueeze(1).float(), size=score_map.shape[-2:], mode="nearest"
