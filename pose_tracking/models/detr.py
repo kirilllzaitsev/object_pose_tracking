@@ -330,7 +330,7 @@ class DETRBase(nn.Module):
             self.factor_mlps = {}
             for k in factors:
                 self.factor_mlps[k] = get_clones(
-                    MLPFactors(roi_feature_dim, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid()),
+                    MLPFactors(roi_feature_dim, 10, d_model, num_layers=2, dropout=dropout_heads, act_out=None),
                     n_layers,
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
