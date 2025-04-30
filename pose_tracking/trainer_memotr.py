@@ -344,23 +344,7 @@ class TrainerMemotr(TrainerDeformableDETR):
 
             # UPDATE VARS
 
-            if self.use_pose and seq_length > 1:
-                if self.do_predict_rel_pose:
-                    if self.do_predict_3d_rot:
-                        rot_prev_pred_abs = matrix_to_axis_angle(rot_mat_pred_abs)
-                    elif self.do_predict_6d_rot:
-                        rot_prev_pred_abs = matrix_to_rotation_6d(rot_mat_pred_abs)
-                    else:
-                        rot_prev_pred_abs = matrix_to_quaternion(rot_mat_pred_abs)
-                    pose_prev_pred_abs = {"t": t_pred_abs, "rot": rot_prev_pred_abs}
-                else:
-                    pose_prev_pred_abs = {}
-                #     pose_prev_pred_abs = {"t": t_pred, "rot": rot_pred}
-                if self.do_predict_2d_t:
-                    pose_prev_pred_abs["center_depth"] = center_depth_pred
-                pose_prev_pred_abs = {k: v.detach() for k, v in pose_prev_pred_abs.items()}
-
-                pose_mat_prev_gt_abs = pose_mat_gt_abs
+            prev_tracks = [t.clone() for t in tracks]
 
             # OTHER
 
