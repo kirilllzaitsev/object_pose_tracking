@@ -468,22 +468,10 @@ class TrainerMemotr(TrainerDeformableDETR):
                     "scores": torch.max(tracks_result.scores, dim=-1).values,
                     "track_ids": tracks_result.ids,
                 }
-                track_ts = tracks_result.ts
-                if len(track_ts) > 0:
-                    if self.do_predict_2d_t:
-                        center_depth_pred = track_ts[..., 2:]
-                        t_pred_2d = track_ts[..., :2]
-                        convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                            t_pred_2d, center_depth_pred, [i.cpu() for i in intrinsics], hw=(h, w)
-                        )
-                        track_ts = convert_2d_t_pred_to_3d_res["t_pred"]
-                else:
+                pose_mat_pred_abs = self.parse_track_pose(tracks_result, intrinsics, hw=(h, w))
+                if len(pose_mat_pred_abs) == 0:
                     failed_ts.append(t)
 
-                track_rots = tracks_result.rots
-                pose_mat_pred_abs = self.pose_to_mat_converter_fn(torch.cat([track_ts, track_rots], dim=-1))
-                if self.model_without_ddp.use_roi:
-                    pose_mat_pred_abs = allocentric_to_egocentric(cast_to_numpy(pose_mat_pred_abs))
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
@@ -530,9 +518,10 @@ class TrainerMemotr(TrainerDeformableDETR):
             optimizer.step()
             optimizer.zero_grad()
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = np.mean(v)
+        if not self.do_debug:
+            for stats in [seq_stats, seq_metrics]:
+                for k, v in stats.items():
+                    stats[k] = np.mean(v)
 
         if self.use_pose and self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
@@ -568,6 +557,22 @@ class TrainerMemotr(TrainerDeformableDETR):
             "losses": seq_stats,
             "metrics": seq_metrics,
         }
+
+    def parse_track_pose(self, tracks_result: TrackInstances, intrinsics, hw):
+        track_ts = tracks_result.ts
+        if len(track_ts) > 0:
+            if self.do_predict_2d_t:
+                center_depth_pred = track_ts[..., 2:]
+                t_pred_2d = track_ts[..., :2]
+                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                    t_pred_2d, center_depth_pred, [i.to(t_pred_2d.device) for i in intrinsics], hw=hw
+                )
+                track_ts = convert_2d_t_pred_to_3d_res["t_pred"]
+        track_rots = tracks_result.rots
+        pose_mat_pred_abs = self.pose_to_mat_converter_fn(torch.cat([track_ts, track_rots], dim=-1))
+        if self.model_without_ddp.use_roi:
+            pose_mat_pred_abs = allocentric_to_egocentric(cast_to_numpy(pose_mat_pred_abs))
+        return pose_mat_pred_abs
 
     def get_seq_slice_for_dict_seq(self, batched_seq, t):
         batch_t = {}
