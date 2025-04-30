@@ -124,6 +124,7 @@ class TrainerMemotr(TrainerDeformableDETR):
             t_out_dim=self.config["t_out_dim"],
             WITH_BOX_REFINE=self.config["WITH_BOX_REFINE"],
         )
+        prev_tracks = None
         self.criterion.log = {}
         self.criterion.init_a_clip(
             batch=batched_seq,
@@ -188,9 +189,9 @@ class TrainerMemotr(TrainerDeformableDETR):
                         previous_tracks, new_tracks, unmatched_dets
                     )
             else:
-                previous_tracks2, new_tracks2 = tracker.update(model_outputs=out, tracks=tracks, batch=batch_t)
+                previous_tracks, new_tracks = tracker.update(model_outputs=out, tracks=tracks, batch=batch_t)
                 tracks: list[TrackInstances] = self.model_without_ddp.postprocess_single_frame(
-                    previous_tracks2, new_tracks2, None
+                    previous_tracks, new_tracks, None
                 )
                 # tracks_result = tracks[0].to(torch.device("cpu"))
                 # tracks_result = filter_by_score(tracks_result, thresh=self.result_score_thresh)
@@ -218,21 +219,6 @@ class TrainerMemotr(TrainerDeformableDETR):
             loss_dict_reduced_scaled["loss_rot"] = loss_dict_reduced_scaled.pop("rot_loss")
             loss_dict_reduced_scaled["loss_t"] = loss_dict_reduced_scaled.pop("t_loss")
             losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
-
-            # optim
-            if do_opt_every_ts:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
-                if self.do_debug or do_vis:
-                    grad_norms, grad_norm = self.get_grad_info()
-                    if do_vis:
-                        vis_data["grad_norm"].append(grad_norm)
-                        vis_data["grad_norms"].append(grad_norms)
-
-                optimizer.step()
-                optimizer.zero_grad()
-            elif do_opt_in_the_end:
-                total_losses.append(loss)
 
             # METRICS
 
@@ -322,7 +308,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                 new_track_poses = []
                 for bidx, new_track in enumerate(tracks):
                     prev_track = prev_tracks[bidx]
-                    matched_tids = [tid for tid in new_track.ids if tid != -1 and tid in prev_track.ids]
+                    matched_tids = [tid for tid in new_track.ids if tid >= 0 and tid in prev_track.ids]
                     if len(matched_tids) > 0:
                         new_matched_id_idxs = [i for i, tid in enumerate(new_track.ids) if tid in matched_tids]
                         prev_matched_id_idxs = [i for i, tid in enumerate(prev_track.ids) if tid in matched_tids]
@@ -341,6 +327,71 @@ class TrainerMemotr(TrainerDeformableDETR):
                     loss_temporal = 0.1 * F.mse_loss(delta_pose_lie, torch.zeros_like(delta_pose_lie))
                     loss += loss_temporal
                     seq_stats["loss_temporal"].append(loss_temporal.item())
+
+            if self.use_pe_loss:
+                mesh = [t["mesh"] for t in targets]
+                render_poses = pose_mat_pred_abs.clone()
+                render_poses[..., :3, 3] = pose_mat_gt_abs[..., :3, 3]
+                r_res = render_batch_pose_preds(
+                    batch={
+                        "intrinsics": intrinsics,
+                        "mesh": mesh,
+                        "rgb": rgb,
+                    },
+                    poses_pred=render_poses,
+                    glctx=self.glctx,
+                )
+                rgb_rs, depth_rs, normal_rs, xyz_map_rs, mask_rs = (
+                    r_res["rgb"],
+                    r_res["depth"],
+                    r_res["normal"],
+                    r_res["xyz_map"],
+                    r_res["mask"],
+                )
+                mask = batch_t["mask"][:, None]
+                rgb_masked = rgb * mask
+                rgb_rs_adjusted = adjust_brightness(rgb_rs, target_rgb=rgb)
+                proj_loss = torch.abs(rgb_rs_adjusted - rgb_masked)
+                ssim_loss = self.ssim(rgb_rs_adjusted, rgb_masked)
+                joint_mask = mask.bool() | mask_rs.bool()
+                ssim_loss_masked = ssim_loss * joint_mask
+                proj_loss_masked = proj_loss * joint_mask
+                alpha = 0.85
+                pe_loss_masked = alpha / 2 * ssim_loss_masked + (1 - alpha) * proj_loss_masked
+                pe_loss = 1 * pe_loss_masked.mean()
+
+                # add loss based on area
+                # mask_area = torch.sum(mask, dim=[1, 2, 3])
+                # mask_rs_area = torch.sum(mask_rs, dim=[1, 2, 3])
+                # loss_area = torch.abs(
+                #     (mask_area - mask_rs_area) / torch.where(mask_area > mask_rs_area, mask_area, mask_rs_area)
+                # ).mean()
+                # loss += loss_area
+                # seq_stats["loss_area"].append(loss_area.item())
+
+                # loss = 0
+                # detach t grad from pe loss?
+                # since mostly influenced by rot?!
+                loss += pe_loss
+
+                seq_stats["loss_pe"].append(pe_loss.item())
+                seq_stats["loss_ssim"].append(ssim_loss_masked.mean().item())
+                seq_stats["loss_proj"].append(proj_loss_masked.mean().item())
+
+            # optim
+            if do_opt_every_ts:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_clip_grad_norm)
+                if self.do_debug or do_vis:
+                    grad_norms, grad_norm = self.get_grad_info()
+                    if do_vis:
+                        vis_data["grad_norm"].append(grad_norm)
+                        vis_data["grad_norms"].append(grad_norms)
+
+                optimizer.step()
+                optimizer.zero_grad()
+            elif do_opt_in_the_end:
+                total_losses.append(loss)
 
             # UPDATE VARS
 
