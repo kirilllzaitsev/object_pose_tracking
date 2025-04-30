@@ -77,8 +77,8 @@ class TrainerMemotr(TrainerDeformableDETR):
         if use_pe_loss:
             import nvdiffrast.torch as dr
 
-            self.glctx = dr.RasterizeCudaContext()
-            self.ssim = SSIM()
+            self.glctx = dr.RasterizeCudaContext(device=self.device)
+            self.ssim = SSIM().to(self.device)
 
     def get_param_dicts(self):
         from memotr.train_engine import get_param_groups
@@ -200,7 +200,6 @@ class TrainerMemotr(TrainerDeformableDETR):
                     criterion_res["unmatched_detections"],
                     criterion_res["matched_idxs"],
                 )
-                # TODO: why -1 in original? they don't calc metrics, hence do not need tracks
                 if t < seq_length:
                     tracks = self.model_without_ddp.postprocess_single_frame(
                         previous_tracks, new_tracks, unmatched_dets
@@ -358,11 +357,8 @@ class TrainerMemotr(TrainerDeformableDETR):
                     poses_pred=render_poses,
                     glctx=self.glctx,
                 )
-                rgb_rs, depth_rs, normal_rs, xyz_map_rs, mask_rs = (
+                rgb_rs, mask_rs = (
                     r_res["rgb"],
-                    r_res["depth"],
-                    r_res["normal"],
-                    r_res["xyz_map"],
                     r_res["mask"],
                 )
                 mask = batch_t["mask"][:, None]

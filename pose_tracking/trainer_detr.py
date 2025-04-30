@@ -455,27 +455,49 @@ class TrainerDeformableDETR(Trainer):
                 out_formatted = postprocess_detr_outputs(
                     out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
                 )
+                # TODO: check n-obj case
                 bboxs = []
                 labels = []
+                scores = []
+                pose_preds = []
                 for bidx, out_b in enumerate(out_formatted):
                     keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
                     # keep = torch.ones_like(res['scores']).bool()
                     if sum(keep) == 0:
-                        print(f"{bidx=} failed")
+                        failed_ts.append(t)
                         continue
                     boxes_b = out_b["boxes"][keep]
                     labels_b = out_b["labels"][keep]
+                    scores_b = out_b["scores"][keep]
+                    rot_pred_b = out_b["rot"][keep]
+                    t_pred_b = out_b["t"][keep]
+
+                    if self.do_predict_2d_t:
+                        center_depth_pred = out_b["center_depth"][keep]
+                        convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                            t_pred_b, center_depth_pred, intrinsics, hw=(h, w)
+                        )
+                        t_pred_b = convert_2d_t_pred_to_3d_res["t_pred"]
+                    pose_pred_b = self.pose_to_mat_converter_fn(torch.cat([t_pred_b, rot_pred_b], dim=1))
+                    pose_preds.append(pose_pred_b)
                     bboxs.append(boxes_b)
                     labels.append(labels_b)
+                    scores.append(scores_b)
+                assert batch_size == 1, batch_size
+                pose_preds = torch.stack(pose_preds)[0]
+                det_res = {
+                    "bbox": bboxs,
+                    "labels": labels,
+                    "scores": scores,
+                }
                 save_results_v2(
                     rgb,
                     intrinsics=intrinsics,
                     pose_gt=pose_mat_gt_abs,
-                    pose_pred=pose_mat_pred_abs,
+                    pose_pred=pose_preds,
                     rgb_path=batch_t["rgb_path"],
                     preds_dir=preds_dir,
-                    bboxs=bboxs,
-                    labels=labels,
+                    det_res=det_res,
                 )
 
             if do_vis:
@@ -513,9 +535,10 @@ class TrainerDeformableDETR(Trainer):
             optimizer.step()
             optimizer.zero_grad()
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = np.mean(v)
+        if not self.do_debug:
+            for stats in [seq_stats, seq_metrics]:
+                for k, v in stats.items():
+                    stats[k] = np.mean(v)
 
         if self.use_pose and self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
