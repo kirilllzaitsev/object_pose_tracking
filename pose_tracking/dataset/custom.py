@@ -56,21 +56,22 @@ class CustomDatasetTest(CustomDataset):
 
     ds_name = "custom_test"
 
-    def __init__(self, *args, pose_dirname="pose", **kwargs):
-        if not os.path.exists(f"{kwargs['video_dir']}/pose"):
+    def __init__(self, *args, pose_dirname="pose", mask_dirname="masks_with_hand", **kwargs):
+        if not os.path.exists(f"{kwargs['video_dir']}/pose") or len(os.listdir(f"{kwargs['video_dir']}/pose")) < 1:
             fpose_save_dirname = "ob_in_cam_fpose"
             if os.path.exists(f"{kwargs['video_dir']}/{fpose_save_dirname}"):
                 kwargs["include_pose"] = True
-                kwargs["pose_dirname"] = fpose_save_dirname
+                pose_dirname = fpose_save_dirname
             else:
                 kwargs["include_pose"] = False
                 kwargs["include_bbox_2d"] = False
         mask_dir = f"{kwargs['video_dir']}/masks"
-        kwargs["include_mask"] = os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1
+        kwargs["include_mask"] = kwargs["include_mask"] and (os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1)
         depth_dir = f"{kwargs['video_dir']}/depth"
-        kwargs["include_depth"] = os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 1
-        # kwargs["target_hw"] = (480, 640)
-        super().__init__(*args, pose_dirname=pose_dirname, **kwargs)
+        kwargs["include_depth"] = (
+            kwargs.get("include_depth", False) and os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 1
+        )
+        super().__init__(*args, pose_dirname=pose_dirname, mask_dirname=mask_dirname, **kwargs)
 
     def augment_sample(self, sample, idx):
         sample = super().augment_sample(sample, idx)
