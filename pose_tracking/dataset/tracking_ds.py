@@ -1,5 +1,6 @@
 import copy
 import functools
+import json
 import os
 import re
 import sys
@@ -213,16 +214,11 @@ class TrackingDataset(Dataset):
             self.transform_occlusion = RandomPolygonMask(num_vertices=5, p=0.5)
 
         if self.use_factors:
-            idxs = range(len(self)) if len(self) < 100 else np.linspace(0, len(self) - 1, 100).astype(int)
-            if "occlusion" in self.factors:
-                masks = wrap_with_futures(idxs, functools.partial(self.get_mask), disable_tqdm=True)
-                visib_px_nums = [get_visib_px_num(s) for s in masks]
-                self.max_visib_px_num, self.min_visib_px_num = np.quantile(visib_px_nums, [0.95, 0.05])
-            if "scale" in self.factors:
-                poses = wrap_with_futures(idxs, functools.partial(self.get_pose), disable_tqdm=True)
-                zs = [pose[..., 2, 3] for pose in poses]
-                zs = [z for z in zs if z > 0.001]
-                self.max_z, self.min_z = np.quantile(zs, [0.95, 0.05])
+            self.ds_meta = json.load(open(PROJ_DIR / "ds_meta.json"))["custom_sim_dextreme_2k_v2"]
+            factors = self.ds_meta["factors"]
+            self.f_max_z, self.f_min_z = factors["scale"]["max"], factors["scale"]["min"]
+            self.f_max_visib_px_num = factors["occlusion"]["max"]
+            self.f_min_visib_px_num = factors["occlusion"]["min"]
 
         if self.use_bg_augm:
             self.real_bg_paths = list((PROJ_DIR / "mit_indoor_subset").glob("*.jpg"))
@@ -379,21 +375,21 @@ class TrackingDataset(Dataset):
             sample["factors"] = {}
             if "scale" in self.factors:
                 z = sample["pose"][..., 2, 3]
-                z[z < 0] = self.max_z
-                z = np.clip(z, self.min_z, self.max_z)
+                z[z < 0] = self.f_max_z
+                z = np.clip(z, self.f_min_z, self.f_max_z)
                 if self.max_num_objs == 1:
                     z = [z]
-                scale_strength = calc_scale_factor_strength(z, min_val=self.max_z, max_val=self.min_z)
+                scale_strength = calc_scale_factor_strength(z, min_val=self.f_max_z, max_val=self.f_min_z)
                 sample["factors"]["scale"] = [scale_strength]
             if "occlusion" in self.factors:
                 occ_mask = mask if "mask" in locals() else self.get_mask(i)
                 occlusion = get_visib_px_num(occ_mask)
                 # clip
-                occlusion = np.clip(occlusion, self.min_visib_px_num, self.max_visib_px_num)
+                occlusion = np.clip(occlusion, self.f_min_visib_px_num, self.f_max_visib_px_num)
                 if self.max_num_objs == 1:
                     occlusion = [occlusion]
                 occlusion_strength = calc_occlusion_factor_strength(
-                    occlusion, min_val=self.min_visib_px_num, max_val=self.max_visib_px_num
+                    occlusion, min_val=self.f_min_visib_px_num, max_val=self.f_max_visib_px_num
                 )
                 sample["factors"]["occlusion"] = [occlusion_strength]
 
