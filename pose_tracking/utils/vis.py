@@ -4,6 +4,7 @@ https://github.com/NVlabs/FoundationPose/blob/main/Utils.py#L723
 """
 
 import copy
+import functools
 import os
 
 import cv2
@@ -11,7 +12,6 @@ import matplotlib
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
-from pose_tracking.utils.misc import is_empty
 import pyrender
 import torch
 import torchvision
@@ -34,6 +34,7 @@ from pose_tracking.utils.geom import (
     world_to_2d_pt_homo,
 )
 from pose_tracking.utils.kpt_utils import is_torch
+from pose_tracking.utils.misc import is_empty, wrap_with_futures
 from pose_tracking.utils.pose import (
     convert_pose_vector_to_matrix,
     convert_rot_vector_to_matrix,
@@ -181,27 +182,44 @@ def draw_poses_on_video(
     """
     images = []
     num_frames = min(len(rgbs), len(poses_pred)) if take_n is None else take_n
-    for frame_idx in tqdm(range(num_frames), leave=True, desc="Frame"):
-        rgb = rgbs[frame_idx]
-        K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
-        pose_pred = poses_pred[frame_idx]
-        if poses_gt is not None:
-            pose_gt = poses_gt[frame_idx]
-        else:
-            pose_gt = None
-        rgb_with_pose = draw_pose_on_img(
-            rgb,
-            K,
-            pose_pred,
-            bbox=bbox[frame_idx] if isinstance(bbox, list) else bbox,
+    images = wrap_with_futures(
+        list(range(num_frames)),
+        functools.partial(
+            process_frame_idx,
+            rgbs=rgbs,
+            intrinsics=intrinsics,
+            poses_pred=poses_pred,
+            poses_gt=poses_gt,
+            bbox=bbox,
             bbox_color=bbox_color,
-            scale=scale,
-            pose_gt=pose_gt,
             bbox_color_gt=bbox_color_gt,
-        )
-        images.append(rgb_with_pose)
+            scale=scale,
+        ),
+        use_threads=False,
+    )
     images = np.array(images)
     return images
+
+
+def process_frame_idx(frame_idx, rgbs, intrinsics, poses_pred, poses_gt, bbox, bbox_color, bbox_color_gt, scale):
+    rgb = rgbs[frame_idx]
+    K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
+    pose_pred = poses_pred[frame_idx]
+    if poses_gt is not None:
+        pose_gt = poses_gt[frame_idx]
+    else:
+        pose_gt = None
+    rgb_with_pose = draw_pose_on_img(
+        rgb,
+        K,
+        pose_pred,
+        bbox=bbox[frame_idx] if isinstance(bbox, list) else bbox,
+        bbox_color=bbox_color,
+        scale=scale,
+        pose_gt=pose_gt,
+        bbox_color_gt=bbox_color_gt,
+    )
+    return rgb_with_pose
 
 
 def draw_pose_on_img(
