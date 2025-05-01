@@ -201,7 +201,17 @@ class VideoDatasetTracking(VideoDataset):
             sample_prev = self.rm_invisible_obj(sample_prev, prev_obj_visibility_mask)
 
             new_sample = {k: v for k, v in sample.items() if k not in ["rgb"]}
-            new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
+            if self.transforms_rgb is not None:
+                if idx == 1:
+                    t_res = self.transforms_rgb(image=adjust_img_for_plt(sample["rgb"]))
+                else:
+                    t_res = apply_replay_transform(adjust_img_for_plt(sample["rgb"]), t_res)
+                t_res_prev = apply_replay_transform(adjust_img_for_plt(sample_prev["rgb"]), t_res)
+                new_sample["rgb"] = adjust_img_for_torch(t_res["image"])
+                new_sample["prev_rgb"] = adjust_img_for_torch(t_res_prev["image"])
+            else:
+                new_sample["rgb"] = adjust_img_for_torch(sample["rgb"])
+                new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
             new_sample["bbox_2d"] = sample.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["class_id"] = sample["class_id"]
             new_sample["is_sym"] = sample.get("is_sym")
