@@ -334,7 +334,9 @@ class DETRBase(nn.Module):
                     n_layers,
                 )
                 # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
+            self.n_free_factors = 2
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
+            self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
             self.uncertainty_layer = get_clones(
                 nn.Sequential(
                     nn.TransformerEncoderLayer(
@@ -515,7 +517,13 @@ class DETRBase(nn.Module):
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
                 u_in = torch.cat(
-                    [o.unsqueeze(-1).detach(), pose_token.unsqueeze(-1).detach(), all_factor_latents], dim=-1
+                    [
+                        o.unsqueeze(-1).detach(),
+                        pose_token.unsqueeze(-1).detach(),
+                        all_factor_latents,
+                        self.free_factors.repeat(b, self.n_queries, 1, 1),
+                    ],
+                    dim=-1,
                 )
                 u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](u_in)
