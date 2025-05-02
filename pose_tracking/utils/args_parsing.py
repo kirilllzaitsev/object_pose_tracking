@@ -135,8 +135,10 @@ def get_parser():
     poseformer_args.add_argument("--mt_do_freeze_kpt_detector", action="store_true", help="Make detector frozen")
     poseformer_args.add_argument("--mt_use_kpt_loss", action="store_true", help="Include loss on kpts")
     poseformer_args.add_argument("--mt_use_temporal_loss", action="store_true", help="Include temporal loss")
+    poseformer_args.add_argument("--mt_use_temporal_loss_double", action="store_true", help="Include temporal loss for two serial pairs")
     poseformer_args.add_argument("--mt_use_pe_loss", action="store_true", help="Include photometric loss")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
+    poseformer_args.add_argument("--mt_use_uncertainty", action="store_true", help="Use uncertainty head")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
     )
@@ -502,6 +504,8 @@ def postprocess_args(args, use_if_provided=False):
         assert args.mt_do_refinement
     if args.mt_do_refinement_with_attn:
         assert not (args.mt_do_refinement or args.mt_do_refinement_with_pose_token)
+    if args.mt_use_temporal_loss_double:
+        assert args.mt_use_temporal_loss
 
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")
@@ -542,6 +546,8 @@ def fix_outdated_args(args):
             args.state_dim = args.hidden_dim
         if not hasattr(args, "rt_hidden_dim"):
             args.rt_hidden_dim = args.hidden_dim
+    if not hasattr(args, "mt_use_uncertainty"):
+        args.mt_use_uncertainty = args.factors is not None
     if noattr("use_mask_for_bbox_2d"):
         args.use_mask_for_bbox_2d = True
 

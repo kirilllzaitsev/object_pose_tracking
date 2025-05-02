@@ -2,6 +2,7 @@ import concurrent
 import gc
 import random
 import sys
+import time
 import typing as t
 
 import numpy as np
@@ -282,3 +283,26 @@ def add_batch_dim_to_img(img):
     if img.ndim == 3:
         img = img[None]
     return img
+
+
+class Timer:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.start_time = time.time()
+        self.end_time = time.time()
+        self.total_time = 0
+        self.calls = 0
+
+    def tic(self):
+        self.start_time = time.time()
+
+    def toc(self):
+        self.end_time = time.time()
+        self.total_time += self.end_time - self.start_time
+        self.calls += 1
+
+    @property
+    def average_time(self):
+        return self.total_time / max(1, self.calls)

@@ -254,6 +254,7 @@ def get_model(args, num_classes=None):
             use_depth=args.mt_use_depth,
             do_refinement_with_attn=args.mt_do_refinement_with_attn,
             use_v1_code=args.use_v1_code,
+            use_uncertainty=args.mt_use_uncertainty,
             do_extract_rt_features=args.do_extract_rt_features,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
@@ -323,7 +324,7 @@ def get_model(args, num_classes=None):
             out_dim=args.encoder_out_dim,
         )
     else:
-        num_pts = 256
+        num_pts = 32
         priv_dim = num_pts * 3
         latent_dim = args.encoder_out_dim  # defined by the encoders
         depth_dim = latent_dim
@@ -502,6 +503,7 @@ def get_trackformer_args(args):
     tf_args.opt_only = args.opt_only
     tf_args.factors = args.factors
     tf_args.uncertainty_coef = args.mt_uncertainty_coef
+    tf_args.use_uncertainty = args.mt_use_uncertainty
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc
@@ -591,6 +593,7 @@ def get_trainer(
         do_predict_3d_rot=args.do_predict_3d_rot,
         use_rnn=args.use_rnn,
         use_belief_decoder=args.use_depth and args.use_obs_belief and args.use_belief_decoder,
+        use_priv_decoder=args.use_depth and args.use_obs_belief and args.use_priv_decoder,
         world_size=world_size,
         logger=logger,
         vis_epoch_freq=args.vis_epoch_freq,
@@ -622,6 +625,7 @@ def get_trainer(
         use_factors=args.use_factors,
         use_kpt_loss=args.mt_use_kpt_loss,
         use_temporal_loss=args.mt_use_temporal_loss,
+        use_temporal_loss_double=args.mt_use_temporal_loss_double,
         use_pe_loss=args.mt_use_pe_loss,
         **extra_kwargs,
     )
@@ -749,6 +753,7 @@ def get_datasets(
         use_allocentric_pose=use_allocentric_pose,
         use_mask_for_visibility_check=True,
         include_mesh=include_mesh,
+        include_kpt_projections=use_priv_decoder,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -988,7 +993,7 @@ def get_ds_dirs(args):
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
     if "dextreme_2k_v2" in str(ds_video_dir_train):
-        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832"]]
+        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832", "env_1363", "env_1311", "env_63"]]
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_4"]]
     # if "dextreme" in str(ds_video_dir_train):
     #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
