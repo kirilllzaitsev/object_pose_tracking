@@ -2,6 +2,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from pose_tracking.utils.common import cast_to_torch
 import torch
 from pose_tracking.config import WORKSPACE_DIR
 from pose_tracking.utils.vis import adjust_img_for_plt
@@ -54,3 +55,18 @@ def get_sam_pred(
     scores = scores[sorted_ind]
     logits = logits[sorted_ind]
     return {"masks": masks, "scores": scores, "logits": logits}
+
+
+def get_obj_mask_from_kpts(frame, kpts, sam_model, max_kpts=20):
+    if len(kpts) > max_kpts:
+        kpts = kpts[np.random.choice(len(kpts), max_kpts, replace=False)]
+    input_point = cast_to_torch(kpts, include_top_list=True)
+    input_label = torch.ones(input_point.shape[0])
+
+    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+        pred = get_sam_pred(sam_model, frame, input_point=input_point, input_label=input_label)
+    masks = pred["masks"]
+    scores = pred["scores"]
+    mask = masks[0]
+    # show_masks(frame, masks, scores, point_coords=input_point, input_labels=input_label)
+    return {"mask": mask, "scores": scores}
