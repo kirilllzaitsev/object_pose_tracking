@@ -279,16 +279,14 @@ class TrainerDeformableDETR(Trainer):
                 mask_dilated = mask.clone()
                 if mask_dilated.shape[-1] == 3:
                     mask_dilated = mask_dilated.any(dim=-1)
-                score_map = out["score_map"]
+                score_map = out["score_map"].squeeze(1)
                 mask_dilated = F.interpolate(
                     mask_dilated.unsqueeze(1).float(), size=score_map.shape[-2:], mode="nearest"
                 ).squeeze(1)
                 score_map[score_map < 0] = 0
-                loss_kpt = F.binary_cross_entropy(
-                    score_map,
-                    mask_dilated,
-                )
-                loss += 0.2 * loss_kpt
+                pos_weight = (mask_dilated == 0).float().sum() / (mask_dilated == 1).float().sum()
+                loss_kpt = F.binary_cross_entropy(score_map, mask_dilated, weight=pos_weight)
+                loss += 1 * loss_kpt
                 seq_stats["loss_kpt"].append(loss_kpt.item())
 
             # reduce losses over all GPUs for logging purposes
