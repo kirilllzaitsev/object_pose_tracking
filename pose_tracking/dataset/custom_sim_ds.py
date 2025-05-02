@@ -158,19 +158,6 @@ class CustomSimDatasetCube(CustomSimDataset):
                 **kwargs,
             )
 
-    def augment_sample(self, sample, idx):
-        if self.use_priv_info:
-            sample_no_occ = self.ds_no_occ[idx]
-            depth_no_occ = sample_no_occ["depth"]
-            mask = sample_no_occ["mask"]
-            obj_depth = (depth_no_occ).squeeze().numpy()
-            obj_depth[mask == 0] = 0
-            obj_depth_3d, _ = backproj_depth(obj_depth, intrinsics=self.K)
-            obj_depth_3d = downsample_pcl_via_voxels(obj_depth_3d, voxel_size=0.01)
-            priv = downsample_pcl_via_subsampling(obj_depth_3d, num_pts=256)
-            sample["priv"] = priv
-        return sample
-
 
 class CustomSimDatasetIkea(CustomSimDataset):
     ds_name = "custom_sim_ikea"
