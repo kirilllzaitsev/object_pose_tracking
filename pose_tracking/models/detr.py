@@ -172,6 +172,7 @@ class DETRBase(nn.Module):
         roi_feature_dim=512,
         do_extract_rt_features=False,
         use_v1_code=False,
+        use_uncertainty=False,
     ):
         super().__init__()
 
@@ -181,6 +182,7 @@ class DETRBase(nn.Module):
         self.do_refinement_with_attn = do_refinement_with_attn
         self.do_extract_rt_features = do_extract_rt_features
         self.use_v1_code = use_v1_code
+        self.use_uncertainty = use_uncertainty
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -333,9 +335,9 @@ class DETRBase(nn.Module):
                     MLPFactors(roi_feature_dim, 10, d_model, num_layers=2, dropout=dropout_heads, act_out=None),
                     n_layers,
                 )
-                # self.scale_factor_mlp = MLP(d_model, 1, d_model, num_layers=2, dropout=dropout_heads, act_out=nn.Sigmoid())
-            self.n_free_factors = 2
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
+        if self.use_uncertainty:
+            self.n_free_factors = 2
             self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
             self.uncertainty_layer = get_clones(
                 nn.Sequential(
@@ -492,6 +494,7 @@ class DETRBase(nn.Module):
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
+            b = pred_logits.shape[0]
             if self.use_factors:
                 assert rgb is not None
                 hw = rgb.shape[-2:]
@@ -516,15 +519,17 @@ class DETRBase(nn.Module):
                 out["factors"] = factors
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
+            if self.use_uncertainty:
                 u_in = torch.cat(
                     [
                         o.unsqueeze(-1).detach(),
                         pose_token.unsqueeze(-1).detach(),
-                        all_factor_latents,
                         self.free_factors.repeat(b, self.n_queries, 1, 1),
                     ],
                     dim=-1,
                 )
+                if self.use_factors:
+                    u_in = torch.cat([u_in, all_factor_latents], dim=-1)
                 u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](u_in)
                 u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
@@ -552,6 +557,7 @@ class DETRBase(nn.Module):
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
         if self.use_factors:
             res["factors"] = last_out["factors"]
+        if self.use_uncertainty:
             res["uncertainty"] = last_out["uncertainty"]
         res["tokens"] = tokens_enc
 
