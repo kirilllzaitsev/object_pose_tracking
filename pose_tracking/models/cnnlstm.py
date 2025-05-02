@@ -132,7 +132,7 @@ class BeliefDecoder(nn.Module):
         }
         if self.use_priv_decoder:
             priv_decoded = self.priv_decoder(ht)
-            priv_decoded = priv_decoded.view(-1, 256, 3)
+            priv_decoded = priv_decoded.view(-1, 32, 3)
             res["priv_decoded"] = priv_decoded
 
         return res
@@ -350,7 +350,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             )
         if do_predict_2d_t:
             self.t_mlp_out_dim = 2
-            self.depth_mlp_in_dim = depth_dim + rgb_dim if use_depth else rgb_dim
+            self.depth_mlp_in_dim = extracted_obs_dim
             self.depth_mlp_out_dim = 1
             if use_prev_pose_condition:
                 self.depth_mlp_in_dim += self.depth_mlp_out_dim

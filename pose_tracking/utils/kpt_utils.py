@@ -9,7 +9,9 @@ import torch.nn.functional as F
 import yaml
 from albumentations import transforms as A
 from pose_tracking.config import RELATED_DIR
-from pose_tracking.utils.common import cast_to_numpy
+from pose_tracking.dataset.ds_common import adjust_img_for_torch
+from pose_tracking.utils.common import adjust_img_for_plt, cast_to_numpy, cast_to_torch
+from pose_tracking.utils.segm_utils import mask_morph
 from skimage.measure import ransac
 from skimage.transform import AffineTransform, FundamentalMatrixTransform
 
@@ -288,7 +290,9 @@ def extract_kpts(x, extractor, do_normalize=False, use_zeros_for_pad=True):
                         # duplicate random pts
                         pad_idxs = torch.randint(0, len(kpts[k]), (pad_len,))
                         kpts[k] = torch.cat([kpts[k], kpts[k][pad_idxs]])
-        extracted_kpts = {k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors", "score_map"]}
+        extracted_kpts = {
+            k: torch.stack([v[k] for v in extracted_kpts], dim=0) for k in ["keypoints", "descriptors", "score_map"]
+        }
     else:
         extracted_kpts = extractor.extract(x)
 
@@ -402,3 +406,17 @@ def sample_gt_kpts(mask, num_samples=1024):
     else:
         idx = torch.randint(0, P, (num_samples,))
     return coords[idx].float()
+
+
+def get_obj_pts_from_rgb(rgb, mask, extractor=None, use_mask_sampling=False):
+    mask = cast_to_torch(mask)
+    mask_eroded = mask_morph(mask, kernel_size=7)
+    rgb_masked = rgb.clone()
+    rgb_masked = rgb_masked * mask
+    if use_mask_sampling:
+        obj_pts = sample_gt_kpts(mask, num_samples=1024)
+    else:
+        obj_pts = extractor.extract(adjust_img_for_torch(rgb_masked).cuda(), max_num_keypoints=1024)["keypoints"][0].cpu()
+        obj_pts = obj_pts[mask_eroded[obj_pts[:, 1].long(), obj_pts[:, 0].long()].bool()]
+    return {"obj_pts": obj_pts, "rgb_masked": rgb_masked}
+
