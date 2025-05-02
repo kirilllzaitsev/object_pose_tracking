@@ -86,6 +86,7 @@ class Trainer:
         do_predict_3d_rot=False,
         use_rnn=True,
         use_belief_decoder=True,
+        use_priv_decoder=False,
         world_size=1,
         do_log_every_ts=False,
         do_log_every_seq=True,
@@ -127,6 +128,7 @@ class Trainer:
         self.do_predict_3d_rot = do_predict_3d_rot
         self.use_rnn = use_rnn
         self.use_belief_decoder = use_belief_decoder
+        self.use_priv_decoder = use_priv_decoder
         self.do_log_every_ts = do_log_every_ts
         self.do_log_every_seq = do_log_every_seq
         self.use_ddp = use_ddp
@@ -225,6 +227,8 @@ class Trainer:
             assert criterion_rot_name not in ["geodesic", "geodesic_mat", "videopose"], criterion_rot_name
         if criterion_rot_name in ["geodesic"]:
             assert not (do_predict_3d_rot or do_predict_6d_rot)
+        if use_pnp_for_rot_pred:
+            assert self.do_predict_kpts
 
         self.init_optimizer()
 
@@ -548,28 +552,42 @@ class Trainer:
             if self.use_pnp_for_rot_pred:
                 kpts = out["kpts"]
                 rot_mat_pred_bidxs = []
+                t_mat_pred_bidxs = []
                 for bidx in range(batch_size):
-                    prev_kpts_2d = prev_kpts[bidx]
-                    prev_kpts_2d_denorm = prev_kpts_2d * torch.tensor([w, h]).to(self.device)
-                    prev_depth = batched_seq[t - 1]["depth"][bidx]
-                    prev_kpts_depth_actual = prev_depth[
-                        ..., prev_kpts_2d_denorm[:, 1].long(), prev_kpts_2d_denorm[:, 0].long()
-                    ].double()
-                    prev_kpts_depth = batched_seq[t - 1]["bbox_2d_kpts_depth"][bidx] / 10
-                    prev_visib_kpt_mask = torch.abs(prev_kpts_depth - prev_kpts_depth_actual) < 1e-2
-                    prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
-                    prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
-                    prev_kpts_3d = backproj_2d_pts(prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx])
                     kpts_2d_denorm = kpts[bidx] * torch.tensor([w, h]).to(self.device)
-                    visib_kpt_mask = prev_visib_kpt_mask
+                    if self.do_predict_rel_pose:
+                        prev_kpts_2d = prev_kpts[bidx]
+                        prev_kpts_2d_denorm = prev_kpts_2d * torch.tensor([w, h]).to(self.device)
+                        prev_depth = batched_seq[t - 1]["depth"][bidx]
+                        prev_kpts_depth_actual = prev_depth[
+                            ..., prev_kpts_2d_denorm[:, 1].long(), prev_kpts_2d_denorm[:, 0].long()
+                        ].double()
+                        prev_kpts_depth = batched_seq[t - 1]["bbox_2d_kpts_depth"][bidx] / 10
+                        prev_visib_kpt_mask = torch.abs(prev_kpts_depth - prev_kpts_depth_actual) < 1e-2
+                        prev_kpts_2d_denorm_visib = prev_kpts_2d_denorm[prev_visib_kpt_mask]
+                        prev_kpts_visib_depth = prev_kpts_depth[prev_visib_kpt_mask]
+                        prev_kpts_3d = backproj_2d_pts(
+                            prev_kpts_2d_denorm_visib, prev_kpts_visib_depth, intrinsics[bidx]
+                        )
+                        visib_kpt_mask = prev_visib_kpt_mask
+                        kpts_3d = prev_kpts_3d
+                    else:
+                        visib_kpt_mask = slice(None)
+                        kpts_3d = batch_t["bbox_3d_kpts_mesh"][bidx]
                     kpts_2d_denorm_visib = kpts_2d_denorm[visib_kpt_mask]
                     pose_from_3d_2d_matches_res = get_pose_from_3d_2d_matches(
-                        prev_kpts_3d, kpts_2d_denorm_visib, intrinsics[bidx]
+                        kpts_3d, kpts_2d_denorm_visib, intrinsics[bidx]
                     )
                     rot_mat_pred_bidx = pose_from_3d_2d_matches_res["R"]
+                    t_mat_pred_bidx = pose_from_3d_2d_matches_res["t"]
                     rot_mat_pred_bidxs.append(torch.tensor(rot_mat_pred_bidx))
+                    t_mat_pred_bidxs.append(torch.tensor(t_mat_pred_bidx))
 
-                pose_mat_pred[:, :3, :3] = torch.stack(rot_mat_pred_bidxs).to(self.device)
+                rot_mat_pred = torch.stack(rot_mat_pred_bidxs).to(self.device)
+                rot_pred = self.rot_mat_to_vector_converter_fn(rot_mat_pred)
+                t_pred = torch.stack(t_mat_pred_bidxs).to(self.device).squeeze(-1)
+                pose_mat_pred[:, :3, :3] = rot_mat_pred
+                pose_mat_pred[:, :3, 3] = t_pred
 
             rot_mat_pred = pose_mat_pred[:, :3, :3]
 
@@ -669,9 +687,9 @@ class Trainer:
                 loss += loss_depth + loss_depth_rec
 
             # priv loss
-            if "priv_decoded" in out:
-                loss_priv = compute_chamfer_dist(out["priv_decoded"], batch_t["priv"])
-                loss += loss_priv * 0.01
+            if self.use_priv_decoder:
+                loss_priv = 0.01 * compute_chamfer_dist(out["priv_decoded"], batch_t["bbox_3d_kpts"])
+                loss += loss_priv
 
             # kpt loss
             if self.do_predict_kpts:
@@ -724,6 +742,8 @@ class Trainer:
             if self.use_belief_decoder:
                 seq_stats["loss_depth"].append(loss_depth.item())
                 seq_stats["loss_depth_rec"].append(loss_depth_rec.item())
+            if self.use_priv_decoder:
+                seq_stats["loss_priv"].append(loss_priv.item())
             if self.use_pose_loss:
                 seq_stats["loss_pose"].append(loss_pose.item())
             else:
