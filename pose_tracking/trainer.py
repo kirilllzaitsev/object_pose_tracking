@@ -908,11 +908,12 @@ class Trainer:
     def calc_kpt_loss(self, batch_t, out):
         kpts_pred = out["kpts"]
         kpts_gt = batch_t["bbox_2d_kpts"].float()
-        loss_kpts = F.huber_loss(kpts_pred, kpts_gt)
-        bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
-        loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
+        loss_kpts = 1e1 * F.huber_loss(kpts_pred, kpts_gt)
         loss = loss_kpts
-        # loss += loss_cr * 0.001
+        # bbox_2d_kpts_collinear_idxs = batch_t["bbox_2d_kpts_collinear_idxs"]
+        # loss_cr = kpt_cross_ratio_loss(kpts_pred, bbox_2d_kpts_collinear_idxs)
+        loss_cr = torch.tensor(0.0, device=loss_kpts.device)
+        loss += loss_cr * 0.01
         return {
             "loss_kpts": loss_kpts,
             "loss_cr": loss_cr,
