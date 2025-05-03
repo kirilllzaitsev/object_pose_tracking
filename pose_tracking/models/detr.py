@@ -247,6 +247,9 @@ class DETRBase(nn.Module):
         self.use_boxes = not opt_only or (opt_only and "boxes" in opt_only)
         self.do_predict_2d_t = t_out_dim == 2
         self.use_factors = factors is not None
+        if self.use_factors:
+            self.global_factors = [f for f in factors if f in ["scale"]]
+            self.local_factors = [f for f in factors if f not in self.global_factors]
 
         self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens * (2 if use_depth else 1))
 
@@ -340,10 +343,9 @@ class DETRBase(nn.Module):
             self.pose_token_transformer = nn.TransformerEncoder(
                 pose_token_encoder_layer, num_layers=pose_token_n_layers
             )
-            # TODO
             if pose_token_time_encoding == "learned":
-                seq_len = 3
-                self.time_pos_encoder = self.get_pos_encoder("learned", n_tokens=seq_len)
+                max_seq_len = 3  # consider tokens from n last timesteps
+                self.time_pos_encoder = self.get_pos_encoder("learned", n_tokens=max_seq_len)
         if do_refinement_with_attn:
             pose_refiner_encoder_layer = nn.TransformerEncoderLayer(
                 d_model=d_model,
@@ -371,8 +373,9 @@ class DETRBase(nn.Module):
             self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
             self.factor_mlps = {}
             for k in factors:
+                in_dim = roi_feature_dim if k in self.local_factors else d_model
                 self.factor_mlps[k] = get_clones(
-                    MLPFactors(roi_feature_dim, 10, d_model, num_layers=2, dropout=dropout_heads, act_out=None),
+                    MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None),
                     n_layers,
                 )
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
@@ -536,26 +539,30 @@ class DETRBase(nn.Module):
                 out["center_depth"] = outputs_depth
             b = pred_logits.shape[0]
             if self.use_factors:
-                assert rgb is not None
-                hw = rgb.shape[-2:]
-                pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-                rgb_crop = get_crops(
-                    rgb,
-                    pred_boxes_xyxy.detach(),
-                    hw=hw,
-                )
-                crop_feats = self.crop_cnn(rgb_crop)
                 factors = {}
                 factor_latents = {}
-                for factor in self.factors:
-                    factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                if len(self.local_factors) > 0:
+                    assert rgb is not None
+                    hw = rgb.shape[-2:]
+                    pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
+                    rgb_crop = get_crops(
+                        rgb,
+                        pred_boxes_xyxy.detach(),
+                        hw=hw,
+                    )
+                    crop_feats = self.crop_cnn(rgb_crop)
+                    for factor in self.local_factors:
+                        factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                        factors[factor] = factor_out["out"]
+                        factor_latents[factor] = factor_out["last_hidden"]
+                    for k, v in factors.items():
+                        factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                    for k, v in factor_latents.items():
+                        factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                for factor in self.global_factors:
+                    factor_out = self.factor_mlps[factor][layer_idx](o.detach())
                     factors[factor] = factor_out["out"]
                     factor_latents[factor] = factor_out["last_hidden"]
-                b = pred_boxes_xyxy.shape[0]
-                for k, v in factors.items():
-                    factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
-                for k, v in factor_latents.items():
-                    factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
                 out["factors"] = factors
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
