@@ -168,6 +168,7 @@ def draw_poses_on_video(
     bbox_color_gt=(0, 255, 0),
     scale=0.05,
     take_n=None,
+    extra_texts=None,
 ):
     """
     Given a list of rgb images, camera intrinsics, CAD bounding box, and poses, draw the poses and object axes on the images. The args have to be numpy arrays.
@@ -194,17 +195,21 @@ def draw_poses_on_video(
             bbox_color=bbox_color,
             bbox_color_gt=bbox_color_gt,
             scale=scale,
+            extra_texts=extra_texts,
         ),
-        use_threads=False,
+        use_threads=True,
     )
     images = np.array(images)
     return images
 
 
-def process_frame_idx(frame_idx, rgbs, intrinsics, poses_pred, poses_gt, bbox, bbox_color, bbox_color_gt, scale):
+def process_frame_idx(
+    frame_idx, rgbs, intrinsics, poses_pred, poses_gt, bbox, bbox_color, bbox_color_gt, scale, extra_texts=None
+):
     rgb = rgbs[frame_idx]
     K = intrinsics[frame_idx] if isinstance(intrinsics, list) else intrinsics
     pose_pred = poses_pred[frame_idx]
+    extra_text = extra_texts[frame_idx] if extra_texts is not None else None
     if poses_gt is not None:
         pose_gt = poses_gt[frame_idx]
     else:
@@ -218,6 +223,7 @@ def process_frame_idx(frame_idx, rgbs, intrinsics, poses_pred, poses_gt, bbox, b
         scale=scale,
         pose_gt=pose_gt,
         bbox_color_gt=bbox_color_gt,
+        extra_text=extra_text,
     )
     return rgb_with_pose
 
@@ -232,6 +238,7 @@ def draw_pose_on_img(
     scale=50.0,
     pose_gt=None,
     final_frame=None,
+    extra_text=None,
 ):
     if is_empty(pose_pred):
         return adjust_img_for_plt(rgb)
@@ -254,6 +261,7 @@ def draw_pose_on_img(
                 scale=scale,
                 pose_gt=None if pose_gt is None else pose_gt[idx],
                 final_frame=final_frame,
+                extra_text=extra_text,
             )
         return final_frame
 
@@ -269,6 +277,10 @@ def draw_pose_on_img(
         if pose_gt is not None:
             pose_gt = cast_to_numpy(pose_gt)
             final_frame = draw_posed_3d_box(final_frame, rt=pose_gt, K=K, bbox=bbox, line_color=bbox_color_gt)
+    if extra_text is not None:
+        if isinstance(extra_text, list):
+            extra_text = "\n".join(extra_text)
+        final_frame = draw_text_in_ul(final_frame, extra_text, size=1, thickness=3)
     return final_frame
 
 
@@ -334,8 +346,8 @@ def vis_bbox_2d(
             text,
             label_xy,
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.75,
-            (0, 0, 0),
+            1,
+            (255, 0, 0),
             2,
             cv2.LINE_AA,
         )
@@ -914,16 +926,22 @@ def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), ro
         pose = convert_pose_vector_to_matrix(pose, rot_repr=rot_repr)
     color_with_pose = draw_pose_on_img(color, K, pose, bbox=bbox, bbox_color=bbox_color, scale=scale)
     if extra_text is not None:
-        color_with_pose = cv2.putText(
-            color_with_pose,
-            extra_text,
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255, 0, 0),
-            3,
-            cv2.LINE_AA,
-        )
+        color_with_pose = draw_text_in_ul(color_with_pose, extra_text)
+    return color_with_pose
+
+
+def draw_text_in_ul(color_with_pose, extra_text, size=1, thickness=3):
+    color_with_pose = cv2.putText(
+        color_with_pose,
+        extra_text,
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        size,
+        (255, 0, 0),
+        thickness,
+        cv2.LINE_AA,
+    )
+
     return color_with_pose
 
 
