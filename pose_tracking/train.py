@@ -182,6 +182,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_mask_for_bbox_2d=args.use_mask_for_bbox_2d,
         factors=args.factors,
         target_hw=args.target_hw,
+        do_return_next_if_obj_invisible=args.do_return_next_if_obj_invisible
     )
 
     train_dataset, val_dataset = (
@@ -378,7 +379,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             for stage, stats in stage_stats.items():
                 printer.print_stats(stats, stage)
         return stage_stats
-
+    
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         if args.use_ddp:
             train_loader.sampler.set_epoch(epoch)

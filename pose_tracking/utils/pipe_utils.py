@@ -255,7 +255,7 @@ def get_model(args, num_classes=None):
             do_refinement_with_attn=args.mt_do_refinement_with_attn,
             use_v1_code=args.use_v1_code,
             use_uncertainty=args.mt_use_uncertainty,
-            do_extract_rt_features=args.do_extract_rt_features,
+            do_extract_rt_features=args.do_extract_rt_features or args.mt_use_uncertainty,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -696,6 +696,7 @@ def get_datasets(
     use_mask_for_bbox_2d=False,
     do_load_mesh_in_memory=False,
     use_allocentric_pose=False,
+    do_return_next_if_obj_invisible=False,
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
@@ -754,6 +755,7 @@ def get_datasets(
         use_mask_for_visibility_check=True,
         include_mesh=include_mesh,
         include_kpt_projections=use_priv_decoder,
+        do_return_next_if_obj_invisible=do_return_next_if_obj_invisible
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(
@@ -993,7 +995,7 @@ def get_ds_dirs(args):
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
     if "dextreme_2k_v2" in str(ds_video_dir_train):
-        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832", "env_1363", "env_1311", "env_63"]]
+        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832", "env_1363", "env_1311", "env_63", "env_476", "env_1468", "env_163"]]
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_4"]]
     # if "dextreme" in str(ds_video_dir_train):
     #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]

@@ -65,6 +65,7 @@ def world_to_2d_pt_homo(pt, K, rt):
 
 
 def convert_3d_bbox_to_2d(bbox, intrinsics, hw, pose=None):
+    # returns bbox in (ul, br) format
     if len(bbox.shape) == 3:
         return np.stack(
             [

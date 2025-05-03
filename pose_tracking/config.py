@@ -15,7 +15,7 @@ IS_LOCAL = not (IS_REMOTE or IS_CLUSTER)
 PROJ_DIR = Path(__file__).resolve().parents[1]
 WORKSPACE_DIR = PROJ_DIR if (IS_REMOTE or IS_CLUSTER) else PROJ_DIR.parent
 
-DATA_DIR = Path(os.environ['DATA_DIR']) if 'DATA_DIR' in os.environ else PROJ_DIR / "data"
+DATA_DIR = Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else PROJ_DIR / "data"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
 TF_DIR = RELATED_DIR / "obj_det/trackformer"
 MEMOTR_DIR = RELATED_DIR / "obj_det/MeMOTR/memotr"
@@ -97,9 +97,11 @@ def log_exception(*args):
             "- an exception, or 3 arguments: exc type, exc value and traceback"
         )
         logger.error(f"{len(args)=}, {args=}")
+        msg = ""
         for arg in args:
             if isinstance(arg, TracebackType):
-                logger.error(traceback.format_tb(arg))
+                msg += f"{traceback.format_tb(arg)}\n"
+        logger.error(msg)
         return
 
     tb_msg = "".join(traceback.format_exception(etype, value, tb))

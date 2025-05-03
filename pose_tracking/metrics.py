@@ -167,8 +167,8 @@ def calc_rt_errors(pred_rt, gt_rt, sym_type=None):
     """Calculate rotation and translation errors between two poses.
     Can handle symmetries in Linemod objects.
     """
-    pred_rt = cast_to_numpy(pred_rt)
-    gt_rt = cast_to_numpy(gt_rt)
+    pred_rt = cast_to_numpy(pred_rt.squeeze())
+    gt_rt = cast_to_numpy(gt_rt.squeeze())
 
     if len(pred_rt.shape) == 3:
         errors = defaultdict(list)

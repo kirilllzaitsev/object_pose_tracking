@@ -340,6 +340,7 @@ def get_parser():
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
     data_args.add_argument("--do_subtract_bg", action="store_true", help="Subtract background from RGBD")
+    data_args.add_argument("--do_return_next_if_obj_invisible", action="store_true", help="Return next frame if an obj is masked in the current one")
     data_args.add_argument(
         "--use_entire_seq_in_train",
         action="store_true",
@@ -528,7 +529,7 @@ def fix_outdated_args(args):
         return not hasattr(args, x)
 
     def is_none(x):
-        return getattr(args, x) is None
+        return getattr(args, x, None) is None
 
     if hasattr(args, "t_mlp_num_layers"):
         args.rt_mlps_num_layers = args.t_mlp_num_layers
@@ -547,7 +548,7 @@ def fix_outdated_args(args):
         if not hasattr(args, "rt_hidden_dim"):
             args.rt_hidden_dim = args.hidden_dim
     if not hasattr(args, "mt_use_uncertainty"):
-        args.mt_use_uncertainty = args.factors is not None
+        args.mt_use_uncertainty = not is_none("factors")
     if noattr("use_mask_for_bbox_2d"):
         args.use_mask_for_bbox_2d = True
 
