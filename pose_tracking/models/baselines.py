@@ -26,6 +26,7 @@ class CNN(nn.Module):
         rt_hidden_dim=512,
         use_mlp_for_prev_pose=False,
         use_depth=False,
+        do_predict_kpts=False,
         **kwargs,
     ):
         super().__init__()
@@ -48,6 +49,7 @@ class CNN(nn.Module):
         self.do_predict_t = do_predict_t
         self.use_mlp_for_prev_pose = use_mlp_for_prev_pose
         self.use_depth = use_depth
+        self.do_predict_kpts = do_predict_kpts
 
         self.input_dim = encoder_out_dim * 2 if use_depth else encoder_out_dim
 
@@ -106,7 +108,7 @@ class CNN(nn.Module):
         if use_prev_latent:
             self.t_mlp_in_dim += self.input_dim
             self.rot_mlp_in_dim += self.input_dim
-            
+
         if do_predict_t:
             self.t_mlp = MLP(
                 in_dim=self.t_mlp_in_dim,
@@ -120,6 +122,20 @@ class CNN(nn.Module):
             self.rot_mlp = MLP(
                 in_dim=self.rot_mlp_in_dim,
                 out_dim=self.rot_mlp_out_dim,
+                hidden_dim=self.rt_hidden_dim,
+                num_layers=rt_mlps_num_layers,
+                dropout=dropout_heads,
+            )
+
+        if self.do_predict_kpts:
+            self.num_kpts = 32
+            self.kpts_mlp_in_dim = self.input_dim
+            if self.use_prev_latent:
+                self.kpts_mlp_in_dim += self.input_dim
+            self.kpts_mlp_out_dim = self.num_kpts * 2
+            self.kpts_mlp = MLP(
+                in_dim=self.kpts_mlp_in_dim,
+                out_dim=self.kpts_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
                 dropout=dropout_heads,
@@ -206,6 +222,14 @@ class CNN(nn.Module):
         else:
             rot = torch.zeros(bs, self.rot_mlp_out_dim, device=rgb.device)
         res["rot"] = rot
+
+        if self.do_predict_kpts:
+            kpt_in = latent
+            if self.use_prev_latent:
+                kpt_in = torch.cat([kpt_in, prev_latent], dim=1)
+            kpts = self.kpts_mlp(kpt_in).sigmoid()
+            kpts = kpts.view(bs, self.num_kpts, 2)
+            res["kpts"] = kpts
 
         return res
 
