@@ -567,20 +567,28 @@ class DETRBase(nn.Module):
 
                 all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
             if self.use_uncertainty:
-                u_in = torch.cat(
+                factor_tokens = torch.cat(
                     [
-                        o.unsqueeze(-1).detach(),
-                        pose_token.unsqueeze(-1).detach(),
+                        self.uncertainty_tokens.repeat(b, self.n_queries, 1, 1),
                         self.free_factors.repeat(b, self.n_queries, 1, 1),
                     ],
                     dim=-1,
                 )
+
                 if self.use_factors:
-                    u_in = torch.cat([u_in, all_factor_latents], dim=-1)
-                u_in = einops.rearrange(u_in, "b q d f -> (b q) f d")
-                u_out = self.uncertainty_layer[layer_idx](u_in)
-                u_out = einops.rearrange(u_out, "(b q) f d -> b q f d", b=b, q=self.n_queries)
-                out["uncertainty"] = u_out[..., 0, 0]  # idxs for obj query + placeholder
+                    factor_tokens = torch.cat([factor_tokens, all_factor_latents], dim=-1)
+                obs_tokens = o.unsqueeze(-1).detach()
+                if self.use_pose_tokens:
+                    obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
+                obs_tokens = torch.cat(
+                    [obs_tokens, last_latent_rot.unsqueeze(-1).detach(), last_latent_t.unsqueeze(-1).detach()], dim=-1
+                )
+                obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
+                factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
+                u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
+                for k, v in u_out.items():
+                    v = einops.rearrange(v, "(b q) -> b q", b=b, q=self.n_queries)
+                    out[f"uncertainty_{k}"] = v
 
             out["pose_token"] = pose_token
             outs.append(out)
@@ -605,7 +613,8 @@ class DETRBase(nn.Module):
         if self.use_factors:
             res["factors"] = last_out["factors"]
         if self.use_uncertainty:
-            res["uncertainty"] = last_out["uncertainty"]
+            res["uncertainty_rot"] = last_out["uncertainty_rot"]
+            res["uncertainty_t"] = last_out["uncertainty_t"]
         res["tokens"] = tokens_enc
 
         return res
