@@ -252,6 +252,9 @@ class TrackingDataset(Dataset):
             sample["is_visible"] = [True] * self.max_num_objs
 
         if self.max_num_objs == 1 and sample["is_visible"][0] == False and self.do_skip_invisible_single_obj:
+            if self.do_return_next_if_obj_invisible and i + 1 < len(self):
+                print(f"WARNING: Object at {self.color_files[i]=} is not visible. Returning next one.")
+                return self[i + 1]
             print(f"WARNING: Object at {self.color_files[i]=} is not visible. Skipping it.")
             return None
 
