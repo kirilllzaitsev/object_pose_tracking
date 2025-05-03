@@ -825,7 +825,7 @@ class KeypointDETR(DETRBase):
         return {
             "tokens": tokens,
             "kpts": kpts,
-            "score_map": extracted_kpts['score_map'],
+            "score_map": extracted_kpts["score_map"],
             "descriptors": descriptors,
             "memory_key_padding_mask": memory_key_padding_mask,
         }

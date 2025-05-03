@@ -257,7 +257,7 @@ def get_scale_factor(mesh_path):
     from pose_tracking.utils.trimesh_utils import load_mesh
 
     scale_factor = None
-    if any(x in str(mesh_path) for x in ["allegro", "dextreme"]):
+    if any(x in str(mesh_path) for x in ["allegro", "dextreme", "_pose_estimation"]):
         bbox = load_mesh(mesh_path)["bbox"]
         if abs(bbox[0, 0]) == 1.0:
             scale_factor = 0.0325
