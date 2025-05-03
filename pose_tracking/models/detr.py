@@ -48,11 +48,51 @@ class CNNFeatureExtractor(nn.Module):
         elif model_name == "resnet50":
             self.model = resnet50(pretrained=True)
             fc_in_dim = 2048
-        self.model.fc = nn.Linear(fc_in_dim, out_dim)
+        else:
+            raise ValueError(f"Unknown model name {model_name}")
+
+        if out_dim == fc_in_dim:
+            self.model.fc = nn.Identity()
+        else:
+            self.model.fc = nn.Linear(fc_in_dim, out_dim)
 
     def forward(self, x):
         x = self.model(x)
         return x
+
+
+class FactorTransformer(nn.Module):
+    def __init__(self, d_model, n_heads, dropout=0.0):
+        super().__init__()
+        self.decoder = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(
+                d_model=d_model,
+                nhead=n_heads,
+                dim_feedforward=4 * d_model,
+                dropout=dropout,
+                batch_first=True,
+            ),
+            num_layers=1,
+        )
+
+        self.heads = {
+            k: nn.Sequential(
+                nn.Linear(d_model, d_model),
+                nn.ReLU(),
+                nn.Linear(d_model, 1),
+            )
+            for k in ["rot", "t"]
+        }
+        self.heads = nn.ModuleDict(self.heads)
+
+    def forward(self, obs_tokens, factor_tokens):
+        decoded = self.decoder(factor_tokens, obs_tokens)
+        out = {}
+        decoded_rot = decoded[:, 0]
+        decoded_t = decoded[:, 1]
+        out["rot"] = self.heads["rot"](decoded_rot).squeeze(-1)
+        out["t"] = self.heads["t"](decoded_t).squeeze(-1)
+        return out
 
 
 class DETRPretrained(nn.Module):
