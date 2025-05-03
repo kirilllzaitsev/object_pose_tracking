@@ -16,9 +16,11 @@ from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.factor_utils import (
-    calc_occlusion_factor_strength,
-    calc_scale_factor_strength,
+    calc_bbox_area,
+    calc_factor_strength,
+    calc_texture_factor,
     get_visib_px_num,
+    rasterize_bbox_cv,
 )
 from pose_tracking.utils.geom import (
     cam_to_2d,
@@ -77,6 +79,7 @@ class TrackingDataset(Dataset):
         do_filter_invisible_single_obj_frames=False,
         use_mask_for_visibility_check=True,
         use_bg_augm=False,
+        do_return_next_if_obj_invisible=False,
         max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
@@ -120,6 +123,7 @@ class TrackingDataset(Dataset):
         self.do_load_mesh_in_memory = do_load_mesh_in_memory or include_mesh
         self.do_skip_invisible_single_obj = do_skip_invisible_single_obj
         self.use_bg_augm = use_bg_augm
+        self.do_return_next_if_obj_invisible = do_return_next_if_obj_invisible
 
         self.video_dir = video_dir
         self.obj_name = obj_name
@@ -217,8 +221,10 @@ class TrackingDataset(Dataset):
             self.ds_meta = json.load(open(PROJ_DIR / "ds_meta.json"))["custom_sim_dextreme_2k_v2"]
             factors = self.ds_meta["factors"]
             self.f_max_z, self.f_min_z = factors["scale"]["max"], factors["scale"]["min"]
-            self.f_max_visib_px_num = factors["occlusion"]["max"]
-            self.f_min_visib_px_num = factors["occlusion"]["min"]
+            self.f_max_occ_factor = factors["occlusion"]["max"]
+            self.f_min_occ_factor = factors["occlusion"]["min"]
+            self.f_max_texture_factor = factors["texture"]["max"]
+            self.f_min_texture_factor = factors["texture"]["min"]
 
         if self.use_bg_augm:
             self.real_bg_paths = list((PROJ_DIR / "mit_indoor_subset").glob("*.jpg"))
@@ -319,6 +325,9 @@ class TrackingDataset(Dataset):
         else:
             bbox_3d_kpts = copy.deepcopy(sample["mesh_bbox"])
 
+        if self.use_factors and "occlusion" in self.factors:
+            bbox_3d_kpts_proj = world_to_2d(bbox_3d_kpts, sample["intrinsics"], sample["pose"])
+
         if self.include_bbox_2d:
             if self.use_mask_for_bbox_2d:
                 bbox_2ds = []
@@ -375,6 +384,7 @@ class TrackingDataset(Dataset):
         sample = self.augment_sample(sample, i)
 
         if self.use_factors:
+            # higher factor value means it is stronger. the values are from 0 to 1
             sample["factors"] = {}
             if "scale" in self.factors:
                 z = sample["pose"][..., 2, 3]
@@ -382,19 +392,29 @@ class TrackingDataset(Dataset):
                 z = np.clip(z, self.f_min_z, self.f_max_z)
                 if self.max_num_objs == 1:
                     z = np.array([z])
-                scale_strength = calc_scale_factor_strength(z, min_val=self.f_min_z, max_val=self.f_max_z)
-                sample["factors"]["scale"] = [scale_strength]
+                scale_factor_strength = calc_factor_strength(z, min_val=self.f_min_z, max_val=self.f_max_z)
+                sample["factors"]["scale"] = [scale_factor_strength]
             if "occlusion" in self.factors:
                 occ_mask = mask if "mask" in locals() else self.get_mask(i)
-                occlusion_factor = get_visib_px_num(occ_mask) / calc_bbox_area(bbox_2ds_ul_br[0])
+                occlusion_factor = 1 - (
+                    get_visib_px_num(occ_mask) / rasterize_bbox_cv(bbox_3d_kpts_proj, img_size=(self.h, self.w)).sum()
+                )
                 # clip
                 occlusion_factor = np.clip(occlusion_factor, self.f_min_occ_factor, self.f_max_occ_factor)
                 if self.max_num_objs == 1:
                     occlusion_factor = np.array([occlusion_factor])
-                occlusion_strength = calc_occlusion_factor_strength(
+                occlusion_strength = calc_factor_strength(
                     occlusion_factor, min_val=self.f_min_occ_factor, max_val=self.f_max_occ_factor
                 )
                 sample["factors"]["occlusion"] = [occlusion_strength]
+            if "texture" in self.factors:
+                texture_factor = calc_texture_factor(sample["rgb"], mask=mask)
+                if self.max_num_objs == 1:
+                    texture_factor = np.array([texture_factor])
+                texture_factor_strength = 1 - calc_factor_strength(
+                    texture_factor, min_val=self.f_min_texture_factor, max_val=self.f_max_texture_factor
+                )
+                sample["factors"]["texture"] = [texture_factor_strength]
 
         sample = process_raw_sample(
             sample,
