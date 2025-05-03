@@ -380,24 +380,13 @@ class DETRBase(nn.Module):
                 )
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
         if self.use_uncertainty:
-            self.n_free_factors = 2
+            self.n_free_factors = 2  # cover other factors
+            self.n_uncertainty_tokens = 2  # rot/t
             self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
-            self.uncertainty_layer = get_clones(
-                nn.Sequential(
-                    nn.TransformerEncoderLayer(
-                        d_model=d_model,
-                        nhead=n_heads,
-                        dim_feedforward=4 * d_model,
-                        dropout=dropout,
-                        batch_first=True,
-                    ),
-                    nn.Linear(d_model, d_model),
-                    nn.ReLU(),
-                    nn.Linear(d_model, 1),
-                    # nn.Sigmoid(),
-                ),
-                n_layers,
+            self.uncertainty_tokens = nn.Parameter(
+                torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
             )
+            self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout), n_layers)
 
         init_params(self)
 
