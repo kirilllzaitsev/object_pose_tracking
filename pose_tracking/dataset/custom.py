@@ -43,6 +43,10 @@ class CustomDataset(TrackingDataset):
             mesh_path_prop = f"{self.video_dir}/mesh/cube.obj"
             if os.path.exists(mesh_path_prop):
                 mesh_path = mesh_path_prop
+            else:
+                mesh_path_prop = f"{self.video_dir}/mesh/mesh.obj"
+                if os.path.exists(mesh_path_prop):
+                    mesh_path = mesh_path_prop
         if mesh_path is not None:
             scale_factor = get_scale_factor(mesh_path)
             self.set_up_obj_mesh(mesh_path, scale_factor=scale_factor)
@@ -66,7 +70,7 @@ class CustomDatasetTest(CustomDataset):
                 kwargs["include_pose"] = False
                 kwargs["include_bbox_2d"] = False
         mask_dir = f"{kwargs['video_dir']}/masks"
-        kwargs["include_mask"] = kwargs["include_mask"] and (os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1)
+        kwargs["include_mask"] = kwargs.get("include_mask", False) and (os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1)
         depth_dir = f"{kwargs['video_dir']}/depth"
         kwargs["include_depth"] = (
             kwargs.get("include_depth", False) and os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 1

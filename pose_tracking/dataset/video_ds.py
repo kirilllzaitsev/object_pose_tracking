@@ -227,7 +227,6 @@ class VideoDatasetTracking(VideoDataset):
             new_sample["t"] = pose[..., :3]
             new_sample["rot"] = pose[..., 3:]
 
-            new_sample["prev_rgb"] = adjust_img_for_torch(sample_prev["rgb"])
             new_sample["prev_bbox_2d"] = sample_prev.get("bbox_2d", torch.zeros((1, 4)))
             new_sample["prev_class_id"] = sample_prev["class_id"]
             new_sample["prev_is_sym"] = sample_prev.get("is_sym")
