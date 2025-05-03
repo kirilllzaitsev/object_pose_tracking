@@ -375,21 +375,21 @@ class TrackingDataset(Dataset):
             sample["factors"] = {}
             if "scale" in self.factors:
                 z = sample["pose"][..., 2, 3]
-                z[z < 0] = self.f_max_z
+                z[z < 0] = self.f_min_z
                 z = np.clip(z, self.f_min_z, self.f_max_z)
                 if self.max_num_objs == 1:
                     z = np.array([z])
-                scale_strength = calc_scale_factor_strength(z, min_val=self.f_max_z, max_val=self.f_min_z)
+                scale_strength = calc_scale_factor_strength(z, min_val=self.f_min_z, max_val=self.f_max_z)
                 sample["factors"]["scale"] = [scale_strength]
             if "occlusion" in self.factors:
                 occ_mask = mask if "mask" in locals() else self.get_mask(i)
-                occlusion = get_visib_px_num(occ_mask)
+                occlusion_factor = get_visib_px_num(occ_mask) / calc_bbox_area(bbox_2ds_ul_br[0])
                 # clip
-                occlusion = np.clip(occlusion, self.f_min_visib_px_num, self.f_max_visib_px_num)
+                occlusion_factor = np.clip(occlusion_factor, self.f_min_occ_factor, self.f_max_occ_factor)
                 if self.max_num_objs == 1:
-                    occlusion = np.array([occlusion])
+                    occlusion_factor = np.array([occlusion_factor])
                 occlusion_strength = calc_occlusion_factor_strength(
-                    occlusion, min_val=self.f_min_visib_px_num, max_val=self.f_max_visib_px_num
+                    occlusion_factor, min_val=self.f_min_occ_factor, max_val=self.f_max_occ_factor
                 )
                 sample["factors"]["occlusion"] = [occlusion_strength]
 
