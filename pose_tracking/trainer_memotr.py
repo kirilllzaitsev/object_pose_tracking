@@ -1,3 +1,4 @@
+import gc
 import math
 import os
 import sys
@@ -57,11 +58,13 @@ class TrainerMemotr(TrainerDeformableDETR):
         *args,
         config,
         use_temporal_loss=False,
+        use_temporal_loss_double=False,
         use_pe_loss=False,
         **kwargs,
     ):
 
         self.use_temporal_loss = use_temporal_loss
+        self.use_temporal_loss_double = use_temporal_loss_double
         self.use_pe_loss = use_pe_loss
 
         self.config = config
@@ -142,6 +145,7 @@ class TrainerMemotr(TrainerDeformableDETR):
             WITH_BOX_REFINE=self.config["WITH_BOX_REFINE"],
         )
         prev_tracks = None
+        prev_prev_tracks = None
         self.criterion.log = {}
         self.criterion.init_a_clip(
             batch=batched_seq,
@@ -321,28 +325,60 @@ class TrainerMemotr(TrainerDeformableDETR):
             if self.use_temporal_loss and t > 0:
                 # match poses from prev and new tracks
                 prev_track_poses = []
+                prev_prev_track_poses = []
                 new_track_poses = []
                 for bidx, new_track in enumerate(tracks):
                     prev_track = prev_tracks[bidx]
-                    matched_tids = [tid for tid in new_track.ids if tid >= 0 and tid in prev_track.ids]
-                    if len(matched_tids) > 0:
-                        new_matched_id_idxs = [i for i, tid in enumerate(new_track.ids) if tid in matched_tids]
-                        prev_matched_id_idxs = [i for i, tid in enumerate(prev_track.ids) if tid in matched_tids]
-                        new_track_poses.extend(
-                            self.parse_track_pose(new_track, intrinsics, hw=(h, w))[new_matched_id_idxs]
-                        )
-                        prev_track_poses.extend(
-                            self.parse_track_pose(prev_track, intrinsics, hw=(h, w))[prev_matched_id_idxs]
-                        )
+                    matched_idxs = [
+                        midx for midx in new_track.matched_idx if midx in prev_track.matched_idx and midx >= 0
+                    ]
+                    if prev_prev_tracks is not None:
+                        prev_prev_track = prev_prev_tracks[bidx]
+                        matched_idxs = [midx for midx in matched_idxs if midx in prev_prev_track.matched_idx]
+                    if len(matched_idxs) > 0:
+                        # if matched to the same gt, consider preds valid for temporal loss
+                        new_matched_idxs = [i for i, midx in enumerate(new_track.matched_idx) if midx in matched_idxs]
+                        prev_matched_idxs = [i for i, midx in enumerate(prev_track.matched_idx) if midx in matched_idxs]
+                        if prev_prev_tracks is not None:
+                            prev_prev_matched_idxs = [
+                                i for i, midx in enumerate(prev_prev_track.matched_idx) if midx in matched_idxs
+                            ]
+                            prev_prev_track_poses.extend(
+                                self.parse_track_pose(prev_prev_track, intrinsics, hw=(h, w))[prev_prev_matched_idxs]
+                            )
+                        new_track_parsed_pose = self.parse_track_pose(new_track, intrinsics, hw=(h, w))[
+                            new_matched_idxs
+                        ]
+                        prev_track_parsed_pose = self.parse_track_pose(prev_track, intrinsics, hw=(h, w))[
+                            prev_matched_idxs
+                        ]
+                        if not is_empty(prev_track_parsed_pose) and not is_empty(new_track_parsed_pose):
+                            new_track_poses.extend(new_track_parsed_pose)
+                            prev_track_poses.extend(prev_track_parsed_pose)
 
+                # more temporal context: penalize delta in deltas t-1->t and t->t+1
+                # though not always applicable: large delta during cube turns, small delta otherwise (within the same time window)
+                # assuming smooth motion here
                 if len(prev_track_poses) > 0:
                     prev_track_poses = torch.stack(prev_track_poses)
                     new_track_poses = torch.stack(new_track_poses)
-                    delta_pose = pose_to_egocentric_delta_pose_mat(prev_track_poses, new_track_poses)
-                    delta_pose_lie = Se3.from_matrix(delta_pose).log()
-                    loss_temporal = 0.1 * F.mse_loss(delta_pose_lie, torch.zeros_like(delta_pose_lie))
+                    try:
+                        delta_pose_next = pose_to_egocentric_delta_pose_mat(prev_track_poses, new_track_poses)
+                    except Exception as e:
+                        print(f"{locals()=}")
+                        raise e
+                    delta_pose_lie = Se3.from_matrix(delta_pose_next).log()
+                    if len(prev_prev_track_poses) > 0:
+                        prev_prev_track_poses = torch.stack(prev_prev_track_poses)
+                        delta_pose_prev = pose_to_egocentric_delta_pose_mat(prev_prev_track_poses, prev_track_poses)
+                        delta_pose_prev_lie = Se3.from_matrix(delta_pose_prev).log()
+                        loss_temporal = 0.2 * F.mse_loss(delta_pose_lie, delta_pose_prev_lie)
+                    else:
+                        loss_temporal = 0.2 * delta_pose_lie.norm(p=2, dim=-1).mean()
                     loss += loss_temporal
                     seq_stats["loss_temporal"].append(loss_temporal.item())
+                    if self.use_temporal_loss_double:
+                        prev_prev_tracks = [t.clone() for t in prev_tracks]
 
             if self.use_pe_loss:
                 mesh = [t["mesh"] for t in targets]
@@ -464,8 +500,8 @@ class TrainerMemotr(TrainerDeformableDETR):
                 #     labels.append(labels_b)
                 #     scores.append(scores_b)
                 tracks_result = tracks[0].to(torch.device("cpu"))
-                if len(tracks_result.ids) > 1:
-                    print(f"{t=} {len(tracks_result.ids)=} {tracks_result.ids=}")
+                # if len(tracks_result.ids) > 1:
+                #     print(f"{t=} {len(tracks_result.ids)=} {tracks_result.ids=}")
                 # ori_h, ori_w = ori_image.shape[1], ori_image.shape[2]
                 # box = [x, y, w, h]
                 # tracks_result.area = tracks_result.boxes[:, 2] * ori_w * \
