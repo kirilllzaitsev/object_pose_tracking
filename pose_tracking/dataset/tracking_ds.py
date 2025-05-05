@@ -394,8 +394,9 @@ class TrackingDataset(Dataset):
                     z = np.array([z])
                 scale_factor_strength = calc_factor_strength(z, min_val=self.f_min_z, max_val=self.f_max_z)
                 sample["factors"]["scale"] = [scale_factor_strength]
-            if "occlusion" in self.factors:
+            if "occlusion" in self.factors or "texture" in self.factors:
                 occ_mask = mask if "mask" in locals() else self.get_mask(i)
+            if "occlusion" in self.factors:
                 occlusion_factor = 1 - (
                     get_visib_px_num(occ_mask) / rasterize_bbox_cv(bbox_3d_kpts_proj, img_size=(self.h, self.w)).sum()
                 )
@@ -408,7 +409,7 @@ class TrackingDataset(Dataset):
                 )
                 sample["factors"]["occlusion"] = [occlusion_strength]
             if "texture" in self.factors:
-                texture_factor = calc_texture_factor(sample["rgb"], mask=mask)
+                texture_factor = calc_texture_factor(sample["rgb"], mask=occ_mask)
                 if self.max_num_objs == 1:
                     texture_factor = np.array([texture_factor])
                 texture_factor_strength = 1 - calc_factor_strength(
@@ -460,7 +461,10 @@ class TrackingDataset(Dataset):
         )
 
     def get_pose(self, idx):
-        return load_pose(self.pose_files[idx])
+        pose = load_pose(self.pose_files[idx])
+        if pose.shape[0] == 1:
+            pose = pose[0]
+        return pose
 
     def get_visibility(self, mask, i=None):
         return mask.sum() > self.min_pixels_for_visibility

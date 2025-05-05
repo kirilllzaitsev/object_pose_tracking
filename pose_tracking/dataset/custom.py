@@ -60,9 +60,12 @@ class CustomDatasetTest(CustomDataset):
 
     ds_name = "custom_test"
 
-    def __init__(self, *args, pose_dirname="pose", mask_dirname="masks_with_hand", **kwargs):
-        if not os.path.exists(f"{kwargs['video_dir']}/pose") or len(os.listdir(f"{kwargs['video_dir']}/pose")) < 1:
-            fpose_save_dirname = "ob_in_cam_fpose"
+    def __init__(self, *args, pose_dirname="ob_in_cam_fpose", mask_dirname="masks_with_hand", **kwargs):
+        if (
+            not os.path.exists(f"{kwargs['video_dir']}/{pose_dirname}")
+            or len(os.listdir(f"{kwargs['video_dir']}/{pose_dirname}")) < 1
+        ):
+            fpose_save_dirname = "ob_in_cam_fpose" if pose_dirname == "pose" else "pose"
             if os.path.exists(f"{kwargs['video_dir']}/{fpose_save_dirname}"):
                 kwargs["include_pose"] = True
                 pose_dirname = fpose_save_dirname
@@ -70,7 +73,9 @@ class CustomDatasetTest(CustomDataset):
                 kwargs["include_pose"] = False
                 kwargs["include_bbox_2d"] = False
         mask_dir = f"{kwargs['video_dir']}/masks"
-        kwargs["include_mask"] = kwargs.get("include_mask", False) and (os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1)
+        kwargs["include_mask"] = kwargs.get("include_mask", False) and (
+            os.path.exists(mask_dir) and len(os.listdir(mask_dir)) > 1
+        )
         depth_dir = f"{kwargs['video_dir']}/depth"
         kwargs["include_depth"] = (
             kwargs.get("include_depth", False) and os.path.exists(depth_dir) and len(os.listdir(depth_dir)) > 1
