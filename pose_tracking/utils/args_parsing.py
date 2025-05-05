@@ -1,5 +1,6 @@
 import argparse
 import base64
+import os
 import re
 import sys
 
@@ -41,7 +42,9 @@ def get_parser():
     pipe_args.add_argument("--args_path", type=str, help="Path to a yaml file with arguments")
     pipe_args.add_argument("--ckpt_path", type=str, help="Path to model checkpoint to load")
     pipe_args.add_argument("--ckpt_exp_name", type=str, help="Name of the experiment to load ckpt from")
-    pipe_args.add_argument("--ckpt_exp_name_artifact_suffix", type=str, default="best", help="Best/last ckpt from the experiment")
+    pipe_args.add_argument(
+        "--ckpt_exp_name_artifact_suffix", type=str, default="best", help="Best/last ckpt from the experiment"
+    )
     pipe_args.add_argument("--args_from_exp_name", type=str, help="Exp name to load args from")
     pipe_args.add_argument(
         "--ignored_file_args",
@@ -65,6 +68,7 @@ def get_parser():
     train_args.add_argument("--do_log_every_seq", action="store_true", help="Log every sequence")
     train_args.add_argument("--do_vis", action="store_true", help="Visualize inputs")
     train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
+    train_args.add_argument("--use_m_for_metrics", action="store_true", help="Use meters for metrics calc")
     train_args.add_argument(
         "--do_perturb_init_gt_for_rel_pose",
         action="store_true",
@@ -135,7 +139,9 @@ def get_parser():
     poseformer_args.add_argument("--mt_do_freeze_kpt_detector", action="store_true", help="Make detector frozen")
     poseformer_args.add_argument("--mt_use_kpt_loss", action="store_true", help="Include loss on kpts")
     poseformer_args.add_argument("--mt_use_temporal_loss", action="store_true", help="Include temporal loss")
-    poseformer_args.add_argument("--mt_use_temporal_loss_double", action="store_true", help="Include temporal loss for two serial pairs")
+    poseformer_args.add_argument(
+        "--mt_use_temporal_loss_double", action="store_true", help="Include temporal loss for two serial pairs"
+    )
     poseformer_args.add_argument("--mt_use_pe_loss", action="store_true", help="Include photometric loss")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
     poseformer_args.add_argument("--mt_use_uncertainty", action="store_true", help="Use uncertainty head")
@@ -340,7 +346,11 @@ def get_parser():
     data_args = parser.add_argument_group("Data arguments")
     data_args.add_argument("--do_preload_ds", action="store_true", help="Preload videos")
     data_args.add_argument("--do_subtract_bg", action="store_true", help="Subtract background from RGBD")
-    data_args.add_argument("--do_return_next_if_obj_invisible", action="store_true", help="Return next frame if an obj is masked in the current one")
+    data_args.add_argument(
+        "--do_return_next_if_obj_invisible",
+        action="store_true",
+        help="Return next frame if an obj is masked in the current one",
+    )
     data_args.add_argument(
         "--use_entire_seq_in_train",
         action="store_true",
@@ -436,11 +446,14 @@ def get_parser():
     return parser
 
 
-def postprocess_args(args, use_if_provided=False):
+def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
 
     args = fix_outdated_args(args)
 
-    if use_if_provided and (args.args_path or getattr(args, "args_from_exp_name")):
+    if args.exp_name.startswith("args_"):
+        args.exp_name = args.exp_name.replace("args_", "")
+
+    if args.args_path or getattr(args, "args_from_exp_name"):
         if getattr(args, "args_from_exp_name"):
             from pose_tracking.utils.comet_utils import load_artifacts_from_comet
 
@@ -453,7 +466,24 @@ def postprocess_args(args, use_if_provided=False):
 
             with open(args.args_path, "r") as f:
                 loaded_args = yaml.load(f, Loader=yaml.FullLoader)
+        if do_substitute_exp_name:
+            prev_exp_name = loaded_args["exp_name"]
+            cur_exp_name = args.exp_name
+            cur_exp_name = (
+                "args_dextreme_2k_cam1_big_light_memotr_continue_exp_striking_plank_5540_use_temporal_loss_double"
+            )
+            exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
+            common = os.path.commonprefix([cur_exp_name, prev_exp_name])
+            prev_exp_name_suffix = prev_exp_name[len(common) :]
+            if exp_type_m and re.search(r"_(continue)_", prev_exp_name) is None:
+                exp_type = exp_type_m.group(1)
+                cur_exp_name = cur_exp_name.replace(
+                    f"{exp_type}_exp_{loaded_args['comet_exp_name']}", f"{prev_exp_name_suffix}"
+                )
+                print(f"changing exp name from {args.exp_name} to {cur_exp_name}")
+                args.exp_name = cur_exp_name
 
+    if use_if_provided:
         default_ignored_file_args = [
             "device",
             "exp_name",
@@ -507,9 +537,6 @@ def postprocess_args(args, use_if_provided=False):
         assert not (args.mt_do_refinement or args.mt_do_refinement_with_pose_token)
     if args.mt_use_temporal_loss_double:
         assert args.mt_use_temporal_loss
-
-    if args.exp_name.startswith("args_"):
-        args.exp_name = args.exp_name.replace("args_", "")
 
     args.rot_out_dim = 6 if args.do_predict_6d_rot else (3 if args.do_predict_3d_rot else 4)
     args.t_out_dim = 2 if args.do_predict_2d_t else 3

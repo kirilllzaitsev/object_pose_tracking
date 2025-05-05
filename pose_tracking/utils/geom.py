@@ -20,6 +20,7 @@ except ImportError:
 
 
 def world_to_2d(pts, K, rt):
+    assert pts.ndim == K.ndim == rt.ndim, print(f"{rt.shape=} {K.shape=} {pts.shape=}")
     # returns N x 2 pts
     pts_cam = world_to_cam(pts, rt)
     return cam_to_2d(pts_cam, K)

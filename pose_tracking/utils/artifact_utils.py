@@ -78,7 +78,8 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, de
             det_res_formatted = copy.deepcopy(det_res)
             bbox_key = [k for k in det_res_formatted.keys() if "box" in k][0]
             if isinstance(det_res_formatted[bbox_key], list) or det_res_formatted[bbox_key].ndim == 3:
-                det_res_formatted[bbox_key] = det_res_formatted[bbox_key][bidx]
+                if not is_empty(det_res_formatted[bbox_key]):
+                    det_res_formatted[bbox_key] = det_res_formatted[bbox_key][bidx]
             for k in ["labels", "scores", "track_ids"]:
                 if (
                     k in det_res_formatted
@@ -87,7 +88,7 @@ def save_results_v2(rgb, intrinsics, pose_gt, pose_pred, rgb_path, preds_dir, de
                 ):
                     det_res_formatted[k] = det_res_formatted[k][bidx]
             with open(bbox_path, "w") as f:
-                json.dump({k: v.tolist() for k, v in det_res_formatted.items()}, f)
+                json.dump({k: (v if isinstance(v, list) else v.tolist()) for k, v in det_res_formatted.items()}, f)
         if mesh_bbox is not None:
             extras_path = seq_dir / "extras" / f"{name}.json"
             extras_path.parent.mkdir(parents=True, exist_ok=True)

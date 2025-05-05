@@ -155,6 +155,8 @@ def load_artifacts_from_comet(
     need_load_session = session_not_exist and do_load_session
 
     os.makedirs(exp_dir, exist_ok=True)
+    meta_download_path = f"{exp_dir}/meta_download.json"
+    meta_download = {}
 
     if any([args_not_exist, need_load_model, need_load_session]):
         os.makedirs(exp_dir, exist_ok=True)
@@ -208,6 +210,7 @@ def load_artifacts_from_comet(
                 print(f"Loading the model from step {model_step}")
                 load_asset(exp_api, model_asset["assetId"], model_ckpt_path)
                 weights_not_exist = False
+                meta_download["model_step"] = model_step
             if need_load_session:
                 try:
                     filenames = [x["fileName"] for x in sorted_assets]
@@ -218,6 +221,7 @@ def load_artifacts_from_comet(
                     session_ckpt_path = f"{exp_dir}/{session_artifact_name}.pth"
                     session_asset = [x for x in sorted_assets if session_artifact_name in x["fileName"]][0]
                     session_step = session_asset["step"]
+                    meta_download["session_step"] = session_step
                     load_asset(exp_api, session_asset["assetId"], session_ckpt_path)
                     session_not_exist = False
                 except IndexError as e:
@@ -230,6 +234,9 @@ def load_artifacts_from_comet(
         "args_path": args_file_path,
         "args": args,
     }
+
+    with open(meta_download_path, "w") as f:
+        json.dump(meta_download, f)
 
     if do_load_model:
         results["checkpoint_path"] = model_ckpt_path

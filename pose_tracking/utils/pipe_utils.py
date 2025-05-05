@@ -627,6 +627,7 @@ def get_trainer(
         use_temporal_loss=args.mt_use_temporal_loss,
         use_temporal_loss_double=args.mt_use_temporal_loss_double,
         use_pe_loss=args.mt_use_pe_loss,
+        use_m_for_metrics=args.use_m_for_metrics,
         **extra_kwargs,
     )
 
@@ -844,7 +845,7 @@ def get_datasets(
                 ds_video_subdirs=ds_video_subdirs_val,
                 ds_name=ds_name,
                 seq_len=seq_len,
-                seq_step=seq_step,
+                seq_step=1,
                 seq_start=None,
                 ds_kwargs=val_ds_kwargs,
                 num_samples=num_samples_val,
@@ -969,7 +970,7 @@ def get_obj_ds(ds_name, ds_kwargs, ds_video_subdir):
     return ds
 
 
-def get_ds_dirs(args):
+def get_ds_dirs(args, use_split_if_needed=True):
     get_ds_root_dirs_res = get_ds_root_dirs(args)
     ds_video_dir_train = get_ds_root_dirs_res["ds_video_dir_train"]
     ds_video_dir_val = get_ds_root_dirs_res["ds_video_dir_val"]
@@ -1000,7 +1001,7 @@ def get_ds_dirs(args):
     # if "dextreme" in str(ds_video_dir_train):
     #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
 
-    if args.do_split_train_for_val:
+    if args.do_split_train_for_val and use_split_if_needed:
         assert args.val_split_share > 0
         val_num_subdirs = int(len(ds_video_subdirs_train) * args.val_split_share)
         ds_video_subdirs_val = np.random.choice(ds_video_subdirs_train, val_num_subdirs, replace=False)

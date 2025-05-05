@@ -258,6 +258,7 @@ def draw_pose_on_img(
                 pose_pred[idx],
                 bbox=None if bbox is None else bbox[idx],
                 bbox_color=bbox_color,
+                bbox_color_gt=bbox_color_gt,
                 scale=scale,
                 pose_gt=None if pose_gt is None else pose_gt[idx],
                 final_frame=final_frame,
@@ -932,7 +933,7 @@ def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), ro
 
 def draw_text_in_ul(color_with_pose, extra_text, size=1, thickness=3):
     color_with_pose = cv2.putText(
-        color_with_pose,
+        copy.deepcopy(color_with_pose),
         extra_text,
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
