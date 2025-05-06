@@ -350,12 +350,12 @@ class RecurrentCNNVanilla(RecurrentNet):
             )
         if do_predict_2d_t:
             self.t_mlp_out_dim = 2
-            self.depth_mlp_in_dim = extracted_obs_dim
+            self.depth_mlp_in_dim = self.extracted_obs_dim
             self.depth_mlp_out_dim = 1
             if use_prev_pose_condition:
                 self.depth_mlp_in_dim += self.depth_mlp_out_dim
             if use_prev_latent:
-                self.depth_mlp_in_dim += self.encoder_out_dim * 2 if use_depth else self.encoder_out_dim
+                self.depth_mlp_in_dim += self.extracted_obs_dim
             self.depth_mlp = MLP(
                 in_dim=self.depth_mlp_in_dim,
                 out_dim=self.depth_mlp_out_dim,
@@ -400,7 +400,7 @@ class RecurrentCNNVanilla(RecurrentNet):
                 out_dim=self.t_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                act_out=None,  # normalized coords
                 dropout=dropout_heads,
             )
         if do_predict_rot:
@@ -417,7 +417,7 @@ class RecurrentCNNVanilla(RecurrentNet):
                 out_dim=self.t_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                act_out=None,  # normalized coords
                 dropout=dropout_heads,
             )
             self.rot_mlp_abs_pose = MLP(
@@ -429,7 +429,7 @@ class RecurrentCNNVanilla(RecurrentNet):
             )
 
         if self.do_predict_kpts:
-            self.kpts_mlp_in_dim = self.extracted_obs_dim
+            self.kpts_mlp_in_dim = self.input_dim
             if self.use_prev_latent:
                 self.kpts_mlp_in_dim += self.input_dim
             self.kpts_mlp_out_dim = self.num_kpts * 2
@@ -577,7 +577,7 @@ class RecurrentCNNVanilla(RecurrentNet):
         if self.do_predict_2d_t:
             depth_in = extracted_obs
             if self.use_prev_pose_condition:
-                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2]], dim=1)
+                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2:3]], dim=1)
             if self.use_prev_latent:
                 depth_in = torch.cat([depth_in, prev_latent], dim=1)
             center_depth = self.depth_mlp(depth_in)
@@ -986,13 +986,14 @@ class RecurrentCNNDouble(RecurrentCNN):
             state_t = state_rot = None
 
         if prev_latent is not None:
+            stride_scaler = 2 if self.use_depth else 1
             if self.do_predict_rot and self.do_predict_t:
-                prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
-                prev_latent_rot = prev_latent[:, self.encoder_out_dim * 2 :]
+                prev_latent_t = prev_latent[:, : self.encoder_out_dim * stride_scaler]
+                prev_latent_rot = prev_latent[:, self.encoder_out_dim * stride_scaler :]
             elif self.do_predict_t:
-                prev_latent_t = prev_latent[:, : self.encoder_out_dim * 2]
+                prev_latent_t = prev_latent[:, : self.encoder_out_dim * stride_scaler]
             else:
-                prev_latent_rot = prev_latent[:, : self.encoder_out_dim * 2]
+                prev_latent_rot = prev_latent[:, : self.encoder_out_dim * stride_scaler]
         else:
             prev_latent_t = prev_latent_rot = None
 
