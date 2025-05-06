@@ -259,14 +259,22 @@ class VideoDatasetTracking(VideoDataset):
                     new_sample[f"prev_{k}"] = v
 
             if self.do_predict_rel_pose:
-                pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(prev_pose)
-                pose_mat_gt_abs = self.pose_to_mat_converter_fn(pose)
+
+                pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(
+                    prev_pose_all_objs if len(sample["is_visible"]) > 1 else prev_pose
+                )
+                pose_mat_gt_abs = self.pose_to_mat_converter_fn(
+                    pose_all_objs if len(sample["is_visible"]) > 1 else pose
+                )
                 if pose_mat_prev_gt_abs.ndim == 2:
                     pose_mat_prev_gt_abs = pose_mat_prev_gt_abs[None]
                     pose_mat_gt_abs = pose_mat_gt_abs[None]
 
                 t_gt_rel, rot_gt_rel_mat = pose_to_egocentric_delta_pose(pose_mat_prev_gt_abs, pose_mat_gt_abs)
                 rot_gt_rel = convert_rotation_representation(rot_gt_rel_mat, rot_representation=self.ds.rot_repr)
+
+                if is_empty(prev_pose) or is_empty(pose):
+                    assert is_empty(t_gt_rel), "cannot compute relative pose if one of the poses is empty"
 
                 if self.t_repr == "2d":
                     prev_t_gt_2d, _ = convert_3d_t_for_2d(
