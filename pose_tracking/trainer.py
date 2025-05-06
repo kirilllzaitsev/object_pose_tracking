@@ -112,6 +112,7 @@ class Trainer:
         use_seq_len_curriculum=False,
         use_pnp_for_rot_pred=False,
         do_predict_abs_pose=False,
+        use_m_for_metrics=True,
         use_factors=False,
         seq_len_max=None,
         seq_len_curriculum_step_epoch_freq=10,
@@ -145,6 +146,7 @@ class Trainer:
         self.do_predict_abs_pose = do_predict_abs_pose
         self.use_pnp_for_rot_pred = use_pnp_for_rot_pred
         self.use_factors = use_factors
+        self.use_m_for_metrics = use_m_for_metrics
 
         self.args = args
         self.world_size = world_size
@@ -440,7 +442,6 @@ class Trainer:
                     prev_latent = last_step_state.get("prev_latent")
                     state = last_step_state.get("state")
                 elif t == 0:
-                    do_skip_first_step = True
                     if self.do_perturb_init_gt_for_rel_pose and is_train:
                         noise_t = (
                             torch.rand_like(t_gt_abs)
@@ -538,9 +539,18 @@ class Trainer:
             state = out["state"]
 
             if self.do_predict_2d_t:
-                center_depth_pred = out["center_depth"].squeeze(1)
-                convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(t_pred, center_depth_pred, intrinsics.float(), hw=hw)
-                t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
+                if self.do_predict_rel_pose:
+                    scale_pred = out["center_depth"].squeeze(-1)
+                    center_depth_pred = ((scale_pred) + 1) * pose_prev_pred_abs["t"][..., 2]
+                    t_pred = torch.zeros_like(t_gt_abs)
+                    t_pred[..., :2] = out["t"]
+                    t_pred[..., 2] = center_depth_pred - pose_prev_pred_abs["t"][..., 2]
+                else:
+                    center_depth_pred = out["center_depth"].squeeze(1)
+                    convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
+                        t_pred, center_depth_pred, intrinsics.float(), hw=hw
+                    )
+                    t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[:, :3, :3]
@@ -628,9 +638,10 @@ class Trainer:
                 if self.do_predict_2d_t:
                     t_pred_2d = out["t"]
                     if self.do_predict_rel_pose:
-                        loss_uv = self.criterion_trans(t_pred_2d[:, :2], t_gt_rel[:, :2])
-                        # trickier for depth (should be change in scale)
-                        loss_z = self.criterion_trans(center_depth_pred, t_gt_rel[:, 2:3])
+                        t_pred_2d = out["t"]
+                        loss_uv = self.criterion_trans(t_pred_2d[..., :2], t_gt_rel[..., :2]) * (1e0)
+                        scale_gt = t_gt_abs[..., 2] / pose_mat_prev_gt_abs[..., 2, 3] - 1
+                        loss_z = self.criterion_trans(scale_pred, (scale_gt)) * (1e0)
                     else:
                         t_gt_2d_norm, depth_gt = convert_3d_t_for_2d(t_gt_abs, intrinsics, hw)
                         loss_uv = self.criterion_trans(t_pred_2d, t_gt_2d_norm.squeeze(1))
