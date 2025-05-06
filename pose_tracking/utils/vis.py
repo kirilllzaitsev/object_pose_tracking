@@ -441,7 +441,9 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
     return fig
 
 
-def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None, include_ids=False):
+def vis_kpts(
+    img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None, include_ids=False, use_count=True
+):
     if conf is not None:
         sorted, indices = torch.sort(conf)
 
@@ -454,16 +456,17 @@ def vis_kpts(img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf
         size = 3 if conf is None else int(3 + 3 * conf[idx] * 2)
         img = cv2.circle(img, tuple(point), size, color, -1)
 
-    img = cv2.putText(
-        img,
-        f"{len(points_2d)} kpts",
-        (40, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
+    if use_count:
+        img = cv2.putText(
+            img,
+            f"{len(points_2d)} kpts",
+            (40, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
     if include_ids:
         for idx, point in enumerate(points_2d):
@@ -784,8 +787,8 @@ def plot_normals(flow):
 
 
 @plot
-def plot_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0)):
-    return vis_pose(color, pose, K, bbox=bbox, scale=scale, bbox_color=bbox_color)
+def plot_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), extra_text=None):
+    return vis_pose(color, pose, K, bbox=bbox, scale=scale, bbox_color=bbox_color, extra_text=extra_text)
 
 
 def plot_rgb_depth(color, depth, axs=None):

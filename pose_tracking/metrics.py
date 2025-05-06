@@ -29,6 +29,7 @@ def calc_metrics(
     log_fn=print,
     include_adds=False,
     sym_type=None,
+    use_m=True,
     class_name=None,
     handle_visibility=None,
 ):
@@ -54,7 +55,7 @@ def calc_metrics(
     if pts is not None:
         pts = cast_to_numpy(pts)
     res = {}
-    dist_scaler_to_mm = 1e3 if is_meters else 1  # m to mm
+    dist_scaler_to_mm = 1e3 if is_meters and not use_m else 1  # m to mm
     try:
         add = calc_add(pred_rt, gt_rt, pts=pts, model=model)
         res["add"] = add * dist_scaler_to_mm

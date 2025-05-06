@@ -857,7 +857,7 @@ class Trainer:
                 "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
                 "pose_prev_pred_abs": {k: v.detach() for k, v in pose_prev_pred_abs.items()},
                 "pose_mat_prev_gt_abs": pose_mat_prev_gt_abs,
-                "state": [x if x is None else x.detach() for x in state],
+                "state": [x if x is None else ((xx.detach() for xx in x) if isinstance(x, tuple) else x.detach()) for x in state],
             }
         else:
             last_step_state = None
