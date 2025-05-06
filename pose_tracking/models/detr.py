@@ -369,8 +369,12 @@ class DETRBase(nn.Module):
             self.roi_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
 
         if self.use_factors:
-            assert len(factors) > 0
-            self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
+            assert len(self.global_factors + self.local_factors) > 0
+            if len(self.local_factors) > 0:
+                assert roi_feature_dim == 512
+                self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+                for p in self.crop_cnn.parameters():
+                    p.requires_grad = False
             self.factor_mlps = {}
             for k in factors:
                 in_dim = roi_feature_dim if k in self.local_factors else d_model
