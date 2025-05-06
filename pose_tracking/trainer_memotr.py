@@ -355,30 +355,42 @@ class TrainerMemotr(TrainerDeformableDETR):
                         if not is_empty(prev_track_parsed_pose) and not is_empty(new_track_parsed_pose):
                             new_track_poses.extend(new_track_parsed_pose)
                             prev_track_poses.extend(prev_track_parsed_pose)
-
-                # more temporal context: penalize delta in deltas t-1->t and t->t+1
-                # though not always applicable: large delta during cube turns, small delta otherwise (within the same time window)
-                # assuming smooth motion here
-                if len(prev_track_poses) > 0:
+                # more temporal context: penalize pose deltas
+                if len(prev_track_poses) > 0 and self.use_temporal_loss_double and prev_prev_tracks is None:
+                    # wait one more step for computing the actual loss
+                    prev_prev_tracks = [t.clone() for t in prev_tracks]
+                elif len(prev_track_poses) > 0:
                     prev_track_poses = torch.stack(prev_track_poses)
                     new_track_poses = torch.stack(new_track_poses)
                     try:
                         delta_pose_next = pose_to_egocentric_delta_pose_mat(prev_track_poses, new_track_poses)
+                        prev_poses_gt = torch.stack(prev_poses_gt)
+                        new_poses_gt = torch.stack(new_poses_gt)
+                        delta_pose_next_gt = pose_to_egocentric_delta_pose_mat(prev_poses_gt, new_poses_gt)
                     except Exception as e:
                         print(f"{locals()=}")
                         raise e
                     delta_pose_lie = Se3.from_matrix(delta_pose_next).log()
-                    if len(prev_prev_track_poses) > 0:
+                    delta_pose_lie_gt = Se3.from_matrix(delta_pose_next_gt).log()
+                    if len(prev_prev_track_poses) > 0 and not is_empty(prev_prev_poses_gt):
+                        prev_prev_poses_gt = torch.stack(prev_prev_poses_gt)
                         prev_prev_track_poses = torch.stack(prev_prev_track_poses)
-                        delta_pose_prev = pose_to_egocentric_delta_pose_mat(prev_prev_track_poses, prev_track_poses)
+                        try:
+                            delta_pose_prev_gt = pose_to_egocentric_delta_pose_mat(prev_prev_poses_gt, prev_poses_gt)
+                            delta_pose_prev = pose_to_egocentric_delta_pose_mat(prev_prev_track_poses, prev_track_poses)
+                        except Exception as e:
+                            print(f"{locals()=}")
+                            raise e
+                        delta_pose_prev_gt_lie = Se3.from_matrix(delta_pose_prev_gt).log()
                         delta_pose_prev_lie = Se3.from_matrix(delta_pose_prev).log()
-                        loss_temporal = 0.2 * F.mse_loss(delta_pose_lie, delta_pose_prev_lie)
+                        loss_temporal = 1 * F.mse_loss(
+                            (delta_pose_lie - delta_pose_prev_lie).norm(p=2, dim=-1),
+                            (delta_pose_lie_gt - delta_pose_prev_gt_lie).norm(p=2, dim=-1),
+                        )
                     else:
-                        loss_temporal = 0.2 * delta_pose_lie.norm(p=2, dim=-1).mean()
+                        loss_temporal = 1 * F.mse_loss(delta_pose_lie, delta_pose_lie_gt)
                     loss += loss_temporal
                     seq_stats["loss_temporal"].append(loss_temporal.item())
-                    if self.use_temporal_loss_double:
-                        prev_prev_tracks = [t.clone() for t in prev_tracks]
 
             if self.use_pe_loss:
                 mesh = [t["mesh"] for t in targets]
