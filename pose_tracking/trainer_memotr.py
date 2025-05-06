@@ -327,6 +327,9 @@ class TrainerMemotr(TrainerDeformableDETR):
                 prev_track_poses = []
                 prev_prev_track_poses = []
                 new_track_poses = []
+                prev_poses_gt = []
+                prev_prev_poses_gt = []
+                new_poses_gt = []
                 for bidx, new_track in enumerate(tracks):
                     prev_track = prev_tracks[bidx]
                     matched_idxs = [
@@ -335,26 +338,55 @@ class TrainerMemotr(TrainerDeformableDETR):
                     if prev_prev_tracks is not None:
                         prev_prev_track = prev_prev_tracks[bidx]
                         matched_idxs = [midx for midx in matched_idxs if midx in prev_prev_track.matched_idx]
-                    if len(matched_idxs) > 0:
+                    if len(matched_idxs) > 0 and not is_empty(batch_t["target"][bidx]["t"]):
                         # if matched to the same gt, consider preds valid for temporal loss
                         new_matched_idxs = [i for i, midx in enumerate(new_track.matched_idx) if midx in matched_idxs]
                         prev_matched_idxs = [i for i, midx in enumerate(prev_track.matched_idx) if midx in matched_idxs]
-                        if prev_prev_tracks is not None:
+                        batch_prev_prev = self.get_seq_slice_for_dict_seq(batched_seq, t - 2)
+                        intrinsics_b = intrinsics[bidx][None].repeat(len(matched_idxs), 1, 1)
+                        if prev_prev_tracks is not None and not is_empty(batch_prev_prev["target"][bidx]["t"]):
                             prev_prev_matched_idxs = [
                                 i for i, midx in enumerate(prev_prev_track.matched_idx) if midx in matched_idxs
                             ]
                             prev_prev_track_poses.extend(
-                                self.parse_track_pose(prev_prev_track, intrinsics, hw=(h, w))[prev_prev_matched_idxs]
+                                self.parse_track_pose(prev_prev_track[prev_prev_matched_idxs], intrinsics_b, hw=(h, w))
                             )
-                        new_track_parsed_pose = self.parse_track_pose(new_track, intrinsics, hw=(h, w))[
-                            new_matched_idxs
-                        ]
-                        prev_track_parsed_pose = self.parse_track_pose(prev_track, intrinsics, hw=(h, w))[
-                            prev_matched_idxs
-                        ]
+                            target_rts_prev_prev = torch.cat(
+                                [
+                                    batch_prev_prev["target"][bidx]["t"][matched_idxs],
+                                    batch_prev_prev["target"][bidx]["rot"][matched_idxs],
+                                ],
+                                dim=0,
+                            )[None]
+                            prev_prev_poses_gt.extend(
+                                torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts_prev_prev])
+                            )
+                        new_track_parsed_pose = self.parse_track_pose(
+                            new_track[new_matched_idxs], intrinsics_b, hw=(h, w)
+                        )
+                        prev_track_parsed_pose = self.parse_track_pose(
+                            prev_track[prev_matched_idxs], intrinsics_b, hw=(h, w)
+                        )
+                        target_rts = torch.cat(
+                            [batch_t["target"][bidx]["t"][matched_idxs], batch_t["target"][bidx]["rot"][matched_idxs]],
+                            dim=0,
+                        )[None]
+                        batch_prev = self.get_seq_slice_for_dict_seq(batched_seq, t - 1)
+                        target_rts_prev = torch.cat(
+                            [
+                                batch_prev["target"][bidx]["t"][matched_idxs],
+                                batch_prev["target"][bidx]["rot"][matched_idxs],
+                            ],
+                            dim=0,
+                        )[None]
                         if not is_empty(prev_track_parsed_pose) and not is_empty(new_track_parsed_pose):
                             new_track_poses.extend(new_track_parsed_pose)
                             prev_track_poses.extend(prev_track_parsed_pose)
+                            prev_poses_gt.extend(
+                                torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts_prev])
+                            )
+                            new_poses_gt.extend(torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts]))
+
                 # more temporal context: penalize pose deltas
                 if len(prev_track_poses) > 0 and self.use_temporal_loss_double and prev_prev_tracks is None:
                     # wait one more step for computing the actual loss
