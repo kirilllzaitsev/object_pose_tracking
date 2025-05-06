@@ -323,7 +323,7 @@ class TrainerPizza(Trainer):
             rot_pred = out["rot"]
 
             scale_pred = out["center_depth"].squeeze(-1)
-            center_depth_pred = (torch.exp(scale_pred) + 0) * pose_prev_pred_abs["t"][..., 2]
+            center_depth_pred = ((scale_pred) + 1) * pose_prev_pred_abs["t"][..., 2]
 
             pose_mat_gt_abs = torch.stack([self.pose_to_mat_converter_fn(rt) for rt in pose_gt_abs])
             rot_mat_gt_abs = pose_mat_gt_abs[..., :3, :3]
@@ -373,9 +373,9 @@ class TrainerPizza(Trainer):
             else:
                 # t loss
 
-                loss_uv = self.criterion_trans(t_pred_2d[..., :2], t_gt_rel[..., :2]) * (1e3)
-                scale_gt = t_gt_abs[..., 2:] / pose_mat_prev_gt_abs[..., 2, 3]
-                loss_z = self.criterion_trans(scale_pred, torch.log(scale_gt)) * (1e3)
+                loss_uv = self.criterion_trans(t_pred_2d[..., :2], t_gt_rel[..., :2]) * (1e0)
+                scale_gt = t_gt_abs[..., 2] / pose_mat_prev_gt_abs[..., 2, 3] -1
+                loss_z = self.criterion_trans(scale_pred, (scale_gt)) * (1e0)
                 loss_t = loss_uv + loss_z
 
                 # rot loss
