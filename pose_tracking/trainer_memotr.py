@@ -324,12 +324,17 @@ class TrainerMemotr(TrainerDeformableDETR):
             # temporal loss
             if self.use_temporal_loss and t > 0:
                 # match poses from prev and new tracks
+                use_single_delta = t <= 1
+                use_single_temp_loss = not self.use_temporal_loss_double
+
                 prev_track_poses = []
                 prev_prev_track_poses = []
                 new_track_poses = []
                 prev_poses_gt = []
                 prev_prev_poses_gt = []
                 new_poses_gt = []
+                matched_idxs_all = []
+                prev_prev_matched_idxs = []
                 for bidx, new_track in enumerate(tracks):
                     prev_track = prev_tracks[bidx]
                     matched_idxs = [
@@ -338,6 +343,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                     if prev_prev_tracks is not None:
                         prev_prev_track = prev_prev_tracks[bidx]
                         matched_idxs = [midx for midx in matched_idxs if midx in prev_prev_track.matched_idx]
+                    matched_idxs_all.append(matched_idxs)
                     if len(matched_idxs) > 0 and not is_empty(batch_t["target"][bidx]["t"]):
                         # if matched to the same gt, consider preds valid for temporal loss
                         new_matched_idxs = [i for i, midx in enumerate(new_track.matched_idx) if midx in matched_idxs]
@@ -358,9 +364,8 @@ class TrainerMemotr(TrainerDeformableDETR):
                                 ],
                                 dim=0,
                             )[None]
-                            prev_prev_poses_gt.extend(
-                                torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts_prev_prev])
-                            )
+                        else:
+                            target_rts_prev_prev = []
                         new_track_parsed_pose = self.parse_track_pose(
                             new_track[new_matched_idxs], intrinsics_b, hw=(h, w)
                         )
@@ -379,13 +384,26 @@ class TrainerMemotr(TrainerDeformableDETR):
                             ],
                             dim=0,
                         )[None]
-                        if not is_empty(prev_track_parsed_pose) and not is_empty(new_track_parsed_pose):
+                        is_new_available = not is_empty(target_rts)
+                        is_prev_available = not is_empty(target_rts_prev)
+                        is_prev_prev_available = not is_empty(target_rts_prev_prev)
+
+                        if (
+                            is_new_available
+                            and is_prev_available
+                            and (use_single_temp_loss or use_single_delta or is_prev_prev_available)
+                        ):
                             new_track_poses.extend(new_track_parsed_pose)
                             prev_track_poses.extend(prev_track_parsed_pose)
                             prev_poses_gt.extend(
                                 torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts_prev])
                             )
                             new_poses_gt.extend(torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts]))
+
+                            if is_prev_prev_available:
+                                prev_prev_poses_gt.extend(
+                                    torch.stack([self.pose_to_mat_converter_fn(rt) for rt in target_rts_prev_prev])
+                                )
 
                 # more temporal context: penalize pose deltas
                 if len(prev_track_poses) > 0 and self.use_temporal_loss_double and prev_prev_tracks is None:
