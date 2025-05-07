@@ -91,6 +91,8 @@ def log_exception(*args):
         etype, value, tb = type(e), e, e.__traceback__
     elif len(args) == 3:
         etype, value, tb = args
+    elif len(args) == 4:
+        _, etype, value, tb = args
     else:
         logger.error(
             "Not able to log exception. Wrong number of arguments given. Should either receive 1 argument "

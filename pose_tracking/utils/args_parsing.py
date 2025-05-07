@@ -469,22 +469,6 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
             with open(args.args_path, "r") as f:
                 loaded_args = yaml.load(f, Loader=yaml.FullLoader)
 
-    if args.args_path and do_substitute_exp_name:
-        # for local
-        prev_exp_name = loaded_args["exp_name"]
-        cur_exp_name = args.exp_name
-        exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
-        common = os.path.commonprefix([cur_exp_name, prev_exp_name])
-        prev_exp_name_suffix = prev_exp_name[len(common) :]
-        if exp_type_m is not None:
-            exp_type = exp_type_m.group(1)
-            cur_exp_name = cur_exp_name.replace(
-                f"{exp_type}_exp_{loaded_args['comet_exp_name']}", f"{prev_exp_name_suffix}"
-            )
-            print(f"changing exp name from {args.exp_name} to {cur_exp_name}")
-            args.exp_name = cur_exp_name
-
-    if use_args_from_another_exp:
         default_ignored_file_args = [
             "device",
             "exp_name",
@@ -506,6 +490,21 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
             setattr(args, k, v)
         print(f"{sorted(ignored_file_args)=}")
         print(f"{sorted(legacy_args)=}")
+
+    if args.args_path and do_substitute_exp_name:
+        # for local
+        prev_exp_name = loaded_args["exp_name"]
+        cur_exp_name = args.exp_name
+        exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
+        common = os.path.commonprefix([cur_exp_name, prev_exp_name])
+        prev_exp_name_suffix = prev_exp_name[len(common) :]
+        if exp_type_m is not None:
+            exp_type = exp_type_m.group(1)
+            cur_exp_name = cur_exp_name.replace(
+                f"{exp_type}_exp_{loaded_args['comet_exp_name']}", f"{prev_exp_name_suffix}"
+            )
+            print(f"changing exp name from {args.exp_name} to {cur_exp_name}")
+            args.exp_name = cur_exp_name
 
     if args.do_overfit:
         args.dropout = 0.0
