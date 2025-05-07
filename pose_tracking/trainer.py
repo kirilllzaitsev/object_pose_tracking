@@ -699,7 +699,7 @@ class Trainer:
 
             # priv loss
             if self.use_priv_decoder:
-                loss_priv = 0.01 * compute_chamfer_dist(out["priv_decoded"], batch_t["bbox_3d_kpts"])
+                loss_priv = 0.01 * F.mse_loss(out["priv_decoded"], batch_t["bbox_3d_kpts"])
                 loss += loss_priv
 
             # kpt loss
