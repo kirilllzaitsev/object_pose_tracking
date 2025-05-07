@@ -72,6 +72,8 @@ class CNN(nn.Module):
             self.depth_mlp_out_dim = 1
             if use_prev_pose_condition:
                 self.depth_mlp_in_dim += self.depth_mlp_out_dim
+            if self.use_mlp_for_prev_pose:
+                self.depth_mlp_in_dim += self.rt_hidden_dim
             if use_prev_latent:
                 self.depth_mlp_in_dim += self.encoder_out_dim * 2 if use_depth else self.encoder_out_dim
             self.depth_mlp = MLP(
@@ -115,7 +117,7 @@ class CNN(nn.Module):
                 out_dim=self.t_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                act_out=None,  # normalized coords
                 dropout=dropout_heads,
             )
         if do_predict_rot:
@@ -210,10 +212,10 @@ class CNN(nn.Module):
 
         if self.do_predict_2d_t:
             depth_in = latent_t
-            if self.use_prev_pose_condition:
-                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2]], dim=1)
             if self.use_prev_latent:
                 depth_in = torch.cat([depth_in, prev_latent], dim=1)
+            if self.use_prev_pose_condition:
+                depth_in = torch.cat([depth_in, prev_pose["t"][:, 2:3]], dim=1)
             center_depth = self.depth_mlp(depth_in)
             res["center_depth"] = center_depth
 
@@ -459,7 +461,7 @@ class KeypointPose(nn.Module):
                 out_dim=self.t_mlp_out_dim,
                 hidden_dim=self.rt_hidden_dim,
                 num_layers=rt_mlps_num_layers,
-                act_out=nn.Sigmoid() if do_predict_2d_t else None,  # normalized coords
+                act_out=None,  # normalized coords
                 dropout=dropout_heads,
             )
         if do_predict_rot:
