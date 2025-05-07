@@ -905,8 +905,7 @@ class RecurrentCNNDouble(RecurrentCNN):
 
         use_obs_belief = kwargs.pop("use_obs_belief", False)
         use_belief_decoder = kwargs.pop("use_belief_decoder", False)
-        kwargs["use_obs_belief"] = False
-        kwargs["use_belief_decoder"] = False
+
         super().__init__(*args, **kwargs)
 
         self.t_rnn_kwargs = copy.deepcopy(kwargs)
@@ -914,9 +913,13 @@ class RecurrentCNNDouble(RecurrentCNN):
         self.t_rnn_kwargs["do_predict_rot"] = False
         self.t_rnn_kwargs["use_obs_belief"] = use_obs_belief
         self.t_rnn_kwargs["use_belief_decoder"] = use_belief_decoder
+        self.t_rnn_kwargs["do_predict_kpts"] = False
         self.rot_rnn_kwargs = copy.deepcopy(self.t_rnn_kwargs)
         self.rot_rnn_kwargs["do_predict_t"] = False
         self.rot_rnn_kwargs["do_predict_rot"] = self.do_predict_rot
+        self.rot_rnn_kwargs["use_obs_belief"] = False
+        self.rot_rnn_kwargs["use_belief_decoder"] = False
+        self.rot_rnn_kwargs["use_depth"] = False
         if kwargs["do_predict_t"]:
             self.t_rnn = RecurrentCNN(
                 *args,
@@ -999,7 +1002,6 @@ class RecurrentCNNDouble(RecurrentCNN):
 
         res = {}
         state = []
-        decoder_out = []
         latent = []
         if self.do_predict_t:
             t_net_out = self.t_rnn(
@@ -1010,11 +1012,15 @@ class RecurrentCNNDouble(RecurrentCNN):
                 latent_depth=latent_depth,
                 prev_latent=prev_latent_t,
                 state=state_t,
+                **kwargs,
             )
-            res["t"] = t_net_out["t"]
-            state += [t_net_out["state"]]
-            decoder_out += [t_net_out.get("decoder_out")]
-            latent += [t_net_out["latent"]]
+            for k, v in t_net_out.items():
+                if k == "state":
+                    state += [v]
+                elif k == "latent":
+                    latent += [v]
+                else:
+                    res[k] = v
         else:
             res["t"] = torch.zeros(bs, self.t_mlp_out_dim, device=rgb.device)
 
@@ -1024,6 +1030,7 @@ class RecurrentCNNDouble(RecurrentCNN):
                 new_boxes = []
                 for i, boxes_padded in enumerate(bbox):
                     boxes_padded = boxes_padded.clone()
+                    boxes_padded = boxes_padded.squeeze(1)
                     boxes_padded[..., 0] = boxes_padded[..., 0] - padding
                     boxes_padded[..., 1] = boxes_padded[..., 1] - padding
                     boxes_padded[..., 2] = boxes_padded[..., 2] + padding
@@ -1053,10 +1060,10 @@ class RecurrentCNNDouble(RecurrentCNN):
                 latent_depth=latent_depth_rot,
                 prev_latent=prev_latent_rot,
                 state=state_rot,
+                **kwargs,
             )
             res["rot"] = rot_net_out["rot"]
             state += [rot_net_out["state"]]
-            decoder_out += [rot_net_out.get("decoder_out")]
             latent += [rot_net_out["latent"]]
         else:
             res["rot"] = torch.zeros(bs, self.rot_mlp_out_dim, device=rgb.device)
@@ -1065,15 +1072,11 @@ class RecurrentCNNDouble(RecurrentCNN):
             {
                 "latent_depth": latent_depth,
                 "state": state,
-                "decoder_out": (torch.cat(decoder_out, dim=1) if self.use_belief_decoder else None),
             }
         )
 
         if self.use_prev_latent:
             res["latent"] = torch.cat(latent, dim=1)
-
-        if self.do_predict_2d_t:
-            res["center_depth"] = t_net_out["center_depth"]
 
         if self.do_predict_kpts:
             kpts = self.kpts_mlp(torch.cat(latent, dim=1))
