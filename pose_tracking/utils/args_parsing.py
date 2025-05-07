@@ -453,8 +453,10 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
     if args.exp_name.startswith("args_"):
         args.exp_name = args.exp_name.replace("args_", "")
 
-    if args.args_path or getattr(args, "args_from_exp_name"):
-        if getattr(args, "args_from_exp_name"):
+    use_args_from_exp_name = getattr(args, "args_from_exp_name") is not None
+    use_args_from_another_exp = use_if_provided and (args.args_path or use_args_from_exp_name)
+    if use_args_from_another_exp:
+        if use_args_from_exp_name:
             from pose_tracking.utils.comet_utils import load_artifacts_from_comet
 
             print(f"Overriding with args from exp {args.args_from_exp_name}")
@@ -466,24 +468,23 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
 
             with open(args.args_path, "r") as f:
                 loaded_args = yaml.load(f, Loader=yaml.FullLoader)
-        if do_substitute_exp_name:
-            prev_exp_name = loaded_args["exp_name"]
-            cur_exp_name = args.exp_name
-            cur_exp_name = (
-                "args_dextreme_2k_cam1_big_light_memotr_continue_exp_striking_plank_5540_use_temporal_loss_double"
-            )
-            exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
-            common = os.path.commonprefix([cur_exp_name, prev_exp_name])
-            prev_exp_name_suffix = prev_exp_name[len(common) :]
-            if exp_type_m and re.search(r"_(continue)_", prev_exp_name) is None:
-                exp_type = exp_type_m.group(1)
-                cur_exp_name = cur_exp_name.replace(
-                    f"{exp_type}_exp_{loaded_args['comet_exp_name']}", f"{prev_exp_name_suffix}"
-                )
-                print(f"changing exp name from {args.exp_name} to {cur_exp_name}")
-                args.exp_name = cur_exp_name
 
-    if use_if_provided:
+    if args.args_path and do_substitute_exp_name:
+        # for local
+        prev_exp_name = loaded_args["exp_name"]
+        cur_exp_name = args.exp_name
+        exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
+        common = os.path.commonprefix([cur_exp_name, prev_exp_name])
+        prev_exp_name_suffix = prev_exp_name[len(common) :]
+        if exp_type_m is not None:
+            exp_type = exp_type_m.group(1)
+            cur_exp_name = cur_exp_name.replace(
+                f"{exp_type}_exp_{loaded_args['comet_exp_name']}", f"{prev_exp_name_suffix}"
+            )
+            print(f"changing exp name from {args.exp_name} to {cur_exp_name}")
+            args.exp_name = cur_exp_name
+
+    if use_args_from_another_exp:
         default_ignored_file_args = [
             "device",
             "exp_name",
