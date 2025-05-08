@@ -482,7 +482,9 @@ class DETRBase(nn.Module):
                     time_pos_embed = timestep_embedding(torch.arange(num_prev_tokens + 1).to(o.device), self.d_model)
                     pose_tokens = torch.cat([prev_pose_tokens_layer, pose_token.unsqueeze(1)], dim=1)
                     pose_tokens = einops.rearrange(pose_tokens, "b t q d -> (b q) t d")
-                    pose_tokens_enc = self.pose_token_transformer(pose_tokens)
+                    pose_tokens_pe = pose_tokens + time_pos_embed.unsqueeze(0)
+                    mask = self.get_causal_attn_mask_for_pose_tokens(pose_tokens)
+                    pose_tokens_enc = self.pose_token_transformer(pose_tokens_pe, mask=mask)
                     pose_tokens_enc = einops.rearrange(pose_tokens_enc, "(b q) t d -> b t q d", b=b)
                     pose_token = pose_tokens_enc[:, -1]
             else:
@@ -495,7 +497,8 @@ class DETRBase(nn.Module):
                 prev_layers_pose_tokens = torch.stack([o["pose_token"] for o in outs[:layer_idx]] + [pose_token], dim=1)
                 layers_pose_tokens_pe = prev_layers_pose_tokens + time_pos_embed.unsqueeze(1)
                 layers_pose_tokens = einops.rearrange(layers_pose_tokens_pe, "b l q d -> (b q) l d")
-                pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens)
+                mask = self.get_causal_attn_mask_for_pose_tokens(layers_pose_tokens)
+                pose_layers_tokens_enc = self.pose_refiner_transformer(layers_pose_tokens, mask=mask)
                 pose_layers_tokens_enc = einops.rearrange(
                     pose_layers_tokens_enc, "(b q) l d -> b l q d", b=pose_token.shape[0], d=self.d_model
                 )
@@ -611,6 +614,12 @@ class DETRBase(nn.Module):
         res["tokens"] = tokens_enc
 
         return res
+
+    def get_causal_attn_mask_for_pose_tokens(self, pose_tokens):
+        num_tokens = pose_tokens.shape[1]
+        mask = torch.triu(torch.ones((num_tokens, num_tokens)) * float("-inf"), diagonal=1)
+        mask = mask.to(pose_tokens.device)
+        return mask
 
     def extract_tokens(self, rgb, *args, **kwargs):
         raise NotImplementedError
