@@ -279,6 +279,7 @@ class TrainerDeformableDETR(Trainer):
                 mask_dilated = mask.clone()
                 if mask_dilated.shape[-1] == 3:
                     mask_dilated = mask_dilated.any(dim=-1)
+                mask_dilated = torch.stack([mask_morph(m, kernel_size=5, op_name="dilate") for m in mask_dilated])
                 score_map = out["score_map"].squeeze(1)
                 mask_dilated = F.interpolate(
                     mask_dilated.unsqueeze(1).float(), size=score_map.shape[-2:], mode="nearest"
@@ -482,7 +483,10 @@ class TrainerDeformableDETR(Trainer):
                     labels.append(labels_b)
                     scores.append(scores_b)
                 assert batch_size == 1, batch_size
-                pose_preds = torch.stack(pose_preds)[0]
+                if len(pose_preds) > 0:
+                    pose_preds = torch.stack(pose_preds)[0]
+                else:
+                    pose_preds = torch.empty(0, 4, 4)
                 det_res = {
                     "bbox": bboxs,
                     "labels": labels,
