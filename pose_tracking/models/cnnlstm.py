@@ -931,7 +931,7 @@ class RecurrentCNNDouble(RecurrentCNN):
                 **self.rot_rnn_kwargs,
             )
             if use_crop_for_rot:
-                self.encoder_img_rot, self.encoder_depth_rot = get_encoders(
+                self.encoder_img_rot, _ = get_encoders(
                     self.encoder_name,
                     do_freeze=self.do_freeze_encoders,
                     weights_rgb=self.encoder_img_weights,
@@ -939,8 +939,6 @@ class RecurrentCNNDouble(RecurrentCNN):
                     norm_layer_type=self.norm_layer_type,
                     out_dim=self.encoder_out_dim,
                 )
-                if not self.use_depth:
-                    self.encoder_depth_rot = None
         if self.do_predict_rot and self.use_crop_for_rot and not self.do_predict_t:
             self.encoder_img = None
 
@@ -1045,19 +1043,15 @@ class RecurrentCNNDouble(RecurrentCNN):
                 crop_size = (60, 80)
                 crop_size = (60 * 2, 80 * 2)
                 rgb_crop = roi_align(rgb, new_boxes, crop_size)
-                depth_crop = roi_align(depth, new_boxes, crop_size)
                 latent_rgb_rot = self.encoder_img_rot(rgb_crop)
-                latent_depth_rot = self.encoder_depth_rot(depth_crop) if self.use_depth else None
             else:
                 latent_rgb_rot = latent_rgb
-                latent_depth_rot = latent_depth
 
             rot_net_out = self.rot_rnn(
                 rgb,
                 depth,
                 prev_pose=prev_pose,
                 latent_rgb=latent_rgb_rot,
-                latent_depth=latent_depth_rot,
                 prev_latent=prev_latent_rot,
                 state=state_rot,
                 **kwargs,
