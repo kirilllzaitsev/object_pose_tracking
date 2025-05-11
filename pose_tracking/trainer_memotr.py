@@ -422,6 +422,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                         raise e
                     delta_pose_lie = Se3.from_matrix(delta_pose_next).log()
                     delta_pose_lie_gt = Se3.from_matrix(delta_pose_next_gt).log()
+                    loss_temporal = 0
                     if len(prev_prev_track_poses) > 0 and not is_empty(prev_prev_poses_gt):
                         prev_prev_poses_gt = torch.stack(prev_prev_poses_gt)
                         prev_prev_track_poses = torch.stack(prev_prev_track_poses)
@@ -433,14 +434,16 @@ class TrainerMemotr(TrainerDeformableDETR):
                             raise e
                         delta_pose_prev_gt_lie = Se3.from_matrix(delta_pose_prev_gt).log()
                         delta_pose_prev_lie = Se3.from_matrix(delta_pose_prev).log()
-                        loss_temporal = 1 * F.mse_loss(
-                            (delta_pose_lie - delta_pose_prev_lie).norm(p=2, dim=-1),
-                            (delta_pose_lie_gt - delta_pose_prev_gt_lie).norm(p=2, dim=-1),
+                        loss_temporal_double = 1 * F.mse_loss(
+                            (delta_pose_lie - delta_pose_prev_lie),
+                            (delta_pose_lie_gt - delta_pose_prev_gt_lie),
                         )
-                    else:
-                        loss_temporal = 1 * F.mse_loss(delta_pose_lie, delta_pose_lie_gt)
+                        loss_temporal += loss_temporal_double
+                    loss_temporal_single = 1 * F.mse_loss(delta_pose_lie, delta_pose_lie_gt)
+                    loss_temporal += loss_temporal_single
                     loss += loss_temporal
                     seq_stats["loss_temporal"].append(loss_temporal.item())
+                    seq_stats["loss_temporal_single"].append(loss_temporal_single.item())
 
             if self.use_pe_loss:
                 mesh = [t["mesh"] for t in targets]
@@ -685,7 +688,8 @@ class TrainerMemotr(TrainerDeformableDETR):
             pose_mat_pred_abs = allocentric_to_egocentric(cast_to_numpy(pose_mat_pred_abs))
         return pose_mat_pred_abs
 
-    def get_seq_slice_for_dict_seq(self, batched_seq, t):
+    @staticmethod
+    def get_seq_slice_for_dict_seq(batched_seq, t):
         batch_t = {}
         for k, v in batched_seq.items():
             if not is_empty(v):
