@@ -368,7 +368,7 @@ class TrainerDeformableDETR(Trainer):
 
                     # since only pair seq for now
                     if self.do_predict_rel_pose:
-                        # rel pose is undefined when obj is occluded at t-1 or t
+                        # rel pose is undefined when obj is occluded at t-1 or t (const motion)
                         pose_mat_pred_metrics = pose_mat_pred
                         pose_mat_gt_rel = torch.cat(
                             [
@@ -424,7 +424,14 @@ class TrainerDeformableDETR(Trainer):
                 if "indices" in k:
                     continue
                 seq_stats[k].append(v.item())
-            for k in ["class_error", "cardinality_error", "uncertainty", "confidence"]:
+            for k in [
+                "class_error",
+                "cardinality_error",
+                "uncertainty",
+                "confidence",
+                "confidence_rot",
+                "confidence_t",
+            ]:
                 if k in loss_dict_reduced:
                     v = loss_dict_reduced[k]
                     seq_stats[k].append(v.item())
@@ -659,6 +666,7 @@ class TrainerDeformableDETR(Trainer):
                 bbox_3d=mesh_bbox[sample_idx],
                 diameter=mesh_diameter[sample_idx],
                 is_meters=True,
+                use_m=self.use_m_for_metrics,
                 sym_type=sym_types[sample_idx] if sym_types is not None else None,
                 log_fn=print if self.logger is None else self.logger.warning,
             )
