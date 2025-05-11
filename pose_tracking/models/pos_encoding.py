@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 
@@ -31,6 +33,29 @@ class PosEncoding(nn.Module):
         return self
 
 
+class PosEncodingCoord(nn.Module):
+    """
+    similar to vanilla, but uses UV of keypoints for computing the frequencies.
+    """
+
+    def __init__(self, d_model):
+        super().__init__()
+
+        self.d_model = d_model
+
+    def forward(self, x):
+        B, L, NDIM = x.size()
+        _2i = torch.arange(0, self.d_model, step=2).float().to(x.device)
+
+        encoding = torch.zeros(B, L, self.d_model, device=x.device)
+        pos_x = x[:, :, 0].unsqueeze(dim=-1)
+        pos_y = x[:, :, 1].unsqueeze(dim=-1)
+        encoding[:, :, 0::2] = torch.sin(pos_x / (10000 ** (_2i / self.d_model)))
+        encoding[:, :, 1::2] = torch.cos(pos_y / (10000 ** (_2i / self.d_model)))
+
+        return encoding
+
+
 class SpatialPosEncoding(nn.Module):
     def __init__(self, d_model, ndim=2, enc_type="mlp"):
         super().__init__()
@@ -46,7 +71,7 @@ class SpatialPosEncoding(nn.Module):
 
 
 def timestep_embedding(timesteps, dim, max_period=100):
-    """https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/nn.py#L103
+    """as used in https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/nn.py#L103
     Create sinusoidal timestep embeddings.
 
     :param timesteps: a 1-D Tensor of N indices, one per batch element.
@@ -65,9 +90,32 @@ def timestep_embedding(timesteps, dim, max_period=100):
         embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
+
+class PosEncodingDepth(nn.Module):
+    def __init__(self, d_model, use_mlp=False):
+        self.use_mlp = use_mlp
+        super().__init__()
+        self.d_model = d_model
+        if use_mlp:
+            self.mlp = nn.Linear(1, d_model)
+
+    def forward(self, depth):
+        B, N, _ = depth.shape
+        device = depth.device
+        if self.use_mlp:
+            pe = self.mlp(depth)
+        else:
+            pe = torch.zeros(B, N, self.d_model, device=device)
+            div_term = torch.exp(torch.arange(0, self.d_model, 2, device=device) * -(math.log(10000.0) / self.d_model))
+            pe[:, :, 0::2] = torch.sin(depth * div_term)
+            pe[:, :, 1::2] = torch.cos(depth * div_term)
+        return pe
+
+
 class PositionEmbeddingLearned(nn.Module):
     """
-    Absolute pos embedding, learned.
+    Absolute learned pos embedding for feature maps.
+    ref: https://github.com/timmeinhardt/trackformer/blob/main/src/trackformer/models/position_encoding.py
     """
 
     def __init__(self, num_pos_feats=256):
