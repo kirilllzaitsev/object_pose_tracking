@@ -345,6 +345,7 @@ class TrainerDeformableDETR(Trainer):
                                 for rt in torch.cat([pose_prev_pred_abs["t"], pose_prev_pred_abs["rot"]], dim=1)
                             ]
                         )
+                        # TODO (use proper matching from prev and cur steps)
                         cur_bidx = idx[0]
                         if len(cur_bidx) > pose_mat_prev_pred_abs.shape[0]:
                             # reappears. use gt to fill in (TODO)

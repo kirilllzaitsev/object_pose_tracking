@@ -918,23 +918,7 @@ class Trainer:
             vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
         if out is not None:
             vis_data["out"].append(detach_and_cpu(out))
-                    seq_stats["loss_t_abs"].append(loss_t_abs.item())
-                    seq_stats["loss_rot_abs"].append(loss_rot_abs.item())
 
-        if do_vis:
-            os.makedirs(self.vis_dir, exist_ok=True)
-            save_vis_path = (
-                f"{self.vis_dir}/{stage}_epoch_{self.train_epoch_count}_step_{self.ts_counts_per_stage[stage]}.pt"
-            )
-            torch.save(vis_data, save_vis_path)
-            self.save_vis_paths.append(save_vis_path)
-            self.logger.info(f"Saved vis data for exp {Path(self.exp_dir).name} to {save_vis_path}")
-
-        return {
-            "losses": seq_stats,
-            "metrics": seq_metrics,
-            "last_step_state": last_step_state,
-        }
 
     def calc_kpt_loss(self, batch_t, out):
         kpts_pred = out["kpts"]
@@ -966,6 +950,7 @@ class Trainer:
                 bbox_3d=bbox_3d[sample_idx],
                 diameter=diameter[sample_idx],
                 is_meters=True,
+                use_m=self.use_m_for_metrics,
                 log_fn=print if self.logger is None else self.logger.warning,
             )
             for k, v in m_sample.items():
