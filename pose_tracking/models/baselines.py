@@ -315,9 +315,7 @@ class KeypointCNN(nn.Module):
     def forward(
         self,
         rgb,
-        rgb_prev,
         depth=None,
-        prev_pose=None,
         latent_rgb=None,
         latent_depth=None,
         prev_latent=None,

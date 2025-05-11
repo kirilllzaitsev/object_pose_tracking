@@ -718,6 +718,7 @@ def get_datasets(
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
     is_tf_model = "trackformer" in model_name
     is_cnnlstm_model = "cnnlstm" in model_name
+    is_cnn_kpt_model = "cnn_kpt" in model_name
     is_detr_model = "detr" in model_name or is_tf_model
     is_detr_kpt_model = "detr_kpt" in model_name
     is_roi_model = "_sep" in model_name
@@ -755,7 +756,7 @@ def get_datasets(
         use_allocentric_pose=use_allocentric_pose,
         use_mask_for_visibility_check=True,
         include_mesh=include_mesh,
-        include_kpt_projections=use_priv_decoder,
+        include_kpt_projections=use_priv_decoder or is_cnn_kpt_model,
         do_return_next_if_obj_invisible=do_return_next_if_obj_invisible
     )
     if ds_name in ["ycbi"]:
