@@ -464,10 +464,7 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
             loaded_args = fix_outdated_args(loaded_args)
             loaded_args = vars(loaded_args)
         else:
-            import yaml
-
-            with open(args.args_path, "r") as f:
-                loaded_args = yaml.load(f, Loader=yaml.FullLoader)
+            loaded_args = get_args_from_path(args.args_path)
 
         default_ignored_file_args = [
             "device",
@@ -493,6 +490,7 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
 
     if args.args_path and do_substitute_exp_name:
         # for local
+        loaded_args = get_args_from_path(args.args_path)
         prev_exp_name = loaded_args["exp_name"]
         cur_exp_name = args.exp_name
         exp_type_m = re.search(r"_(repeat|continue)_", cur_exp_name)
@@ -547,6 +545,12 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
     args.t_repr = "2d" if args.do_predict_2d_t else "3d"
 
     return args
+
+
+def get_args_from_path(args_path):
+    with open(args_path, "r") as f:
+        loaded_args = yaml.load(f, Loader=yaml.FullLoader)
+    return loaded_args
 
 
 def fix_outdated_args(args):

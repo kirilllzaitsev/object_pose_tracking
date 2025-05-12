@@ -337,9 +337,6 @@ class Trainer:
                             seq_stats[k][kk].append(vv)
                     if cidx == 1:
                         do_vis = False
-                for k, v in seq_stats.items():
-                    for kk, vv in v.items():
-                        seq_stats[k][kk] = np.mean(vv)
             torch.cuda.empty_cache()
 
             for k, v in {**seq_stats["losses"], **seq_stats["metrics"]}.items():
