@@ -26,10 +26,19 @@
 ```
 conda create -n pose_tracking python=3.10
 pip install -r requirements.txt
+cd libs || exit 1
 cd trackformer && pip install -e . && cd -
+cd bop_toolkit && pip install -e . && cd -
 cd memotr && pip install -e . && cd -
 export COMET_API_KEY=W5npcWDiWeNPoB2OYkQvwQD0C
 ```
+
+You can install full requirements if the shorter version did not work:
+
+```
+pip install -r requirements_full.txt
+```
+
 
 Extract the dataset published at [this link](https://drive.google.com/drive/folders/1Owm-B_i82UaVaSJ008p1miareTXGJhFp) to the `data` directory.
 
