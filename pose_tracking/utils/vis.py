@@ -442,7 +442,7 @@ def plot_kpt_matches(img0, img1, mkpts0, mkpts1, color=None, kpts0=None, kpts1=N
 
 
 def vis_kpts(
-    img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None, include_ids=False, use_count=True
+    img_PIL, points_2d, color=(0, 255, 0), do_fix_img_color=False, conf=None, include_ids=False, use_count=True, size=3
 ):
     if conf is not None:
         sorted, indices = torch.sort(conf)
@@ -453,7 +453,7 @@ def vis_kpts(
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     points_2d = cast_to_numpy(points_2d).astype(int)
     for idx, point in enumerate(points_2d):
-        size = 3 if conf is None else int(3 + 3 * conf[idx] * 2)
+        size = size if conf is None else int(3 + 3 * conf[idx] * 2)
         img = cv2.circle(img, tuple(point), size, color, -1)
 
     if use_count:

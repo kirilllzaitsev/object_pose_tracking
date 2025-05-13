@@ -186,6 +186,9 @@ class TrainerPizza(Trainer):
             running_stats[k] = v / len(loader)
         running_stats = reduce_dict(running_stats, device=self.device)
 
+        if self.do_debug:
+            running_stats["full"] = seq_stats
+
         if self.do_log:
             for k, v in running_stats.items():
                 self.writer.add_scalar(f"{stage}_epoch/{k}", v, self.train_epoch_count)
@@ -374,7 +377,7 @@ class TrainerPizza(Trainer):
                 # t loss
 
                 loss_uv = self.criterion_trans(t_pred_2d[..., :2], t_gt_rel[..., :2]) * (1e0)
-                scale_gt = t_gt_abs[..., 2] / pose_mat_prev_gt_abs[..., 2, 3] -1
+                scale_gt = t_gt_abs[..., 2] / pose_mat_prev_gt_abs[..., 2, 3] - 1
                 loss_z = self.criterion_trans(scale_pred, (scale_gt)) * (1e0)
                 loss_t = loss_uv + loss_z
 
@@ -551,9 +554,10 @@ class TrainerPizza(Trainer):
             optimizer.step()
             optimizer.zero_grad()
 
-        for stats in [seq_stats, seq_metrics]:
-            for k, v in stats.items():
-                stats[k] = v / num_steps
+        if not self.do_debug:
+            for stats in [seq_stats, seq_metrics]:
+                for k, v in stats.items():
+                    stats[k] = v / num_steps
 
         if self.do_predict_rel_pose:
             # calc loss/metrics btw accumulated abs poses
