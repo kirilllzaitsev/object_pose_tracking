@@ -34,6 +34,8 @@ pyperclip
 transforms3d
 PyOpenGL-accelerate
 motmetrics
+timm~=1.0.15
+pypng~=0.20220715.0
 -e .
 # install the following separately
 # bop_toolkit_lib
