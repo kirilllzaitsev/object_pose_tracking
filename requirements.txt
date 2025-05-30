@@ -1,0 +1,40 @@
+black
+transformers
+flake8
+isort
+loguru
+pip
+python-dotenv
+tqdm
+typer
+pyrender
+trimesh
+pycocotools
+comet_ml
+objaverse
+torch
+albumentations
+pyrender
+einops
+tqdm
+torch
+torchvision
+opencv-python
+opencv-contrib-python
+matplotlib
+pandas
+scikit-learn
+scikit-image
+tabulate
+open3d
+lightning
+lightning_utilities
+tensorboardX
+tensorboard
+pyperclip
+transforms3d
+PyOpenGL-accelerate
+-e .
+# bop_toolkit_lib
+# trackformer
+# pip install motmetrics visdom
