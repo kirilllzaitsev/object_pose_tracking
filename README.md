@@ -6,12 +6,14 @@
 
 ```
 ├── data               <- data directory
+├── artifacts               <- directory for experiment artifacts
 ├── pyproject.toml     <- project configuration file with package metadata for 
 │                         pose_tracking and configuration for tools like black
 │
-├── requirements.txt   <- python dependencies
+├── requirements.txt   <- minimal python dependencies
+├── requirements_full.txt   <- versioned python dependencies
 │
-├── setup.cfg          <- configuration file for flake8
+├── setup.cfg          <- configuration file for flake8 and others
 │
 └── pose_tracking   <- source code
     ├── models
@@ -74,33 +76,50 @@ pip install -r requirements_full.txt
 
 ## Training a model
 
+### General
+
+The datasets are published at [this link](https://drive.google.com/drive/folders/1Owm-B_i82UaVaSJ008p1miareTXGJhFp) and should be extracted to the `data` directory.
+
+To train with multiple GPUs, add the `--use_ddp` flag to the `train.py` arguments from below. A SLURM environment is required for this to work.
+
+Available CLI arguments can be viewed in `args_parsing.py`. `model_name` argument defines a set of models that can be selected for training.
+
 ### Single-object pose tracking
 
-Extract the dataset `custom_sim_dextreme_2k_cam1` published at [this link](https://drive.google.com/drive/folders/1Owm-B_i82UaVaSJ008p1miareTXGJhFp) to the `data` directory.
+Extract the dataset `custom_sim_dextreme_2k_cam1`.
 
 To train a Memotr-based model from scratch, first download the checkpoint from [this link](https://drive.google.com/file/d/17FxIGgIZJih8LWkGdlIOe9ZpVZ9IRxSj/view?usp=sharing), placing it into the `libs/MeMOTR/memotr` folder. From the `pose_tracking` directory, run the following command:
 
-```
-python train.py --use_ddp --do_ignore_file_args_with_provided --args_from_exp_name striking_plank_5540 --device cuda --exp_name args_dextreme_2k_cam1_memotr_continue_exp_striking_plank_5540 --ckpt_exp_name striking_plank_5540 --num_samples_val 30 --ds_name ikea --ds_alias dextreme_2k_cam1 --ds_folder_name_train custom_sim_dextreme_2k_cam1 --ds_folder_name_val custom_sim_dextreme_2k_cam1_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
+```shell
+python train.py --args_path configs/memotr_dextreme.yaml
 ```
 
-To train a Keypoint-DETR model:
+To resume training from an experiment assigned the name `striking_plank_5540` on Comet, optionally modifying some of its arguments, run:
 
+```shell
+export EXP_NAME=striking_plank_5540
+export DS_NAME=dextreme_2k_cam1
+python train.py --do_ignore_file_args_with_provided --args_from_exp_name ${EXP_NAME} --device cuda --exp_name args_${DS_NAME}_memotr_continue_exp_${EXP_NAME} --ckpt_exp_name ${EXP_NAME} --num_samples_val 30 --ds_name ikea --ds_alias ${DS_NAME} --ds_folder_name_train custom_sim_${DS_NAME} --ds_folder_name_val custom_sim_${DS_NAME}_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
 ```
-python train.py --use_ddp --use_es --do_save_artifacts --use_lrs --exp_tags ablation --num_epochs 300 --val_epoch_freq 2 --save_epoch_freq 2 --device cuda --exp_name args_dextreme_2k_cam1_detr_kpt --es_patience_epochs 25 --es_delta 0 --lrs_gamma 0.4 --lrs_min_lr 1e-6 --lrs_patience 10 --lrs_delta 0 --lr_encoders 1e-5 --do_predict_6d_rot --do_vis --vis_epoch_freq 20 --rt_hidden_dim 384 --lr 1e-4 --model_name detr_kpt --encoder_img_weights imagenet --encoder_depth_weights imagenet --t_loss_name mse --rot_loss_name mse --encoder_name resnet50 --rt_mlps_num_layers 3 --encoder_out_dim 512 --mt_encoding_type spatial --mt_num_queries 20 --mt_d_model 256 --mt_n_layers 6 --tf_use_focal_loss --tf_bbox_loss_coef 1 --tf_giou_loss_coef 1 --tf_ce_loss_coef 1 --tf_rot_loss_coef 1 --tf_t_loss_coef 1 --tf_depth_loss_coef 1 --seq_len 1 --batch_size 8 --num_samples_val 30 --ds_name ikea --ds_alias dextreme_2k_cam1 --ds_folder_name_train custom_sim_dextreme_2k_cam1 --ds_folder_name_val custom_sim_dextreme_2k_cam1_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
+
+To train a Keypoint-DETR model via CLI arguments:
+
+```shell
+export DS_NAME=dextreme_2k_cam1
+python train.py --use_es --do_save_artifacts --use_lrs --exp_tags ablation --num_epochs 300 --val_epoch_freq 2 --save_epoch_freq 2 --device cuda --exp_name args_${DS_NAME}_detr_kpt --es_patience_epochs 25 --es_delta 0 --lrs_gamma 0.4 --lrs_min_lr 1e-6 --lrs_patience 10 --lrs_delta 0 --lr_encoders 1e-5 --do_predict_6d_rot --do_vis --vis_epoch_freq 20 --rt_hidden_dim 384 --lr 1e-4 --model_name detr_kpt --encoder_img_weights imagenet --encoder_depth_weights imagenet --t_loss_name mse --rot_loss_name mse --encoder_name resnet50 --rt_mlps_num_layers 3 --encoder_out_dim 512 --mt_encoding_type spatial --mt_num_queries 20 --mt_d_model 256 --mt_n_layers 6 --tf_use_focal_loss --tf_bbox_loss_coef 1 --tf_giou_loss_coef 1 --tf_ce_loss_coef 1 --tf_rot_loss_coef 1 --tf_t_loss_coef 1 --tf_depth_loss_coef 1 --seq_len 1 --batch_size 8 --num_samples_val 30 --ds_name ikea --ds_alias ${DS_NAME} --ds_folder_name_train custom_sim_${DS_NAME} --ds_folder_name_val custom_sim_${DS_NAME}_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
 ```
 
 ### Multi-object pose tracking
 
-Extract the dataset `custom_sim_cube_scaled_1k_random_multiobj` published at [this link](https://drive.google.com/drive/folders/1Owm-B_i82UaVaSJ008p1miareTXGJhFp) to the `data` directory.
+Extract the dataset `custom_sim_cube_scaled_1k_random_multiobj`.
 
-```
-python train.py --use_ddp --use_es --do_save_artifacts --num_epochs 300 --val_epoch_freq 2 --save_epoch_freq 4 --device cuda --exp_name args_cube_scaled_1k_random_multiobj_memotr_best --es_patience_epochs 60 --es_delta 0 --lrs_min_lr 1e-6 --lrs_patience 30 --weight_decay 1e-4 --lr_encoders 2e-5 --do_predict_6d_rot --use_rnn --tf_use_pretrained_model --do_vis --vis_epoch_freq 50 --rt_hidden_dim 384 --lr 2e-4 --model_name memotr --encoder_img_weights imagenet --encoder_depth_weights imagenet --t_loss_name mse --rot_loss_name mse --encoder_name resnet50 --rt_mlps_num_layers 3 --do_load_session --mt_num_queries 5 --tf_use_focal_loss --tf_bbox_loss_coef 1 --tf_giou_loss_coef 1 --tf_ce_loss_coef 2 --tf_rot_loss_coef 1 --tf_t_loss_coef 1 --seq_len 5 --num_samples 10 --end_frame_idx 100 --batch_size 4 --ds_name ikea_multiobj --ds_alias cube_scaled_1k_random_multiobj --ds_folder_name_train custom_sim_cube_scaled_1k_random_multiobj --ds_folder_name_val custom_sim_cube_scaled_1k_random_multiobj_val --max_train_videos 10000 --max_val_videos 24 --num_workers 16 --mask_pixels_prob 0.1 --transform_names brightness motion_blur gamma iso --transform_prob 0.8
+```shell
+python train.py --args_path configs/memotr_multiobj.yaml
 ```
 
 ## Acknowledgements
 
-These repositories served as references for some implemented functionality:
+These repositories were used as references for some of the implemented functionality:
 
 - https://github.com/S-JingTao/Categorical_Pose_Tracking
 - https://github.com/ylabbe/cosypose
