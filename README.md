@@ -51,9 +51,9 @@ git submodule update --init --recursive
 conda create -n pose_tracking python=3.10
 pip install -r requirements.txt
 cd libs || exit 1
-cd trackformer && pip install -e . && cd -
-cd bop_toolkit && pip install -e . && cd -
-cd MeMOTR && pip install -e . && cd -
+cd trackformer && pip install -e . && cd ..
+cd bop_toolkit && pip install -e . && cd ..
+cd MeMOTR && pip install -e . && cd ..
 export COMET_API_KEY=W5npcWDiWeNPoB2OYkQvwQD0C
 ```
 

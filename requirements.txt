@@ -12,13 +12,12 @@ trimesh
 pycocotools
 comet_ml
 objaverse
-torch
 albumentations
 pyrender
 einops
 tqdm
-torch
-torchvision
+torch==2.5.1
+torchvision~=0.20.1
 opencv-python
 opencv-contrib-python
 matplotlib
