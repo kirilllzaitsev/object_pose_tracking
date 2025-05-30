@@ -431,6 +431,27 @@ class TrainerMemotr(TrainerDeformableDETR):
                             delta_pose_prev = pose_to_egocentric_delta_pose_mat(prev_prev_track_poses, prev_track_poses)
                         except Exception as e:
                             print(f"{locals()=}")
+                            savepath = f"{self.exp_dir}/debug_temporal_loss.pt"
+                            torch.save(
+                                {
+                                    "batched_seq": detach_and_cpu(batched_seq),
+                                    "batch_t": detach_and_cpu(batch_t),
+                                    "tracks": detach_and_cpu(tracks),
+                                    "prev_prev_tracks": detach_and_cpu(prev_prev_tracks),
+                                    "prev_tracks": detach_and_cpu(prev_tracks),
+                                    "prev_track_poses": detach_and_cpu(prev_track_poses),
+                                    "prev_matched_idxs": detach_and_cpu(prev_matched_idxs),
+                                    "prev_prev_track_poses": detach_and_cpu(prev_prev_track_poses),
+                                    "new_track_poses": detach_and_cpu(new_track_poses),
+                                    "prev_poses_gt": detach_and_cpu(prev_poses_gt),
+                                    "prev_prev_poses_gt": detach_and_cpu(prev_prev_poses_gt),
+                                    "new_poses_gt": detach_and_cpu(new_poses_gt),
+                                    "matched_idxs_all": detach_and_cpu(matched_idxs_all),
+                                    "t": t,
+                                },
+                                savepath,
+                            )
+                            print(f"{savepath=}")
                             raise e
                         delta_pose_prev_gt_lie = Se3.from_matrix(delta_pose_prev_gt).log()
                         delta_pose_prev_lie = Se3.from_matrix(delta_pose_prev).log()

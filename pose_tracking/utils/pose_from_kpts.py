@@ -2,6 +2,7 @@ import numpy as np
 import open3d as o3d
 from pose_tracking.utils.common import cast_to_numpy
 from pose_tracking.utils.geom import backproj_2d_pts
+from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 from tqdm import tqdm
 
 
