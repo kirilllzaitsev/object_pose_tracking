@@ -1,4 +1,3 @@
-import gc
 import math
 import os
 import sys
@@ -13,26 +12,19 @@ from pose_tracking.losses import SSIM
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
-from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
+from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
 from pose_tracking.utils.detr_utils import (
     postprocess_detr_boxes,
-    postprocess_detr_outputs,
 )
 from pose_tracking.utils.geom import (
     allocentric_to_egocentric,
     convert_2d_t_to_3d,
     egocentric_delta_pose_to_pose,
-    pose_to_egocentric_delta_pose,
     pose_to_egocentric_delta_pose_mat,
 )
-from pose_tracking.utils.misc import is_empty, reduce_dict
+from pose_tracking.utils.misc import is_empty
 from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.render_utils import adjust_brightness, render_batch_pose_preds
-from pose_tracking.utils.rotation_conversions import (
-    matrix_to_axis_angle,
-    matrix_to_quaternion,
-    matrix_to_rotation_6d,
-)
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -128,11 +120,6 @@ class TrainerMemotr(TrainerDeformableDETR):
             vis_data = defaultdict(list)
 
         pose_prev_pred_abs = None  # processed ouput of the model that matches model's expected format
-        pose_mat_prev_gt_abs = None
-        pose_tokens_per_layer = None
-        prev_tokens = None
-        nan_count = 0
-        do_skip_first_step = False
 
         tracks = TrackInstances.init_tracks(
             batch=batched_seq,
@@ -173,10 +160,8 @@ class TrainerMemotr(TrainerDeformableDETR):
         for t in ts_pbar:
             batch_t = self.get_seq_slice_for_dict_seq(batched_seq, t)
 
-            # print(f"{batch_t['rgb_path']}")
             rgb = batch_t["image"]
             targets = batch_t["target"]
-            # pose_gt_abs = torch.stack([x["pose"] for x in targets])
             intrinsics = [x["intrinsics"] for x in targets]
             h, w = rgb.shape[-2:]
 
@@ -213,14 +198,6 @@ class TrainerMemotr(TrainerDeformableDETR):
                 tracks: list[TrackInstances] = self.model_without_ddp.postprocess_single_frame(
                     previous_tracks, new_tracks, None
                 )
-                # tracks_result = tracks[0].to(torch.device("cpu"))
-                # tracks_result = filter_by_score(tracks_result, thresh=self.result_score_thresh)
-                # TODO: proper eval?
-                # ori_h, ori_w = height, width
-                # tracks_result.area = (
-                #     tracks_result.boxes[:, 2] * ori_w * tracks_result.boxes[:, 3] * ori_h
-                # )
-                # tracks_result = filter_by_area(tracks_result, thresh=result_area_thresh)
 
             # POSTPROCESS OUTPUTS
 
@@ -540,10 +517,6 @@ class TrainerMemotr(TrainerDeformableDETR):
                 if "indices" in k:
                     continue
                 seq_stats[k].append(v.item())
-            # for k in ["class_error", "cardinality_error"]:
-            #     if k in loss_dict_reduced:
-            #         v = loss_dict_reduced[k]
-            #         seq_stats[k].append(v.item())
 
             if self.do_log and self.do_log_every_ts:
                 for k, v in m_batch_avg.items():
@@ -567,32 +540,7 @@ class TrainerMemotr(TrainerDeformableDETR):
                 assert self.use_pose
                 assert preds_dir is not None, "preds_dir must be provided for saving predictions"
                 target_sizes = torch.stack([x["size"] for x in batch_t["target"]]).cpu()
-                # out_formatted = postprocess_detr_outputs(
-                #     out, target_sizes=target_sizes, is_focal_loss=self.args.tf_use_focal_loss
-                # )
-                # bboxs = []
-                # labels = []
-                # scores = []
-                # for bidx, out_b in enumerate(out_formatted):
-                #     keep = out_b["scores"].cpu() > out_b["scores_no_object"].cpu()
-                #     # keep = torch.ones_like(res['scores']).bool()
-                #     if sum(keep) == 0:
-                #         failed_ts.append(t)
-                #         continue
-                #     boxes_b = out_b["boxes"][keep]
-                #     scores_b = out_b["scores"][keep]
-                #     labels_b = out_b["labels"][keep]
-                #     bboxs.append(boxes_b)
-                #     labels.append(labels_b)
-                #     scores.append(scores_b)
                 tracks_result = tracks[0].to(torch.device("cpu"))
-                # if len(tracks_result.ids) > 1:
-                #     print(f"{t=} {len(tracks_result.ids)=} {tracks_result.ids=}")
-                # ori_h, ori_w = ori_image.shape[1], ori_image.shape[2]
-                # box = [x, y, w, h]
-                # tracks_result.area = tracks_result.boxes[:, 2] * ori_w * \
-                #                      tracks_result.boxes[:, 3] * ori_h
-                # tracks_result = filter_by_area(tracks_result)
                 result_score_thresh = self.result_score_thresh
                 tracks_result = filter_by_score(tracks_result, thresh=result_score_thresh)
                 # to xyxy:
@@ -632,10 +580,6 @@ class TrainerMemotr(TrainerDeformableDETR):
                 if self.use_pose and len(pose_mat_pred_abs) > 0:
                     vis_data["pose_mat_pred_abs"].append(detach_and_cpu(pose_mat_pred_abs))
                     vis_data["pose_mat_gt_abs"].append(detach_and_cpu(pose_mat_gt_abs))
-
-                # vis_data["pose_mat_pred_abs"].append(pose_mat_pred_abs[vis_batch_idxs].detach().cpu())
-                # vis_data["pose_mat_pred"].append(pose_mat_pred[vis_batch_idxs].detach().cpu())
-                # vis_data["pose_mat_gt_abs"].append(pose_mat_gt_abs[vis_batch_idxs].cpu())
 
         if do_opt_in_the_end:
             total_loss = torch.mean(torch.stack(total_losses))
