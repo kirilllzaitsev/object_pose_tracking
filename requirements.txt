@@ -34,7 +34,9 @@ tensorboard
 pyperclip
 transforms3d
 PyOpenGL-accelerate
+motmetrics
 -e .
+# install the following separately
 # bop_toolkit_lib
 # trackformer
-# pip install motmetrics visdom
+# memotr
