@@ -1,0 +1,9 @@
+[submodule "libs/MeMOTR"]
+	path = libs/MeMOTR
+	url = https://github.com/kirilllzaitsev/MeMOTR
+[submodule "libs/trackformer"]
+	path = libs/trackformer
+	url = https://github.com/kirilllzaitsev/trackformer
+[submodule "libs/bop_toolkit"]
+	path = libs/bop_toolkit
+	url = https://github.com/kirilllzaitsev/bop_toolkit
