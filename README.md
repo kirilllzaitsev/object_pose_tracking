@@ -187,6 +187,8 @@ To train a Memotr-based model from scratch, first download the checkpoint from [
 python train.py --args_path configs/memotr_dextreme.yaml
 ```
 
+To override some arguments from the file, add `--do_ignore_file_args_with_provided` followed by the respective arguments. For example, `--do_ignore_file_args_with_provided --exp_disabled --batch_size 2`.
+
 To resume training from a Comet experiment assigned the name `striking_plank_5540`, optionally modifying some of its arguments, run:
 
 ```shell
@@ -203,6 +205,8 @@ To train a Keypoint-DETR model via CLI arguments:
 export DS_NAME=dextreme_2k_cam1
 python train.py --use_es --do_save_artifacts --use_lrs --exp_tags ablation --num_epochs 300 --val_epoch_freq 2 --save_epoch_freq 2 --device cuda --exp_name args_${DS_NAME}_detr_kpt --es_patience_epochs 25 --es_delta 0 --lrs_gamma 0.4 --lrs_min_lr 1e-6 --lrs_patience 10 --lrs_delta 0 --lr_encoders 1e-5 --do_predict_6d_rot --do_vis --vis_epoch_freq 20 --rt_hidden_dim 384 --lr 1e-4 --model_name detr_kpt --encoder_img_weights imagenet --encoder_depth_weights imagenet --t_loss_name mse --rot_loss_name mse --encoder_name resnet50 --rt_mlps_num_layers 3 --encoder_out_dim 512 --mt_encoding_type spatial --mt_num_queries 20 --mt_d_model 256 --mt_n_layers 6 --tf_use_focal_loss --tf_bbox_loss_coef 1 --tf_giou_loss_coef 1 --tf_ce_loss_coef 1 --tf_rot_loss_coef 1 --tf_t_loss_coef 1 --tf_depth_loss_coef 1 --seq_len 1 --batch_size 8 --num_samples_val 30 --ds_name ikea --ds_alias ${DS_NAME} --ds_folder_name_train custom_sim_${DS_NAME} --ds_folder_name_val custom_sim_${DS_NAME}_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
 ```
+
+**Note.** Data augmentations are set by the `transform_names` argument. `bg` augmentation randomizes the background using the [MIT indoor dataset](https://web.mit.edu/torralba/www/indoor.html), treating both the hand and the cube as foreground.
 
 ### Multi-object pose tracking
 
