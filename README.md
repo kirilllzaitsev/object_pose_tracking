@@ -132,6 +132,26 @@ While the mesh bounding box parameters are mandatory, `metadata` field can have 
 
 This metadata file is either generated automatically (e.g., for IKEA by the IKEA data scraper) or should be created by hand.
 
+The generated dataset consists of the training and validation parts, the latter ending with `_val` suffix. Both have identical structure:
+
+```
+dataset/
+├── env_*
+|    ├── cam_K.txt  <-- camera intrinsics matrix
+|    ├── cam_pose.txt  <-- camera pose in the world frame
+|    ├── depth  <-- depth maps
+|    ├── intrinsics.txt  <-- same as cam_K.txt for compatibility purposes
+|    ├── masks  <-- object binary masks
+|    ├── mesh  <-- object meshes
+|    │   └── object_0  <-- first object in the given environment
+|    │       └── mesh.obj
+|    ├── metadata.json  <-- metadata for the environment
+|    ├── pose  <-- object poses in the world frame
+|    ├── rgb  <-- RGB images
+|    └── semantic_segmentation  <-- semantic segmentation masks
+└── metadata.json  <-- metadata for the dataset
+```
+
 #### In-hand manipulation
 
 The script to generate the data for this use case is found at `scripts/reinforcement_learning/rsl_rl/play_dextreme_ds.py`.
