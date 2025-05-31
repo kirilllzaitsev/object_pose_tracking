@@ -7,3 +7,6 @@
 [submodule "libs/bop_toolkit"]
 	path = libs/bop_toolkit
 	url = https://github.com/kirilllzaitsev/bop_toolkit
+[submodule "libs/LightGlue"]
+	path = libs/LightGlue
+	url = https://github.com/kirilllzaitsev/LightGlue

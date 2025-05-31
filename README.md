@@ -59,14 +59,18 @@ cd MeMOTR && pip install -e . && cd ..
 export COMET_API_KEY=W5npcWDiWeNPoB2OYkQvwQD0C
 ```
 
-For Memotr and Deformable DETR, compile the CUDA kernel for deformable attention ([link](https://github.com/fundamentalvision/Deformable-DETR)) from `libs/MeMOTR`:
+`COMET_API_KEY` should be set to the SDK key obtained based on [these instructions](https://www.comet.com/docs/v2/guides/experiment-management/configure-sdk/).
+
+To finish the Comet setup, modify the `PROJ_NAME` and `COMET_WORKSPACE` variables in the `pose_tracking/config.py` to match your desired Comet project and workspace ([link](https://www.comet.com/docs/v2/guides/quickstart/)).
+
+For Memotr, Trackformer, and Deformable DETR, compile the CUDA kernel for deformable attention ([link](https://github.com/fundamentalvision/Deformable-DETR)):
 
 ```shell
 cd ./libs/MeMOTR/memotr/models/ops/
 sh make.sh
+cd ./libs/trackformer/src/trackformer/models/ops/
+sh make.sh
 ```
-
-For Trackformer, run the same command to install the deformable attention from `libs/trackformer/trackformer`. 
 
 If installing from `requirements.txt` resulted in package-related issues, you can install the full requirements file:
 
@@ -101,6 +105,8 @@ export EXP_NAME=striking_plank_5540
 export DS_NAME=dextreme_2k_cam1
 python train.py --do_ignore_file_args_with_provided --args_from_exp_name ${EXP_NAME} --device cuda --exp_name args_${DS_NAME}_memotr_continue_exp_${EXP_NAME} --ckpt_exp_name ${EXP_NAME} --num_samples_val 30 --ds_name ikea --ds_alias ${DS_NAME} --ds_folder_name_train custom_sim_${DS_NAME} --ds_folder_name_val custom_sim_${DS_NAME}_val --max_train_videos 10000 --max_val_videos 24 --num_workers 4 --mask_pixels_prob 0.0 --transform_names brightness motion_blur gamma iso bg --transform_prob 0.8
 ```
+
+where `args_from_exp_name` sets the source experiment and `do_ignore_file_args_with_provided` allows overriding the arguments from the experiment with the ones provided in the command.
 
 To train a Keypoint-DETR model via CLI arguments:
 
