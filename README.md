@@ -80,11 +80,21 @@ pip install -r requirements_full.txt
 
 ## Training a model
 
+### Generating synthetic data
+
+Simulation code can be found in the `IsaacLab-Internal` [repository](https://github.com/leggedrobotics/IsaacLab-Internal) on the branch `dev/kzait/pose_tracking`.
+
+In `IsaacLab-Internal/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/inhand/inhand_env_cfg.py`, set `usd_path` to the Dextreme cube USD.
+
+In `IsaacLab-Internal/source/isaaclab_assets/isaaclab_assets/robots/allegro.py`, set `usd_path` of the `ALLEGRO_HAND_CFG` to the Allegro hand USD (its RSL version and not the default one from Omniverse).
+
 ### General
 
 The datasets are published at [this link](https://drive.google.com/drive/folders/1Owm-B_i82UaVaSJ008p1miareTXGJhFp) and should be extracted to the `data` directory.
 
 To train with multiple GPUs, add the `--use_ddp` flag to the `train.py` arguments from below. A SLURM environment is required for this to work.
+
+To disable logging to Comet, use `--exp_disabled`.
 
 Available CLI arguments can be viewed in `args_parsing.py`. `model_name` argument defines a set of models that can be selected for training.
 
@@ -98,7 +108,7 @@ To train a Memotr-based model from scratch, first download the checkpoint from [
 python train.py --args_path configs/memotr_dextreme.yaml
 ```
 
-To resume training from an experiment assigned the name `striking_plank_5540` on Comet, optionally modifying some of its arguments, run:
+To resume training from a Comet experiment assigned the name `striking_plank_5540`, optionally modifying some of its arguments, run:
 
 ```shell
 export EXP_NAME=striking_plank_5540
