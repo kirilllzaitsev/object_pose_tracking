@@ -358,7 +358,6 @@ def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
     import pose_tracking
 
     import memotr.models
-    import trackformer.models.detr
 
     pkg_dir_pt = Path(pose_tracking.__file__).parent
     pkg_dir_memotr = Path(memotr.__file__).parent
@@ -368,10 +367,14 @@ def log_pkg_code(exp: comet_ml.Experiment, overwrite: bool = False) -> None:
         for code_file in glob.glob(str(pkg_dir / "**/*.py"), recursive=True):
             code_file = Path(code_file)
             exp.log_code(file_name=code_file.relative_to(pkg_dir), overwrite=overwrite)
-    tf_path = Path(trackformer.models.detr.__file__).parent
-    os.chdir(tf_path)
-    for code_file in ["detr.py", "__init__.py"]:
-        exp.log_code(file_name=code_file, overwrite=overwrite)
+    try:
+        import trackformer.models.detr
+        tf_path = Path(trackformer.models.detr.__file__).parent
+        os.chdir(tf_path)
+        for code_file in ["detr.py", "__init__.py"]:
+            exp.log_code(file_name=code_file, overwrite=overwrite)
+    except ImportError:
+        ...
     os.chdir(current_dir)
 
 

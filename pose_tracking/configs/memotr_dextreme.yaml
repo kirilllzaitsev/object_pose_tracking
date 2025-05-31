@@ -40,8 +40,8 @@ do_vis: true
 dropout: 0.0
 dropout_heads: 0.0
 ds_alias: custom_sim_dextreme_2k_cam1
-ds_folder_name_train: custom_sim_custom_sim_dextreme_2k_cam1
-ds_folder_name_val: custom_sim_custom_sim_dextreme_2k_cam1_val
+ds_folder_name_train: custom_sim_dextreme_2k_cam1
+ds_folder_name_val: custom_sim_dextreme_2k_cam1_val
 ds_name: ikea
 ds_types:
 - train
@@ -53,7 +53,7 @@ encoder_out_dim: 512
 end_frame_idx: null
 es_delta: 0.0
 es_patience_epochs: 40
-exp_disabled: false
+exp_disabled: true
 exp_name: custom_sim_dextreme_2k_cam1_memotr
 exp_tags: []
 factors: null

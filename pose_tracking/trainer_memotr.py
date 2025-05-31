@@ -13,9 +13,7 @@ from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
 from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu
-from pose_tracking.utils.detr_utils import (
-    postprocess_detr_boxes,
-)
+from pose_tracking.utils.detr_utils import postprocess_detr_boxes
 from pose_tracking.utils.geom import (
     allocentric_to_egocentric,
     convert_2d_t_to_3d,
@@ -24,7 +22,6 @@ from pose_tracking.utils.geom import (
 )
 from pose_tracking.utils.misc import is_empty
 from pose_tracking.utils.pose import convert_r_t_to_rt
-from pose_tracking.utils.render_utils import adjust_brightness, render_batch_pose_preds
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -71,6 +68,10 @@ class TrainerMemotr(TrainerDeformableDETR):
 
         if use_pe_loss:
             import nvdiffrast.torch as dr
+            from pose_tracking.utils.render_utils import (
+                adjust_brightness,
+                render_batch_pose_preds,
+            )
 
             self.glctx = dr.RasterizeCudaContext(device=self.device)
             self.ssim = SSIM().to(self.device)
