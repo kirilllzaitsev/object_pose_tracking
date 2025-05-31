@@ -82,11 +82,90 @@ pip install -r requirements_full.txt
 
 ### Generating synthetic data
 
-Simulation code can be found in the `IsaacLab-Internal` [repository](https://github.com/leggedrobotics/IsaacLab-Internal) on the branch `dev/kzait/pose_tracking`.
+Simulation code can be found in the `IsaacLab-Internal` [repository](https://github.com/leggedrobotics/IsaacLab-Internal) on the branch `dev/kzait/pose_tracking`. `IsaacLab-Internal` is assumed to be the root directory for the remaining instructions on data generation.
 
-In `IsaacLab-Internal/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/inhand/inhand_env_cfg.py`, set `usd_path` to the Dextreme cube USD.
+In `source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/inhand/inhand_env_cfg.py`, set `usd_path` to the Dextreme cube USD.
 
-In `IsaacLab-Internal/source/isaaclab_assets/isaaclab_assets/robots/allegro.py`, set `usd_path` of the `ALLEGRO_HAND_CFG` to the Allegro hand USD (its RSL version and not the default one from Omniverse).
+In `source/isaaclab_assets/isaaclab_assets/robots/allegro.py`, set `usd_path` of the `ALLEGRO_HAND_CFG` to the Allegro hand USD (its RSL version and not the default one from Omniverse).
+
+**Note.** To use Euler for data generation, the aforementioned USD paths should be valid inside the Docker container.
+
+**Note.** USD assets should be accompanied by the `asset_info.json` metadata file in the same folder as the USD. For example, the JSON file for `dex_cube_instanceable.usd` USD with a Dextreme cube contains the following:
+
+```json
+{
+    "mesh_assets": [
+        {
+            "bbox": {
+                "min": [
+                    -0.03249999880790713,
+                    -0.03249999880790713,
+                    -0.03249999880790713
+                ],
+                "max": [
+                    0.03249999880790713,
+                    0.03249999880790713,
+                    0.03249999880790713
+                ],
+                "center": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "extends": [
+                    0.06499999761581426,
+                    0.06499999761581426,
+                    0.06499999761581426
+                ]
+            }
+        }
+    ],
+    "metadata": {
+        "name": "/data/custom/allegro_real/mesh",
+        "root_dir": "/data/custom/allegro_real",
+        "path": "/data/custom/allegro_real/mesh/cube.obj"
+    }
+}
+```
+
+While the mesh bounding box parameters are mandatory, `metadata` field can have an arbitrary structure.
+
+This metadata file is either generated automatically (e.g., for IKEA by the IKEA data scraper) or should be created by hand.
+
+#### In-hand manipulation
+
+The script to generate the data for this use case is found at `scripts/reinforcement_learning/rsl_rl/play_dextreme_ds.py`.
+
+To generate data for the in-hand manipulation with an Allegro hand and a Dextreme cube, run the following from the `IsaacLab-Internal` root directory:
+
+```shell
+./docker/cluster/cluster_interface.sh job --job_type dextreme --headless --enable_cameras --matching_assets_set dextreme --num_envs 40 --assets_each_env 1 --warmup_cam_steps 10 --max_size 0.5 --min_size 0.05 --max_assets 1000 --randomizations 'light' --save_start_idx_offset 0 --num_iters 50 --intrinsics_setup rsl --task Isaac-Repose-Cube-Allegro-v0 --run_name test --checkpoint /workspace/isaaclab/logs/rsl_rl/allegro_cube/allegro_rsl_pretrained_big/model_14999.pt --save_output --do_randomize --do_sample_cam_intrinsics --ds_name custom_sim_dextreme_2k_v2 --num_steps 40
+```
+
+#### IKEA
+
+Clone the repository for `isaaclab_pose_tracking_sim_ext` package from [this link](https://github.com/kirilllzaitsev/isaaclab_pose_tracking_sim_ext).
+
+The script to generate the data for this use case can be found at `isaaclab_pose_tracking_sim_ext/pose_tracking_sim/ikea_asset_ds.py`.
+
+The command to generate a training dataset with three identical RSL cubes and randomization of the environment and object motion is:
+
+```shell
+export DS_NAME=custom_sim_cube_scaled_1k_multiobj
+export MATCHING_ASSETS_SET=cube_scaled
+export NUM_ASSETS_PER_ENV=3
+./docker/cluster/cluster_interface.sh job --job_type standard --headless --enable_cameras --matching_assets_set ${MATCHING_ASSETS_SET} --num_envs 1000 --assets_each_env ${NUM_ASSETS_PER_ENV} --warmup_cam_steps 10 --randomizations 'ground_texture table_texture' --save_start_idx_offset 0 --num_iters 20 --intrinsics_setup rsl --save_output --do_randomize --do_sample_cam_intrinsics --use_motion_with_noise --use_hemisphere_cam_xyz --ds_name ${DS_NAME} --num_steps 100
+```
+
+To get the corresponding validation dataset, append `_val` to `DS_NAME` and set an appropriate value for `num_envs` argument.
+
+If `use_motion_with_noise` is set, the delta pose for objects between two subsequent timesteps is sampled from the Gaussian distribution. Otherwise, object's velocity will be resampled every timestep with a given probability.
+
+`matching_assets_set` defines a set of assets which can appear in an environment. Available values are specified in the CLI arguments of `ikea_asset_ds.py`. To use the assets from IKEA, you should set up the dataset according to the instructions on the `ikea_isaac_lab` branch of the `rsl_assets` [repository](https://github.com/leggedrobotics/rsl_assets). Set `MATCHING_ASSETS_SET=mixed` to generate data using the RSL cube and some IKEA assets in one dataset.
+
+**Note.** Ensure the `intrinsics_setup` corresponds to the camera intrinsics matrix that matches that of the eventual real-world camera.
+
+`.obj` meshes required for training the model are generated by the script by converting the respective USD assets.
 
 ### General
 
