@@ -144,11 +144,11 @@ To generate data for the in-hand manipulation with an Allegro hand and a Dextrem
 
 #### IKEA
 
-Clone the repository for `isaaclab_pose_tracking_sim_ext` package from [this link](https://github.com/kirilllzaitsev/isaaclab_pose_tracking_sim_ext).
+Clone the repository for `isaaclab_pose_tracking_sim_ext` package from [this link](https://github.com/kirilllzaitsev/isaaclab_pose_tracking_sim_ext). Install the `pose_tracking_sim` package from the root of the cloned repository via `pip install -e .`.
 
-The script to generate the data for this use case can be found at `isaaclab_pose_tracking_sim_ext/pose_tracking_sim/ikea_asset_ds.py`.
+The script to generate the data for single-/multi-object IKEA and RSL cube asset sets can be found at `isaaclab_pose_tracking_sim_ext/pose_tracking_sim/ikea_asset_ds.py`.
 
-The command to generate a training dataset with three identical RSL cubes and randomization of the environment and object motion is:
+The command to generate a training dataset with three identical RSL cubes and randomization of the environment (floor and table textures, lighting) and object motion is:
 
 ```shell
 export DS_NAME=custom_sim_cube_scaled_1k_multiobj
