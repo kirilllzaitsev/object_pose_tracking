@@ -31,6 +31,8 @@ from memotr.models.runtime_tracker import RuntimeTracker
 from memotr.structures.track_instances import TrackInstances
 from memotr.utils.nested_tensor import tensor_list_to_nested_tensor
 
+EXP_NAME = "urgent_vicuna_6331"  # memotr dextreme
+
 
 # This class listens to 3 rgb camera feeds and converts incoming messages
 # to opencv images.
@@ -82,12 +84,11 @@ class PoseTrackerNode:
         self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr=self.args.rot_repr)
 
         artifact_dir = Path(__file__).parent / "artifacts"
-        exp_name = "urgent_vicuna_6331"
-        exp_dir = artifact_dir / exp_name
+        exp_dir = artifact_dir / EXP_NAME
         exp_dir.mkdir(parents=True, exist_ok=True)
         api = API(api_key=os.environ["COMET_API_KEY"])
         download_res = load_artifacts_from_comet(
-            exp_name,
+            EXP_NAME,
             api=api,
             artifact_suffix="best",
             do_force_download=False,
@@ -96,8 +97,8 @@ class PoseTrackerNode:
         self.args.ckpt_path = download_res["ckpt_path"]
         assert (
             self.args.ckpt_path.exists()
-        ), f"Checkpoint path for experiment {exp_name} does not exist at {self.args.ckpt_path}."
-        assert args_path.exists(), f"Args path for experiment {exp_name} does not exist at {args_path}."
+        ), f"Checkpoint path for experiment {EXP_NAME} does not exist at {self.args.ckpt_path}."
+        assert args_path.exists(), f"Args path for experiment {EXP_NAME} does not exist at {args_path}."
         self.args = load_args_from_file(args_path)
         self.args = postprocess_args(self.args, use_if_provided=False)
         self.args.use_ddp = False
