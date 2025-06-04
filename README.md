@@ -14,6 +14,11 @@
 ├── requirements_full.txt   <- versioned python dependencies
 │
 ├── setup.cfg          <- configuration file for flake8 and others
+├── pose_tracker_demo.ipynb          <- demo notebook for inference of the Memotr-based pose tracker
+├── inference_ros          <- inference node with the Memotr-based pose tracker
+|   ├── inference_ros.py  <- ROS node for inference
+|   ├── allegro_constants.py  <- constants used by the node
+|   └── cam_global_extrinsic_tf.yaml <- hand-to-camera transforms
 │
 └── pose_tracking   <- source code
     ├── models
@@ -235,6 +240,16 @@ Extract the dataset `custom_sim_cube_scaled_1k_random_multiobj`.
 ```shell
 python train.py --args_path configs/memotr_multiobj.yaml
 ```
+
+## Testing a model
+
+### Memotr-based pose tracker
+
+`pose_tracker_demo.ipynb` notebook contains a demo inference on a real-world Dextreme cube dataset. The latter can be downloaded from [this link](https://drive.google.com/file/d/1QbLbz9UiquVi4Fi64C9DCGNNq-r3nOqn/view?usp=drive_link).
+
+`inference_ros` directory contains a ROS node `inference_ros.py` that publishes hand-to-object poses to a ROS topic. Ensure that the camera intrinsics and `IMG_SIZE` match the ones used for training the model: the for former can be checked by opening a `cam_K.txt` file from an arbitrary `env_*` directory of the training dataset, while the latter is specified by the `target_hw` of the `args.yaml` file of the experiment from which the model is downloaded.
+
+Set `EXP_NAME` in the `inference_ros.py` file to point to the Comet experiment from which the model should be fetched. The checkpoint will be downloaded automatically.
 
 ## Acknowledgements
 
