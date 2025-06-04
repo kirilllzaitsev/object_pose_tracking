@@ -12,11 +12,13 @@ import numpy as np
 import rospy
 import torch as torch
 from allegro_constants import AllegroConstants
+from comet_ml import API
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped
 from pose_tracking.dataset.ds_common import adjust_img_for_torch
 from pose_tracking.trainer_memotr import filter_by_score
 from pose_tracking.utils.args_parsing import load_args_from_file, postprocess_args
+from pose_tracking.utils.comet_utils import load_artifacts_from_comet
 from pose_tracking.utils.detr_utils import postprocess_detr_boxes
 from pose_tracking.utils.geom import convert_2d_t_to_3d
 from pose_tracking.utils.pipe_utils import get_model
@@ -77,12 +79,21 @@ class PoseTrackerNode:
 
         # pose tracker setup
         torch.set_grad_enabled(False)
-        self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr="rotation6d")
+        self.pose_to_mat_converter_fn = functools.partial(convert_pose_vector_to_matrix, rot_repr=self.args.rot_repr)
 
         artifact_dir = Path(__file__).parent / "artifacts"
         exp_name = "urgent_vicuna_6331"
-        args_path = artifact_dir / exp_name / "args.yaml"
-        self.args.ckpt_path = artifact_dir / exp_name / "model_best.pth"
+        exp_dir = artifact_dir / exp_name
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        api = API(api_key=os.environ["COMET_API_KEY"])
+        download_res = load_artifacts_from_comet(
+            exp_name,
+            api=api,
+            artifact_suffix="best",
+            do_force_download=False,
+        )
+        args_path = download_res["args_path"]
+        self.args.ckpt_path = download_res["ckpt_path"]
         assert (
             self.args.ckpt_path.exists()
         ), f"Checkpoint path for experiment {exp_name} does not exist at {self.args.ckpt_path}."
