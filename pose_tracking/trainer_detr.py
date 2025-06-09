@@ -74,6 +74,7 @@ class TrainerDeformableDETR(Trainer):
         kpt_spatial_dim=2,
         do_calibrate_kpt=False,
         use_pose_tokens=False,
+        use_pose_tokens_temporal=False,
         use_kpt_loss=False,
         **kwargs,
     ):
@@ -91,6 +92,7 @@ class TrainerDeformableDETR(Trainer):
 
         self.do_calibrate_kpt = do_calibrate_kpt
         self.use_pose_tokens = use_pose_tokens
+        self.use_pose_tokens_temporal = use_pose_tokens_temporal
         self.use_kpt_loss = use_kpt_loss
 
         self.num_classes = num_classes  # excluding bg class
@@ -239,7 +241,7 @@ class TrainerDeformableDETR(Trainer):
                         use_prev_image=True,
                     )
                     prev_tokens = model_forward_res["out"]["tokens"]
-            if self.use_pose_tokens and t == 0:
+            if self.use_pose_tokens and self.use_pose_tokens_temporal and t == 0:
                 model_forward_res = self.model_forward(batch_t, pose_tokens=pose_tokens_per_layer, use_prev_image=True)
 
                 out = model_forward_res["out"]
@@ -255,7 +257,7 @@ class TrainerDeformableDETR(Trainer):
 
             # POSTPROCESS OUTPUTS
 
-            if self.use_pose_tokens:
+            if self.use_pose_tokens and self.use_pose_tokens_temporal:
                 pose_tokens_per_layer = (
                     [o.unsqueeze(0) for o in out["pose_tokens"]]
                     if pose_tokens_per_layer is None

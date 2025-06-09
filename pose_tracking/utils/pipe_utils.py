@@ -561,6 +561,7 @@ def get_trainer(
             "num_classes": num_classes,
             "num_dec_layers": args.mt_n_layers,
             "use_pose_tokens": args.mt_use_pose_tokens,
+            "use_pose_tokens_temporal": args.mt_use_pose_tokens_temporal,
             "aux_loss": True,
         }
         if "detr_kpt" in args.model_name:

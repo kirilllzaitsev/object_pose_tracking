@@ -144,6 +144,7 @@ def get_parser():
     )
     poseformer_args.add_argument("--mt_use_pe_loss", action="store_true", help="Include photometric loss")
     poseformer_args.add_argument("--mt_use_pose_tokens", action="store_true", help="Use pose tokens")
+    poseformer_args.add_argument("--mt_use_pose_tokens_temporal", action="store_true", help="Use pose tokens as a temporal link")
     poseformer_args.add_argument("--mt_use_uncertainty", action="store_true", help="Use uncertainty head")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
