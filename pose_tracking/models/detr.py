@@ -90,6 +90,7 @@ class FactorTransformer(nn.Module):
         out = {}
         decoded_rot = decoded[:, 0]
         decoded_t = decoded[:, 1]
+        out["decoded"] = decoded
         out["rot"] = self.heads["rot"](decoded_rot).squeeze(-1)
         out["t"] = self.heads["t"](decoded_t).squeeze(-1)
         return out
@@ -386,9 +387,9 @@ class DETRBase(nn.Module):
         if self.use_uncertainty:
             self.n_free_factors = 2  # cover other factors
             self.n_uncertainty_tokens = 2  # rot/t
-            self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
+            self.free_factors = nn.Parameter(torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True)
             self.uncertainty_tokens = nn.Parameter(
-                torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
+                torch.rand((1, self.n_queries, d_model, self.n_uncertainty_tokens)), requires_grad=True
             )
             self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout), n_layers)
 
@@ -565,8 +566,8 @@ class DETRBase(nn.Module):
             if self.use_uncertainty:
                 factor_tokens = torch.cat(
                     [
-                        self.uncertainty_tokens.repeat(b, self.n_queries, 1, 1),
-                        self.free_factors.repeat(b, self.n_queries, 1, 1),
+                        self.uncertainty_tokens.repeat(b, 1, 1, 1),
+                        self.free_factors.repeat(b, 1, 1, 1),
                     ],
                     dim=-1,
                 )
@@ -582,6 +583,7 @@ class DETRBase(nn.Module):
                 obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
                 factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
+                out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=self.n_queries)
                 for k, v in u_out.items():
                     v = einops.rearrange(v, "(b q) -> b q", b=b, q=self.n_queries)
                     out[f"uncertainty_{k}"] = v
@@ -592,6 +594,7 @@ class DETRBase(nn.Module):
         res = {
             "pred_logits": last_out["pred_logits"],
             "pred_boxes": last_out.get("pred_boxes"),
+            "decoded": last_out.get("decoded"),
             "aux_outputs": outs,
         }
         if self.use_rot:
