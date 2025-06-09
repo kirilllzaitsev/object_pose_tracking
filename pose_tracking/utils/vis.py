@@ -449,8 +449,7 @@ def vis_kpts(
 
     img = adjust_img_for_plt(img_PIL)
     if do_fix_img_color:
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = fix_img_color_for_opencv(img)
     points_2d = cast_to_numpy(points_2d).astype(int)
     for idx, point in enumerate(points_2d):
         size = size if conf is None else int(3 + 3 * conf[idx] * 2)
@@ -482,6 +481,12 @@ def vis_kpts(
             )
 
     return np.array(img)
+
+
+def fix_img_color_for_opencv(img):
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    return img
 
 
 def add_border(image, color=[255, 0, 0], border_size=5):
