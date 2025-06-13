@@ -536,35 +536,8 @@ class DETRBase(nn.Module):
             if self.do_predict_2d_t:
                 outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
-            b = pred_logits.shape[0]
-            if self.use_factors:
-                factors = {}
-                factor_latents = {}
-                if len(self.local_factors) > 0:
-                    assert rgb is not None
-                    hw = rgb.shape[-2:]
-                    pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-                    rgb_crop = get_crops(
-                        rgb,
-                        pred_boxes_xyxy.detach(),
-                        hw=hw,
-                    )
-                    crop_feats = self.crop_cnn(rgb_crop)
-                    for factor in self.local_factors:
-                        factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
-                        factors[factor] = factor_out["out"]
-                        factor_latents[factor] = factor_out["last_hidden"]
-                    for k, v in factors.items():
-                        factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
-                    for k, v in factor_latents.items():
-                        factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
-                for factor in self.global_factors:
-                    factor_out = self.factor_mlps[factor][layer_idx](o.detach())
-                    factors[factor] = factor_out["out"]
-                    factor_latents[factor] = factor_out["last_hidden"]
-                out["factors"] = factors
 
-                all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
+            b = pred_logits.shape[0]
             if self.use_uncertainty:
                 factor_tokens = torch.cat(
                     [
@@ -574,6 +547,11 @@ class DETRBase(nn.Module):
                     dim=-1,
                 )
 
+                assert rgb is not None
+                hw = rgb.shape[-2:]
+                pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
+                rgb_crop = get_crops(rgb, pred_boxes_xyxy.detach(), hw=hw, crop_size=(80 * 2, 80 * 2))
+                crop_feats = self.crop_cnn(rgb_crop)
                 if self.use_factors:
                     factor_tokens = torch.cat([factor_tokens, all_factor_latents], dim=-1)
                 obs_tokens = o.unsqueeze(-1).detach()
