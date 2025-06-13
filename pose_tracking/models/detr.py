@@ -1,14 +1,11 @@
 import copy
-import math
 
 import einops
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torchvision
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP, MLPFactors
-from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
+from pose_tracking.models.encoders import get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
@@ -28,8 +25,7 @@ from pose_tracking.utils.kpt_utils import (
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from timm.models.resnet import resnet18, resnet50
-from torchvision.models import resnet18, resnet50, resnet101
-from torchvision.ops import roi_align
+from torchvision.models import resnet18, resnet50
 
 
 def get_hook(outs, name):
@@ -214,6 +210,7 @@ class DETRBase(nn.Module):
         do_extract_rt_features=False,
         use_v1_code=False,
         use_uncertainty=False,
+        use_render_token=False,
     ):
         super().__init__()
 
@@ -224,6 +221,7 @@ class DETRBase(nn.Module):
         self.do_extract_rt_features = do_extract_rt_features
         self.use_v1_code = use_v1_code
         self.use_uncertainty = use_uncertainty
+        self.use_render_token = use_render_token
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -384,6 +382,8 @@ class DETRBase(nn.Module):
                     n_layers,
                 )
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
+        # if self.use_render_token:
+        #     self.render_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
         if self.use_uncertainty:
             self.n_free_factors = 2  # cover other factors
             self.n_uncertainty_tokens = 2  # rot/t
@@ -410,7 +410,7 @@ class DETRBase(nn.Module):
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
 
-    def forward(self, x, pose_tokens=None, prev_tokens=None, depth=None, **kwargs):
+    def forward(self, x, pose_tokens=None, prev_tokens=None, depth=None, pose_renderer_fn=None, **kwargs):
         extract_res = self.extract_tokens(x, depth=depth, **kwargs)
         tokens = extract_res["tokens"]
 
@@ -439,6 +439,7 @@ class DETRBase(nn.Module):
             prev_tokens=prev_tokens,
             img_features=extract_res.get("img_features"),
             rgb=x,
+            pose_renderer_fn=pose_renderer_fn,
         )
 
     def forward_tokens(
@@ -450,6 +451,7 @@ class DETRBase(nn.Module):
         prev_tokens=None,
         img_features=None,
         rgb=None,
+        pose_renderer_fn=None,
     ):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
@@ -585,6 +587,17 @@ class DETRBase(nn.Module):
                     ],
                     dim=-1,
                 )
+                if self.use_render_token:
+                    assert pose_renderer_fn is not None
+                    assert self.n_queries == 1, "rendering works for 1 q for now"
+                    render_poses = torch.cat([out["t"], out["rot"]], dim=-1)
+                    render_poses = einops.rearrange(render_poses, "b q r -> (b q) r")
+                    rendered = pose_renderer_fn(poses_pred=render_poses)
+                    # TODO: a learnable net? crop_cnn is frozen atm
+                    rendered_feats = self.crop_cnn(rendered["rgb"])
+                    rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
+                    obs_tokens = torch.cat([obs_tokens, rendered_feats.unsqueeze(-1).detach()], dim=-1)
+
                 obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
                 factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
                 u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
