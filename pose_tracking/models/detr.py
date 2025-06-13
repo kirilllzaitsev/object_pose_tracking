@@ -553,12 +553,37 @@ class DETRBase(nn.Module):
                 rgb_crop = get_crops(rgb, pred_boxes_xyxy.detach(), hw=hw, crop_size=(80 * 2, 80 * 2))
                 crop_feats = self.crop_cnn(rgb_crop)
                 if self.use_factors:
+                    factors = {}
+                    factor_latents = {}
+                    if len(self.local_factors) > 0:
+                        for factor in self.local_factors:
+                            factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                            factors[factor] = factor_out["out"]
+                            factor_latents[factor] = factor_out["last_hidden"]
+                        for k, v in factors.items():
+                            factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                        for k, v in factor_latents.items():
+                            factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                    for factor in self.global_factors:
+                        factor_out = self.factor_mlps[factor][layer_idx](o.detach())
+                        factors[factor] = factor_out["out"]
+                        factor_latents[factor] = factor_out["last_hidden"]
+                    out["factors"] = factors
+
+                    all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
                     factor_tokens = torch.cat([factor_tokens, all_factor_latents], dim=-1)
                 obs_tokens = o.unsqueeze(-1).detach()
                 if self.use_pose_tokens:
                     obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
+                crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
                 obs_tokens = torch.cat(
-                    [obs_tokens, last_latent_rot.unsqueeze(-1).detach(), last_latent_t.unsqueeze(-1).detach()], dim=-1
+                    [
+                        obs_tokens,
+                        last_latent_rot.unsqueeze(-1).detach(),
+                        last_latent_t.unsqueeze(-1).detach(),
+                        crop_feats_per_q.unsqueeze(-1).detach(),
+                    ],
+                    dim=-1,
                 )
                 obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
                 factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
