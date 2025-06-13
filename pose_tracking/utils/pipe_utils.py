@@ -256,6 +256,7 @@ def get_model(args, num_classes=None):
             use_v1_code=args.use_v1_code,
             use_uncertainty=args.mt_use_uncertainty,
             do_extract_rt_features=args.do_extract_rt_features or args.mt_use_uncertainty,
+            use_render_token=args.mt_use_render_token,
             num_classes=num_classes,
             n_queries=args.mt_num_queries,
             d_model=args.mt_d_model,
@@ -628,6 +629,7 @@ def get_trainer(
         use_temporal_loss=args.mt_use_temporal_loss,
         use_temporal_loss_double=args.mt_use_temporal_loss_double,
         use_pe_loss=args.mt_use_pe_loss,
+        use_render_token=args.mt_use_render_token,
         use_m_for_metrics=args.use_m_for_metrics,
         **extra_kwargs,
     )
