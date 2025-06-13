@@ -589,9 +589,7 @@ class DETRBase(nn.Module):
                 )
                 if self.use_render_token:
                     assert pose_renderer_fn is not None
-                    assert self.n_queries == 1, "rendering works for 1 q for now"
                     render_poses = torch.cat([out["t"], out["rot"]], dim=-1)
-                    render_poses = einops.rearrange(render_poses, "b q r -> (b q) r")
                     rendered = pose_renderer_fn(poses_pred=render_poses)
                     # TODO: a learnable net? crop_cnn is frozen atm
                     rendered_feats = self.crop_cnn(rendered["rgb"])

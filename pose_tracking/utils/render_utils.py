@@ -280,7 +280,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
     h, w = batch["rgb"].shape[-2:]
     mesh = batch["mesh"]
     poses_pred = convert_pose_vector_to_matrix(poses_pred)
-    assert poses_pred.ndim == 3, poses_pred.shape
+    assert poses_pred.ndim >= 3, poses_pred.shape
     assert poses_pred.device.type == "cuda", poses_pred.device.type
     bs = poses_pred.shape[0]
     input_resize = h, w
@@ -298,32 +298,40 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
             mesh_bidx = mesh_bidx[0]
 
         mesh_tensors = make_mesh_tensors(mesh_bidx, device=poses_pred.device)
-        extra = {}
-        r_res = nvdiffrast_render(
-            K=K[bidx].to(poses_pred.device),
-            H=h,
-            W=w,
-            ob_in_cams=poses_pred[bidx : bidx + 1].to(poses_pred.device),
-            context="cuda",
-            get_normal=False,
-            glctx=glctx,
-            mesh_tensors=mesh_tensors,
-            output_size=input_resize,
-            # bbox2d=bbox2d_ori[b : b + bs],
-            use_light=True,
-            extra=extra,
-        )
-        rgb_r, depth_r, normal_r, mask_r = (
-            r_res["color"],
-            r_res["depth"],
-            r_res["normal"],
-            r_res["mask"],
-        )
-        rgb_rs.append(rgb_r)
-        depth_rs.append(depth_r[..., None])
-        normal_rs.append(normal_r)
-        xyz_map_rs.append(extra["xyz_map"])
-        mask_rs.append(mask_r)
+        def get_r_res(pose):
+            extra = {}
+            r_res = nvdiffrast_render(
+                K=K[bidx].to(poses_pred.device),
+                H=h,
+                W=w,
+                ob_in_cams=pose.to(poses_pred.device),
+                context="cuda",
+                get_normal=False,
+                glctx=glctx,
+                mesh_tensors=mesh_tensors,
+                output_size=input_resize,
+                # bbox2d=bbox2d_ori[b : b + bs],
+                use_light=True,
+                extra=extra,
+            )
+            rgb_r, depth_r, normal_r, mask_r = (
+                r_res["color"],
+                r_res["depth"],
+                r_res["normal"],
+                r_res["mask"],
+            )
+            rgb_rs.append(rgb_r)
+            depth_rs.append(depth_r[..., None])
+            normal_rs.append(normal_r)
+            xyz_map_rs.append(extra["xyz_map"])
+            mask_rs.append(mask_r)
+            return r_res
+        if poses_pred.ndim == 4:
+            for qidx in range(poses_pred.shape[1]):
+                get_r_res(poses_pred[bidx, qidx : qidx + 1])
+        else:
+            get_r_res(poses_pred[bidx : bidx + 1])
+
     return {
         "rgb": torch.cat(rgb_rs, dim=0).permute(0, 3, 1, 2),
         "depth": torch.cat(depth_rs, dim=0).permute(0, 3, 1, 2),

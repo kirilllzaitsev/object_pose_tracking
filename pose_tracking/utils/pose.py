@@ -34,7 +34,9 @@ def convert_pose_vector_to_matrix(pose, rot_repr="quaternion"):
         return pose
     t = pose[..., :3]
     pose_matrix = torch.eye(4, device=pose.device)
-    if len(t.shape) == 2:
+    if len(t.shape) == 3:
+        pose_matrix = pose_matrix[None, None].repeat(t.shape[0], t.shape[1], 1, 1)
+    elif len(t.shape) == 2:
         pose_matrix = pose_matrix[None].repeat(t.shape[0], 1, 1)
     pose_matrix[..., :3, 3] = t
 
@@ -110,6 +112,7 @@ def sample_views_icosphere(n_views, subdivisions=None, radius=1):
 
 def symmetry_tfs_from_info(info, rot_angle_discrete=5):
     from bop_toolkit_lib.transform import euler_matrix
+
     symmetry_tfs = [np.eye(4)]
     if "symmetries_discrete" in info:
         tfs = np.array(info["symmetries_discrete"]).reshape(-1, 4, 4)
