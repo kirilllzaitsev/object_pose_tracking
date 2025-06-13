@@ -210,7 +210,7 @@ class DETRBase(nn.Module):
         final_feature_dim=None,
         pose_token_time_encoding="sin",
         factors=None,
-        roi_feature_dim=512,
+        roi_feature_dim=256,
         do_extract_rt_features=False,
         use_v1_code=False,
         use_uncertainty=False,
@@ -242,6 +242,7 @@ class DETRBase(nn.Module):
         self.pose_token_time_encoding = pose_token_time_encoding
         self.final_feature_dim = final_feature_dim
         self.factors = factors
+        self.roi_feature_dim = roi_feature_dim
 
         self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
@@ -372,7 +373,6 @@ class DETRBase(nn.Module):
         if self.use_factors:
             assert len(self.global_factors + self.local_factors) > 0
             if len(self.local_factors) > 0:
-                assert roi_feature_dim == 512
                 self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
                 for p in self.crop_cnn.parameters():
                     p.requires_grad = False
@@ -387,7 +387,9 @@ class DETRBase(nn.Module):
         if self.use_uncertainty:
             self.n_free_factors = 2  # cover other factors
             self.n_uncertainty_tokens = 2  # rot/t
-            self.free_factors = nn.Parameter(torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True)
+            self.free_factors = nn.Parameter(
+                torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True
+            )
             self.uncertainty_tokens = nn.Parameter(
                 torch.rand((1, self.n_queries, d_model, self.n_uncertainty_tokens)), requires_grad=True
             )

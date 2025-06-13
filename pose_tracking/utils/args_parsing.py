@@ -159,7 +159,7 @@ def get_parser():
     poseformer_args.add_argument(
         "--mt_roi_feature_dim",
         type=int,
-        default=512,
+        default=256,
         help="Feature dimension of roi-extractor",
     )
     poseformer_args.add_argument(
