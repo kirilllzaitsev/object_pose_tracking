@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from kornia.geometry import Se3
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
-from pose_tracking.losses import SSIM
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer_detr import TrainerDeformableDETR
 from pose_tracking.utils.artifact_utils import save_results_v2
@@ -48,13 +47,11 @@ class TrainerMemotr(TrainerDeformableDETR):
         config,
         use_temporal_loss=False,
         use_temporal_loss_double=False,
-        use_pe_loss=False,
         **kwargs,
     ):
 
         self.use_temporal_loss = use_temporal_loss
         self.use_temporal_loss_double = use_temporal_loss_double
-        self.use_pe_loss = use_pe_loss
 
         self.config = config
         super().__init__(*args, **kwargs)
@@ -65,16 +62,6 @@ class TrainerMemotr(TrainerDeformableDETR):
         self.track_score_thresh = 0.5
 
         TrackInstances.rot_out_dim = self.config["rot_out_dim"]
-
-        if use_pe_loss:
-            import nvdiffrast.torch as dr
-            from pose_tracking.utils.render_utils import (
-                adjust_brightness,
-                render_batch_pose_preds,
-            )
-
-            self.glctx = dr.RasterizeCudaContext(device=self.device)
-            self.ssim = SSIM().to(self.device)
 
     def get_param_dicts(self):
         from memotr.train_engine import get_param_groups

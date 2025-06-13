@@ -14,7 +14,7 @@ from pose_tracking.config import TF_DIR, default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.dataset.ds_common import from_numpy
 from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
-from pose_tracking.losses import compute_chamfer_dist, kpt_cross_ratio_loss
+from pose_tracking.losses import SSIM, compute_chamfer_dist, kpt_cross_ratio_loss
 from pose_tracking.metrics import (
     calc_metrics,
     calc_r_error,
@@ -58,6 +58,16 @@ from pose_tracking.utils.rotation_conversions import (
 from pose_tracking.utils.segm_utils import mask_morph
 from tqdm import tqdm
 
+try:
+    import nvdiffrast.torch as dr
+    from pose_tracking.utils.render_utils import (
+        adjust_brightness,
+        render_batch_pose_preds,
+    )
+except ImportError as e:
+    dr = None
+    print(f"rendering might not work due to {e}")
+
 
 class TrainerDeformableDETR(Trainer):
 
@@ -76,6 +86,8 @@ class TrainerDeformableDETR(Trainer):
         use_pose_tokens=False,
         use_pose_tokens_temporal=False,
         use_kpt_loss=False,
+        use_pe_loss=False,
+        use_render_token=False,
         **kwargs,
     ):
         if "detr_kpt" in args.model_name:
@@ -94,6 +106,8 @@ class TrainerDeformableDETR(Trainer):
         self.use_pose_tokens = use_pose_tokens
         self.use_pose_tokens_temporal = use_pose_tokens_temporal
         self.use_kpt_loss = use_kpt_loss
+        self.use_pe_loss = use_pe_loss
+        self.use_render_token = use_render_token
 
         self.num_classes = num_classes  # excluding bg class
         self.aux_loss = aux_loss
@@ -131,6 +145,13 @@ class TrainerDeformableDETR(Trainer):
         if len(params_wo_grad):
             self.logger.warning(f"Params without grad: {params_wo_grad}")
             self.logger.warning(f"{len(params_wo_grad)=}")
+
+        if use_render_token or use_pe_loss:
+            assert dr is not None, "nvdiffrast must be installed"
+            self.glctx = dr.RasterizeCudaContext(device=self.device)
+
+            if use_pe_loss:
+                self.ssim = SSIM().to(self.device)
 
     def get_param_dicts(self):
         param_dicts = [
@@ -625,6 +646,17 @@ class TrainerDeformableDETR(Trainer):
         extra_kwargs = {}
         if self.model_without_ddp.use_depth:
             extra_kwargs["depth"] = depth
+        if self.use_render_token:
+            mesh = [t["mesh"] for t in targets]
+            extra_kwargs["pose_renderer_fn"] = functools.partial(
+                render_batch_pose_preds,
+                batch={
+                    "intrinsics": intrinsics,
+                    "mesh": mesh,
+                    "rgb": image,
+                },
+                glctx=self.glctx,
+            )
 
         try:
             if self.model_name == "detr_kpt":
