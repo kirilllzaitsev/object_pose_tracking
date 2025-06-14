@@ -77,7 +77,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             world_size=world_size,
             init_method="env://",
             rank=rank,
-            timeout=dt.timedelta(seconds=1800),
+            timeout=dt.timedelta(seconds=1200),
         )
         if args.use_cuda:
             torch.cuda.set_device(local_rank)
@@ -85,7 +85,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
 
         is_main_process = rank == 0
     else:
-        device = torch.device(args.device)
+        device = torch.device(0 if args.device == "cuda" else args.device)
         is_main_process = True
 
     if args.use_ddp and is_main_process:
@@ -173,7 +173,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_entire_seq_in_train=args.use_entire_seq_in_train,
         seq_len_max_train=args.seq_len_max_train,
         include_depth=args.mt_use_depth,
-        include_mask=args.mt_use_mask_on_input or args.mt_use_mask_as_obj_indicator or args.mt_use_kpt_loss or args.mt_use_pe_loss,
+        include_mask=args.mt_use_mask_on_input
+        or args.mt_use_mask_as_obj_indicator
+        or args.mt_use_kpt_loss
+        or args.mt_use_pe_loss,
         include_bbox_2d=args.use_crop_for_rot,
         include_mesh=args.mt_use_pe_loss or args.mt_use_render_token,
         do_normalize_depth=args.mt_use_depth,
@@ -182,7 +185,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         use_mask_for_bbox_2d=args.use_mask_for_bbox_2d,
         factors=args.factors,
         target_hw=args.target_hw,
-        do_return_next_if_obj_invisible=args.do_return_next_if_obj_invisible
+        do_return_next_if_obj_invisible=args.do_return_next_if_obj_invisible,
     )
 
     train_dataset, val_dataset = (
