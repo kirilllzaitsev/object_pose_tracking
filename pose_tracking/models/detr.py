@@ -58,7 +58,7 @@ class CNNFeatureExtractor(nn.Module):
 
 
 class FactorTransformer(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.0):
+    def __init__(self, d_model, n_heads, dropout=0.0, num_layers=1):
         super().__init__()
         self.decoder = nn.TransformerDecoder(
             nn.TransformerDecoderLayer(
@@ -68,7 +68,7 @@ class FactorTransformer(nn.Module):
                 dropout=dropout,
                 batch_first=True,
             ),
-            num_layers=1,
+            num_layers=num_layers,
         )
 
         self.heads = {
@@ -181,6 +181,123 @@ class DETRPretrained(nn.Module):
         return res
 
 
+class PoseConfidenceTransformer(nn.Module):
+    def __init__(
+        self,
+        n_queries,
+        d_model=256,
+        n_heads=8,
+        n_layers=2,
+        dropout=0.0,
+        roi_feature_dim=256,
+        factors=None,
+        use_render_token=False,
+    ):
+        super().__init__()
+
+        self.use_render_token = use_render_token
+
+        self.n_queries = n_queries
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.dropout = dropout
+
+        self.n_free_factors = 2  # cover other factors
+        self.n_uncertainty_tokens = 2  # rot/t
+        self.use_factors = factors is not None
+        if self.use_factors:
+            self.global_factors = [f for f in factors if f in ["scale"]]
+            self.local_factors = [f for f in factors if f not in self.global_factors]
+
+        self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+        for p in self.crop_cnn.parameters():
+            p.requires_grad = False
+        if self.use_factors:
+            assert len(self.global_factors + self.local_factors) > 0
+            self.factor_mlps = {}
+            for k in factors:
+                in_dim = roi_feature_dim if k in self.local_factors else d_model
+                self.factor_mlps[k] = get_clones(
+                    MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None),
+                    n_layers,
+                )
+            self.factor_mlps = nn.ModuleDict(self.factor_mlps)
+
+        self.free_factors = nn.Parameter(
+            torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True
+        )
+        self.uncertainty_tokens = nn.Parameter(
+            torch.rand((1, self.n_queries, d_model, self.n_uncertainty_tokens)), requires_grad=True
+        )
+        self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout), n_layers)
+
+    def forward(self, o, rgb, pred_boxes, rt_latents, layer_idx, pose_token=None, pose_renderer_fn=None, out_rt=None):
+        out = {}
+        b = pred_boxes.shape[0]
+        factor_tokens = torch.cat(
+            [
+                self.uncertainty_tokens.repeat(b, 1, 1, 1),
+                self.free_factors.repeat(b, 1, 1, 1),
+            ],
+            dim=-1,
+        )
+
+        assert rgb is not None
+        hw = rgb.shape[-2:]
+        pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
+        rgb_crop = get_crops(rgb, pred_boxes_xyxy.detach(), hw=hw, crop_size=(80 * 2, 80 * 2))
+        crop_feats = self.crop_cnn(rgb_crop)
+        if self.use_factors:
+            factors = {}
+            factor_latents = {}
+            if len(self.local_factors) > 0:
+                for factor in self.local_factors:
+                    factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                    factors[factor] = factor_out["out"]
+                    factor_latents[factor] = factor_out["last_hidden"]
+                for k, v in factors.items():
+                    factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                for k, v in factor_latents.items():
+                    factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+            for factor in self.global_factors:
+                factor_out = self.factor_mlps[factor][layer_idx](o.detach())
+                factors[factor] = factor_out["out"]
+                factor_latents[factor] = factor_out["last_hidden"]
+            out["factors"] = factors
+
+            all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
+            factor_tokens = torch.cat([factor_tokens, all_factor_latents], dim=-1)
+        obs_tokens = o.unsqueeze(-1).detach()
+        if pose_token is not None:
+            obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
+        crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
+        obs_tokens = torch.cat(
+            [
+                obs_tokens,
+                *[x.unsqueeze(-1).detach() for x in rt_latents],
+                crop_feats_per_q.unsqueeze(-1).detach(),
+            ],
+            dim=-1,
+        )
+        if self.use_render_token and pose_renderer_fn is not None:
+            render_poses = torch.cat([out_rt["t"], out_rt["rot"]], dim=-1)
+            rendered = pose_renderer_fn(poses_pred=render_poses)
+            # TODO: a learnable net? crop_cnn is frozen atm
+            rendered_feats = self.crop_cnn(rendered["rgb"])
+            rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
+            obs_tokens = torch.cat([obs_tokens, rendered_feats.unsqueeze(-1).detach()], dim=-1)
+
+        obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
+        factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
+        u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
+        out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=self.n_queries)
+        for k, v in u_out.items():
+            v = einops.rearrange(v, "(b q) -> b q", b=b, q=self.n_queries)
+            out[f"uncertainty_{k}"] = v
+        return out
+
+
 class DETRBase(nn.Module):
 
     def __init__(
@@ -221,7 +338,6 @@ class DETRBase(nn.Module):
         self.do_extract_rt_features = do_extract_rt_features
         self.use_v1_code = use_v1_code
         self.use_uncertainty = use_uncertainty
-        self.use_render_token = use_render_token
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -246,11 +362,6 @@ class DETRBase(nn.Module):
         self.use_t = not opt_only or (opt_only and "t" in opt_only)
         self.use_boxes = not opt_only or (opt_only and "boxes" in opt_only)
         self.do_predict_2d_t = t_out_dim == 2
-        self.use_factors = factors is not None
-        if self.use_factors:
-            self.global_factors = [f for f in factors if f in ["scale"]]
-            self.local_factors = [f for f in factors if f not in self.global_factors]
-
         self.pe_encoder = self.get_pos_encoder(encoding_type, n_tokens=n_tokens * (2 if use_depth else 1))
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -368,33 +479,19 @@ class DETRBase(nn.Module):
         if self.use_roi:
             self.roi_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
 
-        if self.use_factors:
-            assert len(self.global_factors + self.local_factors) > 0
-            if len(self.local_factors) > 0:
-                self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
-                for p in self.crop_cnn.parameters():
-                    p.requires_grad = False
-            self.factor_mlps = {}
-            for k in factors:
-                in_dim = roi_feature_dim if k in self.local_factors else d_model
-                self.factor_mlps[k] = get_clones(
-                    MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None),
-                    n_layers,
-                )
-            self.factor_mlps = nn.ModuleDict(self.factor_mlps)
         # if self.use_render_token:
         #     self.render_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
         if self.use_uncertainty:
-            self.n_free_factors = 2  # cover other factors
-            self.n_uncertainty_tokens = 2  # rot/t
-            self.free_factors = nn.Parameter(
-                torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True
+            self.coformer = PoseConfidenceTransformer(
+                n_queries=n_queries,
+                d_model=d_model,
+                n_heads=n_heads,
+                n_layers=n_layers,
+                dropout=dropout,
+                roi_feature_dim=roi_feature_dim,
+                factors=factors,
+                use_render_token=use_render_token,
             )
-            self.uncertainty_tokens = nn.Parameter(
-                torch.rand((1, self.n_queries, d_model, self.n_uncertainty_tokens)), requires_grad=True
-            )
-            self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout), n_layers)
-
         init_params(self)
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
@@ -541,68 +638,17 @@ class DETRBase(nn.Module):
 
             b = pred_logits.shape[0]
             if self.use_uncertainty:
-                factor_tokens = torch.cat(
-                    [
-                        self.uncertainty_tokens.repeat(b, 1, 1, 1),
-                        self.free_factors.repeat(b, 1, 1, 1),
-                    ],
-                    dim=-1,
+                out_fdetr = self.coformer(
+                    o,
+                    rgb=rgb,
+                    pred_boxes=pred_boxes,
+                    rt_latents=[last_latent_rot, last_latent_t],
+                    layer_idx=layer_idx,
+                    pose_token=pose_token if self.use_pose_tokens else None,
+                    pose_renderer_fn=pose_renderer_fn,
+                    out_rt={"t": out["t"], "rot": out["rot"]} if self.coformer.use_render_token else None,
                 )
-
-                assert rgb is not None
-                hw = rgb.shape[-2:]
-                pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-                rgb_crop = get_crops(rgb, pred_boxes_xyxy.detach(), hw=hw, crop_size=(80 * 2, 80 * 2))
-                crop_feats = self.crop_cnn(rgb_crop)
-                if self.use_factors:
-                    factors = {}
-                    factor_latents = {}
-                    if len(self.local_factors) > 0:
-                        for factor in self.local_factors:
-                            factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
-                            factors[factor] = factor_out["out"]
-                            factor_latents[factor] = factor_out["last_hidden"]
-                        for k, v in factors.items():
-                            factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
-                        for k, v in factor_latents.items():
-                            factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
-                    for factor in self.global_factors:
-                        factor_out = self.factor_mlps[factor][layer_idx](o.detach())
-                        factors[factor] = factor_out["out"]
-                        factor_latents[factor] = factor_out["last_hidden"]
-                    out["factors"] = factors
-
-                    all_factor_latents = torch.stack([v for v in factor_latents.values()], dim=-1)
-                    factor_tokens = torch.cat([factor_tokens, all_factor_latents], dim=-1)
-                obs_tokens = o.unsqueeze(-1).detach()
-                if self.use_pose_tokens:
-                    obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
-                crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
-                obs_tokens = torch.cat(
-                    [
-                        obs_tokens,
-                        last_latent_rot.unsqueeze(-1).detach(),
-                        last_latent_t.unsqueeze(-1).detach(),
-                        crop_feats_per_q.unsqueeze(-1).detach(),
-                    ],
-                    dim=-1,
-                )
-                if self.use_render_token:
-                    assert pose_renderer_fn is not None
-                    render_poses = torch.cat([out["t"], out["rot"]], dim=-1)
-                    rendered = pose_renderer_fn(poses_pred=render_poses)
-                    # TODO: a learnable net? crop_cnn is frozen atm
-                    rendered_feats = self.crop_cnn(rendered["rgb"])
-                    rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
-                    obs_tokens = torch.cat([obs_tokens, rendered_feats.unsqueeze(-1).detach()], dim=-1)
-
-                obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
-                factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
-                u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
-                out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=self.n_queries)
-                for k, v in u_out.items():
-                    v = einops.rearrange(v, "(b q) -> b q", b=b, q=self.n_queries)
-                    out[f"uncertainty_{k}"] = v
+                out.update(out_fdetr)
 
             out["pose_token"] = pose_token
             outs.append(out)
@@ -625,7 +671,7 @@ class DETRBase(nn.Module):
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
-        if self.use_factors:
+        if self.coformer.use_factors:
             res["factors"] = last_out["factors"]
         if self.use_uncertainty:
             res["uncertainty_rot"] = last_out["uncertainty_rot"]
