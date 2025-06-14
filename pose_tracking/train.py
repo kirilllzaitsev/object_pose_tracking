@@ -382,7 +382,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             for stage, stats in stage_stats.items():
                 printer.print_stats(stats, stage)
         return stage_stats
-    
+
     for epoch in tqdm(range(1, args.num_epochs + 1), desc="Epochs"):
         if args.use_ddp:
             train_loader.sampler.set_epoch(epoch)

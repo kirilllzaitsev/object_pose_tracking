@@ -182,12 +182,7 @@ class Trainer:
             self.seq_len_curriculum_step_epoch_freq = None
 
         if self.use_ddp:
-            local_rank = distributed_rank()
-            self.model = DDP(
-                self.model,
-                device_ids=[local_rank] if args.use_cuda else None,
-                broadcast_buffers=False,
-            )
+            self.model = DDP(self.model)
             self.model_without_ddp = self.model.module
         else:
             self.model_without_ddp = self.model
@@ -865,7 +860,10 @@ class Trainer:
                 "prev_latent": prev_latent.detach() if self.use_prev_latent else None,
                 "pose_prev_pred_abs": {k: v.detach() for k, v in pose_prev_pred_abs.items()},
                 "pose_mat_prev_gt_abs": pose_mat_prev_gt_abs,
-                "state": [x if x is None else ((xx.detach() for xx in x) if isinstance(x, tuple) else x.detach()) for x in state],
+                "state": [
+                    x if x is None else ((xx.detach() for xx in x) if isinstance(x, tuple) else x.detach())
+                    for x in state
+                ],
             }
         else:
             last_step_state = None
@@ -915,7 +913,6 @@ class Trainer:
             vis_data[k].append([detach_and_cpu(batch_t[k][i]) for i in vis_batch_idxs])
         if out is not None:
             vis_data["out"].append(detach_and_cpu(out))
-
 
     def calc_kpt_loss(self, batch_t, out):
         kpts_pred = out["kpts"]
