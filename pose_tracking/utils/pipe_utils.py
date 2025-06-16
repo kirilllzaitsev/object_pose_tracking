@@ -273,6 +273,7 @@ def get_model(args, num_classes=None):
             head_hidden_dim=args.rt_hidden_dim or 256,
             factors=args.factors,
             roi_feature_dim=args.mt_roi_feature_dim,
+            n_layers_f_transformer=args.mt_n_layers_f_transformer,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -504,7 +505,10 @@ def get_trackformer_args(args):
     tf_args.opt_only = args.opt_only
     tf_args.factors = args.factors
     tf_args.uncertainty_coef = args.mt_uncertainty_coef
+    tf_args.roi_feature_dim = args.mt_roi_feature_dim
+    tf_args.use_render_token = args.mt_use_render_token
     tf_args.use_uncertainty = args.mt_use_uncertainty
+    tf_args.use_pose_tokens = args.mt_use_pose_tokens
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc
@@ -716,6 +720,7 @@ def get_datasets(
     bbox_num_kpts=8,
     factors=None,
     target_hw=None,
+    tf_use_only_det=False,
 ):
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
@@ -730,7 +735,7 @@ def get_datasets(
     include_bbox_2d = (
         do_predict_kpts or is_detr_model or is_roi_model or is_pizza_model or include_bbox_2d or is_motr_model
     )
-    is_tracker_model = is_tf_model or is_motr_model
+    is_tracker_model = (is_tf_model and not tf_use_only_det) or is_motr_model
     include_mask = include_mask or do_subtract_bg
     ds_kwargs_common = dict(
         shorter_side=None,
