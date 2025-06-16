@@ -188,6 +188,7 @@ class PoseConfidenceTransformer(nn.Module):
         d_model=256,
         n_heads=8,
         n_layers=2,
+        n_layers_f_transformer=1,
         dropout=0.0,
         roi_feature_dim=256,
         factors=None,
@@ -225,20 +226,20 @@ class PoseConfidenceTransformer(nn.Module):
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
 
         self.free_factors = nn.Parameter(
-            torch.rand((1, self.n_queries, d_model, self.n_free_factors)), requires_grad=True
+            torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True
         )
         self.uncertainty_tokens = nn.Parameter(
-            torch.rand((1, self.n_queries, d_model, self.n_uncertainty_tokens)), requires_grad=True
+            torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
         )
-        self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout), n_layers)
+        self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer), n_layers)
 
     def forward(self, o, rgb, pred_boxes, rt_latents, layer_idx, pose_token=None, pose_renderer_fn=None, out_rt=None):
         out = {}
-        b = pred_boxes.shape[0]
+        b, nqueries = pred_boxes.shape[:2]
         factor_tokens = torch.cat(
             [
-                self.uncertainty_tokens.repeat(b, 1, 1, 1),
-                self.free_factors.repeat(b, 1, 1, 1),
+                self.uncertainty_tokens.repeat(b, nqueries, 1, 1),
+                self.free_factors.repeat(b, nqueries, 1, 1),
             ],
             dim=-1,
         )
@@ -257,9 +258,9 @@ class PoseConfidenceTransformer(nn.Module):
                     factors[factor] = factor_out["out"]
                     factor_latents[factor] = factor_out["last_hidden"]
                 for k, v in factors.items():
-                    factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                    factors[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=nqueries)
                 for k, v in factor_latents.items():
-                    factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=self.n_queries)
+                    factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=nqueries)
             for factor in self.global_factors:
                 factor_out = self.factor_mlps[factor][layer_idx](o.detach())
                 factors[factor] = factor_out["out"]
@@ -291,9 +292,9 @@ class PoseConfidenceTransformer(nn.Module):
         obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
         factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
         u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
-        out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=self.n_queries)
+        out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=nqueries)
         for k, v in u_out.items():
-            v = einops.rearrange(v, "(b q) -> b q", b=b, q=self.n_queries)
+            v = einops.rearrange(v, "(b q) -> b q", b=b, q=nqueries)
             out[f"uncertainty_{k}"] = v
         return out
 
@@ -328,6 +329,7 @@ class DETRBase(nn.Module):
         use_v1_code=False,
         use_uncertainty=False,
         use_render_token=False,
+        n_layers_f_transformer=1
     ):
         super().__init__()
 
@@ -491,6 +493,7 @@ class DETRBase(nn.Module):
                 roi_feature_dim=roi_feature_dim,
                 factors=factors,
                 use_render_token=use_render_token,
+                n_layers_f_transformer=n_layers_f_transformer
             )
         init_params(self)
 
@@ -671,9 +674,9 @@ class DETRBase(nn.Module):
             res["center_depth"] = last_out["center_depth"]
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
-        if self.coformer.use_factors:
-            res["factors"] = last_out["factors"]
         if self.use_uncertainty:
+            if self.coformer.use_factors:
+                res["factors"] = last_out["factors"]
             res["uncertainty_rot"] = last_out["uncertainty_rot"]
             res["uncertainty_t"] = last_out["uncertainty_t"]
         res["tokens"] = tokens_enc
