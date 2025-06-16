@@ -397,10 +397,11 @@ class TrackingDataset(Dataset):
             if "occlusion" in self.factors or "texture" in self.factors:
                 occ_mask = mask if "mask" in locals() else self.get_mask(i)
             if "occlusion" in self.factors:
+                num_proj_px = rasterize_bbox_cv(bbox_3d_kpts_proj, img_size=(self.h, self.w)).sum()
+                num_visib_px = get_visib_px_num(occ_mask)
                 occlusion_factor = 1 - (
-                    get_visib_px_num(occ_mask) / rasterize_bbox_cv(bbox_3d_kpts_proj, img_size=(self.h, self.w)).sum()
-                )
-                # clip
+                    num_visib_px / num_proj_px
+                ) if num_proj_px > 0 else 1
                 occlusion_factor = np.clip(occlusion_factor, self.f_min_occ_factor, self.f_max_occ_factor)
                 if self.max_num_objs == 1:
                     occlusion_factor = np.array([occlusion_factor])
