@@ -86,7 +86,8 @@ class FactorTransformer(nn.Module):
         out = {}
         decoded_rot = decoded[:, 0]
         decoded_t = decoded[:, 1]
-        out["decoded"] = decoded
+        # out["decoded"] = decoded
+        # out["obs_tokens"] = obs_tokens
         out["rot"] = self.heads["rot"](decoded_rot).squeeze(-1)
         out["t"] = self.heads["t"](decoded_t).squeeze(-1)
         return out
@@ -225,13 +226,13 @@ class PoseConfidenceTransformer(nn.Module):
                 )
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
 
-        self.free_factors = nn.Parameter(
-            torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True
-        )
+        self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
         self.uncertainty_tokens = nn.Parameter(
             torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
         )
-        self.uncertainty_layer = get_clones(FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer), n_layers)
+        self.uncertainty_layer = get_clones(
+            FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer), n_layers
+        )
 
     def forward(self, o, rgb, pred_boxes, rt_latents, layer_idx, pose_token=None, pose_renderer_fn=None, out_rt=None):
         out = {}
@@ -292,7 +293,9 @@ class PoseConfidenceTransformer(nn.Module):
         obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
         factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
         u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
-        out["decoded"] = einops.rearrange(u_out.pop("decoded"), "(b q) f d -> b q f d", b=b, q=nqueries)
+        for k in ["decoded", "obs_tokens"]:
+            if k in u_out:
+                out[k] = einops.rearrange(u_out.pop(k), "(b q) f d -> b q f d", b=b, q=nqueries)
         for k, v in u_out.items():
             v = einops.rearrange(v, "(b q) -> b q", b=b, q=nqueries)
             out[f"uncertainty_{k}"] = v
@@ -329,7 +332,7 @@ class DETRBase(nn.Module):
         use_v1_code=False,
         use_uncertainty=False,
         use_render_token=False,
-        n_layers_f_transformer=1
+        n_layers_f_transformer=1,
     ):
         super().__init__()
 
@@ -493,7 +496,7 @@ class DETRBase(nn.Module):
                 roi_feature_dim=roi_feature_dim,
                 factors=factors,
                 use_render_token=use_render_token,
-                n_layers_f_transformer=n_layers_f_transformer
+                n_layers_f_transformer=n_layers_f_transformer,
             )
         init_params(self)
 
