@@ -392,7 +392,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None):
                 mesh_tensors=mesh_tensors,
                 output_size=input_resize,
                 # bbox2d=bbox2d_ori[b : b + bs],
-                use_light=True,
+                use_light=False,  # shouldn't matter for feature extraction
                 extra=extra,
                 rasterize_fn=rasterize_fn,
             )
