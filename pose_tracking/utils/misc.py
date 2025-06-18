@@ -201,6 +201,8 @@ def is_empty(v):
         return v.ndim > 0 and len(v) == 0
     elif hasattr(v, "__len__"):
         return len(v) == 0
+    elif v is None:
+        return True
     else:
         return False
 

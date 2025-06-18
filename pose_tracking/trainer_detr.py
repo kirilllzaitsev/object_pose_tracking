@@ -8,52 +8,30 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-import yaml
-from cycler import K
-from pose_tracking.config import TF_DIR, default_logger
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
-from pose_tracking.dataset.ds_common import from_numpy
-from pose_tracking.dataset.pizza_utils import extend_seq_with_pizza_args
-from pose_tracking.losses import SSIM, compute_chamfer_dist, kpt_cross_ratio_loss
+from pose_tracking.losses import SSIM
 from pose_tracking.metrics import (
     calc_metrics,
-    calc_r_error,
-    calc_t_error,
-    eval_batch_det,
 )
-from pose_tracking.models.encoders import FrozenBatchNorm2d, is_param_part_of_encoders
-from pose_tracking.models.matcher import HungarianMatcher
-from pose_tracking.models.set_criterion import SetCriterion
+from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer import Trainer
-from pose_tracking.utils.artifact_utils import save_results, save_results_v2
-from pose_tracking.utils.common import cast_to_numpy, detach_and_cpu, extract_idxs
+from pose_tracking.utils.artifact_utils import save_results_v2
+from pose_tracking.utils.common import detach_and_cpu
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
 from pose_tracking.utils.geom import (
-    cam_to_2d,
     convert_2d_t_to_3d,
     egocentric_delta_pose_to_pose,
-    pose_to_egocentric_delta_pose,
-    rot_mat_from_6d,
-    rotate_pts_batch,
 )
-from pose_tracking.utils.kpt_utils import sample_gt_kpts
 from pose_tracking.utils.misc import (
-    is_tensor,
     match_module_by_name,
-    print_cls,
     reduce_dict,
-    reduce_metric,
-    split_arr,
 )
 from pose_tracking.utils.pipe_utils import get_trackformer_args
-from pose_tracking.utils.pose import convert_pose_vector_to_matrix, convert_r_t_to_rt
+from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
     matrix_to_axis_angle,
     matrix_to_quaternion,
     matrix_to_rotation_6d,
-    quaternion_to_axis_angle,
-    quaternion_to_matrix,
-    rotation_6d_to_matrix,
 )
 from pose_tracking.utils.segm_utils import mask_morph
 from tqdm import tqdm
@@ -61,6 +39,8 @@ from tqdm import tqdm
 try:
     import nvdiffrast.torch as dr
     from pose_tracking.utils.render_utils import (
+        Dispatcher,
+        Rasterizer,
         adjust_brightness,
         render_batch_pose_preds,
     )
