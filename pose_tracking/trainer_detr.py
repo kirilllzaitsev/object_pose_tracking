@@ -630,10 +630,15 @@ class TrainerDeformableDETR(Trainer):
         extra_kwargs = {}
         if self.model_without_ddp.use_depth:
             extra_kwargs["depth"] = depth
-        if self.use_render_token:
+        if self.use_render_token and self.train_epoch_count > 5:
             mesh = [t["mesh"] for t in targets]
+
+            def render_batch_pose_preds_no_grad(**kwargs):
+                with torch.no_grad():
+                    return render_batch_pose_preds(**kwargs)
+
             extra_kwargs["pose_renderer_fn"] = functools.partial(
-                render_batch_pose_preds,
+                render_batch_pose_preds_no_grad,
                 batch={
                     "intrinsics": intrinsics,
                     "mesh": mesh,
