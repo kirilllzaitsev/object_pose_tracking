@@ -128,7 +128,11 @@ class TrainerDeformableDETR(Trainer):
 
         if use_render_token or use_pe_loss:
             assert dr is not None, "nvdiffrast must be installed"
-            self.glctx = dr.RasterizeCudaContext(device=self.device)
+            self.glctx = None
+            gpu_ids = list(range(torch.cuda.device_count()))
+            self.rasterizer = Rasterizer(Dispatcher(gpu_ids=gpu_ids), device=self.device)
+            if self.use_ddp:
+                self.rasterizer = torch.nn.DataParallel(self.rasterizer, gpu_ids)
 
             if use_pe_loss:
                 self.ssim = SSIM().to(self.device)
@@ -635,6 +639,7 @@ class TrainerDeformableDETR(Trainer):
                     "mesh": mesh,
                     "rgb": image,
                 },
+                rasterize_fn=self.rasterizer,
                 glctx=self.glctx,
             )
 
