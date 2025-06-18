@@ -220,22 +220,21 @@ class PoseConfidenceTransformer(nn.Module):
             self.factor_mlps = {}
             for k in factors:
                 in_dim = roi_feature_dim if k in self.local_factors else d_model
-                self.factor_mlps[k] = get_clones(
-                    MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None),
-                    n_layers,
-                )
+                self.factor_mlps[k] = MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None)
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
 
         self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
         self.uncertainty_tokens = nn.Parameter(
             torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
         )
-        self.uncertainty_layer = get_clones(
-            FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer), n_layers
-        )
+        self.uncertainty_layer = FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer)
+
+        # assert n_layers == 6, "assumes 6 decoder layers"
 
     def forward(self, o, rgb, pred_boxes, rt_latents, layer_idx, pose_token=None, pose_renderer_fn=None, out_rt=None):
         out = {}
+        if layer_idx != self.n_layers - 1:
+            return out
         b, nqueries = pred_boxes.shape[:2]
         factor_tokens = torch.cat(
             [
@@ -255,7 +254,7 @@ class PoseConfidenceTransformer(nn.Module):
             factor_latents = {}
             if len(self.local_factors) > 0:
                 for factor in self.local_factors:
-                    factor_out = self.factor_mlps[factor][layer_idx](crop_feats)
+                    factor_out = self.factor_mlps[factor](crop_feats)
                     factors[factor] = factor_out["out"]
                     factor_latents[factor] = factor_out["last_hidden"]
                 for k, v in factors.items():
@@ -263,7 +262,7 @@ class PoseConfidenceTransformer(nn.Module):
                 for k, v in factor_latents.items():
                     factor_latents[k] = einops.rearrange(v, "(b q) d -> b q d", b=b, q=nqueries)
             for factor in self.global_factors:
-                factor_out = self.factor_mlps[factor][layer_idx](o.detach())
+                factor_out = self.factor_mlps[factor](o.detach())
                 factors[factor] = factor_out["out"]
                 factor_latents[factor] = factor_out["last_hidden"]
             out["factors"] = factors
@@ -286,13 +285,13 @@ class PoseConfidenceTransformer(nn.Module):
             render_poses = torch.cat([out_rt["t"], out_rt["rot"]], dim=-1)
             rendered = pose_renderer_fn(poses_pred=render_poses)
             # TODO: a learnable net? crop_cnn is frozen atm
-            rendered_feats = self.crop_cnn(rendered["rgb"])
+            rendered_feats = self.crop_cnn(rendered["rgb"].to(render_poses.device))
             rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
             obs_tokens = torch.cat([obs_tokens, rendered_feats.unsqueeze(-1).detach()], dim=-1)
 
         obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
         factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
-        u_out = self.uncertainty_layer[layer_idx](obs_tokens=obs_tokens, factor_tokens=factor_tokens)
+        u_out = self.uncertainty_layer(obs_tokens=obs_tokens, factor_tokens=factor_tokens)
         for k in ["decoded", "obs_tokens"]:
             if k in u_out:
                 out[k] = einops.rearrange(u_out.pop(k), "(b q) f d -> b q f d", b=b, q=nqueries)
