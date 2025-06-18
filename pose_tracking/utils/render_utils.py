@@ -1,10 +1,12 @@
+import threading
+
 import cv2
 import numpy as np
 import nvdiffrast.torch as dr
 import torch
 import torch.nn.functional as F
 import trimesh
-from pose_tracking.utils.misc import add_batch_dim_to_img
+from pose_tracking.utils.misc import add_batch_dim_to_img, is_empty, print_cls
 from pose_tracking.utils.pose import convert_pose_vector_to_matrix
 from pose_tracking.utils.trimesh_utils import load_mesh
 from torchvision.transforms.functional import rgb_to_grayscale
@@ -150,13 +152,94 @@ def to_homo_torch(pts):
     return homo
 
 
+class Dispatcher:
+    # https://github.com/NVlabs/nvdiffrast/issues/23
+    def __init__(self, gpu_ids):
+        self.threads = {}
+        self.events = {}
+        self.funcs = {}
+        self.return_events = {}
+        self.return_values = {}
+
+        for gpu_id in gpu_ids:
+            device = torch.device(gpu_id)
+            self.events[device] = threading.Event()
+            self.return_events[device] = threading.Event()
+            self.threads[device] = threading.Thread(
+                target=Dispatcher.worker,
+                args=(
+                    self,
+                    device,
+                ),
+                daemon=True,
+            )
+            self.threads[device].start()
+
+    @staticmethod
+    def worker(self, device):
+        torch.cuda.set_device(device)
+        ctx = dr.RasterizeGLContext(output_db=False, device=device)
+        while True:
+            self.events[device].wait()
+            assert device not in self.return_values
+            self.return_values[device] = self.funcs[device](ctx)
+            del self.funcs[device]
+            self.events[device].clear()
+            self.return_events[device].set()
+
+    def __call__(self, device, func):
+        assert device not in self.funcs
+        self.funcs[device] = func
+        self.events[device].set()
+        self.return_events[device].wait()
+        ret_val = self.return_values[device]
+        del self.return_values[device]
+        self.return_events[device].clear()
+        return ret_val
+
+    def __repr__(self) -> str:
+        return print_cls(self)
+
+
+class Rasterizer(torch.nn.Module):
+    def __init__(self, dispatcher, device):
+        super().__init__()
+        self.dispatcher = dispatcher
+        self.device = device
+
+    def forward(self, pos, tri, resolution, mesh_tensors, pts_cam):
+        try:
+            def func(ctx):
+                has_tex = "tex" in mesh_tensors
+                rast_out, _ = dr.rasterize(ctx, pos=pos, tri=tri, resolution=resolution)
+                xyz_map, _ = dr.interpolate(pts_cam, rast_out, tri)
+                depth = xyz_map[..., 2]
+                if has_tex:
+                    texc, _ = dr.interpolate(mesh_tensors["uv"].to(self.device), rast_out, mesh_tensors["uv_idx"].to(self.device))
+                    color = dr.texture(mesh_tensors["tex"].to(self.device), texc, filter_mode="linear")
+                else:
+                    color, _ = dr.interpolate(mesh_tensors["vertex_color"].to(self.device), rast_out, tri)
+                return {
+                    "depth": depth,
+                    "color": color,
+                    "rast_out": rast_out,
+                    "xyz_map": xyz_map,
+                }
+
+            return self.dispatcher(pos.device, func)
+        except Exception as e:
+            print(locals())
+            print(f"{e=}")
+            print(self.dispatcher)
+            raise e
+
+
 def nvdiffrast_render(
+    glctx,
     K=None,
     H=None,
     W=None,
     ob_in_cams=None,
-    glctx=None,
-    context="cuda",
     get_normal=False,
     mesh_tensors=None,
     mesh=None,
@@ -170,6 +253,7 @@ def nvdiffrast_render(
     w_ambient=0.8,
     w_diffuse=0.5,
     extra={},
+    rasterize_fn=None,
 ):
     """Just plain rendering, not support any gradient
     @K: (3,3) np array
@@ -180,14 +264,6 @@ def nvdiffrast_render(
     @light_dir: in cam space
     @light_pos: in cam space
     """
-    if glctx is None:
-        if context == "gl":
-            glctx = dr.RasterizeGLContext()
-        elif context == "cuda":
-            glctx = dr.RasterizecudaContext()
-        else:
-            raise NotImplementedError
-        # logging.info("created context")
 
     if mesh_tensors is None:
         mesh_tensors = make_mesh_tensors(mesh)
@@ -223,14 +299,21 @@ def nvdiffrast_render(
         tf[:, 3, 1] = (H - t - b) / (t - b)
         pos_clip = pos_clip @ tf
 
-    rast_out, _ = dr.rasterize(glctx, pos_clip, pos_idx, resolution=np.asarray(output_size))
-    xyz_map, _ = dr.interpolate(pts_cam, rast_out, pos_idx)
-    depth = xyz_map[..., 2]
-    if has_tex:
-        texc, _ = dr.interpolate(mesh_tensors["uv"], rast_out, mesh_tensors["uv_idx"])
-        color = dr.texture(mesh_tensors["tex"], texc, filter_mode="linear")
+    if rasterize_fn is None:
+        rast_out, _ = dr.rasterize(glctx=glctx, pos=pos_clip, tri=pos_idx, resolution=np.asarray(output_size))
+        xyz_map, _ = dr.interpolate(pts_cam, rast_out, pos_idx)
+        depth = xyz_map[..., 2]
+        if has_tex:
+            texc, _ = dr.interpolate(mesh_tensors["uv"], rast_out, mesh_tensors["uv_idx"])
+            color = dr.texture(mesh_tensors["tex"], texc, filter_mode="linear")
+        else:
+            color, _ = dr.interpolate(mesh_tensors["vertex_color"], rast_out, pos_idx)
     else:
-        color, _ = dr.interpolate(mesh_tensors["vertex_color"], rast_out, pos_idx)
+        r_res = rasterize_fn(pos=pos_clip, tri=pos_idx, resolution=np.asarray(output_size), mesh_tensors=mesh_tensors, pts_cam=pts_cam)
+        rast_out = r_res["rast_out"]
+        xyz_map = r_res["xyz_map"]
+        depth = r_res["depth"]
+        color = r_res["color"]
 
     if use_light:
         get_normal = True
@@ -273,9 +356,7 @@ def nvdiffrast_render(
     }
 
 
-def render_batch_pose_preds(batch, poses_pred, glctx=None):
-    if glctx is None:
-        glctx = dr.RasterizeCudaContext()
+def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None):
     K = batch["intrinsics"]
     h, w = batch["rgb"].shape[-2:]
     mesh = batch["mesh"]
@@ -298,6 +379,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
             mesh_bidx = mesh_bidx[0]
 
         mesh_tensors = make_mesh_tensors(mesh_bidx, device=poses_pred.device)
+
         def get_r_res(pose):
             extra = {}
             r_res = nvdiffrast_render(
@@ -305,7 +387,6 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
                 H=h,
                 W=w,
                 ob_in_cams=pose.to(poses_pred.device),
-                context="cuda",
                 get_normal=False,
                 glctx=glctx,
                 mesh_tensors=mesh_tensors,
@@ -313,6 +394,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
                 # bbox2d=bbox2d_ori[b : b + bs],
                 use_light=True,
                 extra=extra,
+                rasterize_fn=rasterize_fn,
             )
             rgb_r, depth_r, normal_r, mask_r = (
                 r_res["color"],
@@ -326,6 +408,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
             xyz_map_rs.append(extra["xyz_map"])
             mask_rs.append(mask_r)
             return r_res
+
         if poses_pred.ndim == 4:
             for qidx in range(poses_pred.shape[1]):
                 get_r_res(poses_pred[bidx, qidx : qidx + 1])
@@ -334,8 +417,8 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None):
 
     return {
         "rgb": torch.cat(rgb_rs, dim=0).permute(0, 3, 1, 2),
-        "depth": torch.cat(depth_rs, dim=0).permute(0, 3, 1, 2),
-        "normal": torch.cat(normal_rs, dim=0).permute(0, 3, 1, 2),
-        "xyz_map": torch.cat(xyz_map_rs, dim=0).permute(0, 3, 1, 2),
-        "mask": torch.cat(mask_rs, dim=0).permute(0, 3, 1, 2),
+        "depth": torch.cat(depth_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(depth_rs) else None,
+        "normal": torch.cat(normal_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(normal_rs) else None,
+        "xyz_map": torch.cat(xyz_map_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(xyz_map_rs) else None,
+        "mask": torch.cat(mask_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(mask_rs) else None,
     }
