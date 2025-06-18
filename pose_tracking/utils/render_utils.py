@@ -178,7 +178,7 @@ class Dispatcher:
     @staticmethod
     def worker(self, device):
         torch.cuda.set_device(device)
-        ctx = dr.RasterizeGLContext(output_db=False, device=device)
+        ctx = dr.RasterizeCudaContext(device=device)
         while True:
             self.events[device].wait()
             assert device not in self.return_values
@@ -209,16 +209,18 @@ class Rasterizer(torch.nn.Module):
 
     def forward(self, pos, tri, resolution, mesh_tensors, pts_cam):
         try:
+
             def func(ctx):
                 has_tex = "tex" in mesh_tensors
                 rast_out, _ = dr.rasterize(ctx, pos=pos, tri=tri, resolution=resolution)
                 xyz_map, _ = dr.interpolate(pts_cam, rast_out, tri)
+                device = pos.device
                 depth = xyz_map[..., 2]
                 if has_tex:
-                    texc, _ = dr.interpolate(mesh_tensors["uv"].to(self.device), rast_out, mesh_tensors["uv_idx"].to(self.device))
-                    color = dr.texture(mesh_tensors["tex"].to(self.device), texc, filter_mode="linear")
+                    texc, _ = dr.interpolate(mesh_tensors["uv"].to(device), rast_out, mesh_tensors["uv_idx"].to(device))
+                    color = dr.texture(mesh_tensors["tex"].to(device), texc, filter_mode="linear")
                 else:
-                    color, _ = dr.interpolate(mesh_tensors["vertex_color"].to(self.device), rast_out, tri)
+                    color, _ = dr.interpolate(mesh_tensors["vertex_color"].to(device), rast_out, tri)
                 return {
                     "depth": depth,
                     "color": color,
@@ -309,7 +311,9 @@ def nvdiffrast_render(
         else:
             color, _ = dr.interpolate(mesh_tensors["vertex_color"], rast_out, pos_idx)
     else:
-        r_res = rasterize_fn(pos=pos_clip, tri=pos_idx, resolution=np.asarray(output_size), mesh_tensors=mesh_tensors, pts_cam=pts_cam)
+        r_res = rasterize_fn(
+            pos=pos_clip, tri=pos_idx, resolution=np.asarray(output_size), mesh_tensors=mesh_tensors, pts_cam=pts_cam
+        )
         rast_out = r_res["rast_out"]
         xyz_map = r_res["xyz_map"]
         depth = r_res["depth"]
@@ -356,7 +360,7 @@ def nvdiffrast_render(
     }
 
 
-def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None):
+def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None, use_light=False):
     K = batch["intrinsics"]
     h, w = batch["rgb"].shape[-2:]
     mesh = batch["mesh"]
@@ -392,7 +396,7 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None):
                 mesh_tensors=mesh_tensors,
                 output_size=input_resize,
                 # bbox2d=bbox2d_ori[b : b + bs],
-                use_light=False,  # shouldn't matter for feature extraction
+                use_light=use_light,  # shouldn't matter for feature extraction
                 extra=extra,
                 rasterize_fn=rasterize_fn,
             )
