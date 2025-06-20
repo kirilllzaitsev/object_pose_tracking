@@ -940,3 +940,41 @@ def bbox_from_corners(corners):  # corners [[3], [3]] or [Bs, 2, 3]
         bbox[..., i, 1] = corners[..., y, 1]
         bbox[..., i, 2] = corners[..., z, 2]
     return bbox
+
+
+def depth_to_nocs_map(depth, R, T, K, mask, extents):
+    xyz = depth_to_xyz(depth, R, T, K, mask)
+    nocs_map = normalize_nocs(xyz, extents)
+    return nocs_map
+
+
+def depth_to_xyz(depth, R, T, K, mask):
+    # https://github.com/THU-DA-6D-Pose-Group/GDR-Net/blob/main/tools/lm/lm_pbr_1_gen_xyz_crop.py
+    Kinv = np.linalg.inv(K)
+
+    height, width = depth.shape
+    grid_x, grid_y = np.meshgrid(np.arange(width), np.arange(height))
+    grid_2d = np.stack([grid_x, grid_y, np.ones((height, width))], axis=2)
+    ProjEmb = np.einsum(
+        "ijkl,ijlm->ijkm",
+        R.T.reshape(1, 1, 3, 3),
+        depth.reshape(height, width, 1, 1)
+        * np.einsum(
+            "ijkl,ijlm->ijkm",
+            Kinv.reshape(1, 1, 3, 3),
+            grid_2d.reshape(height, width, 3, 1),
+        )
+        - T.reshape(1, 1, 3, 1),
+    ).squeeze() * mask.reshape(height, width, 1)
+
+    return ProjEmb
+
+
+def normalize_nocs(emb, extents):
+    if isinstance(extents, float):
+        for i in range(3):
+            emb[..., i] = emb[..., i] / extents + 0.5
+    else:
+        for i in range(3):
+            emb[..., i] = emb[..., i] / extents[i] + 0.5
+    return emb
