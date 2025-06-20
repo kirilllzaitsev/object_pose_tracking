@@ -25,6 +25,7 @@ from pose_tracking.utils.factor_utils import (
 from pose_tracking.utils.geom import (
     cam_to_2d,
     convert_3d_bbox_to_2d,
+    depth_to_nocs_map,
     egocentric_to_allocentric,
     interpolate_bbox_edges,
     world_to_2d,
@@ -247,6 +248,7 @@ class TrackingDataset(Dataset):
         if (
             self.use_mask_for_visibility_check
             or self.include_mask
+            or self.include_nocs
             or (self.use_occlusion_augm or self.use_bg_augm or self.do_subtract_bg)
         ):
             mask = self.get_mask(i)
@@ -291,9 +293,6 @@ class TrackingDataset(Dataset):
                     sample["depth"] = sample["depth"] * fg_mask
         if self.use_occlusion_augm:
             sample["rgb"] = self.transform_occlusion.apply(sample["rgb"], mask=mask)
-
-        if self.include_nocs:
-            ...
 
         if self.do_load_dino_features:
             features_path = f"{self.video_dir}/{self.dino_features_folder_name}/{self.id_strs[i]}.pt"
@@ -381,6 +380,17 @@ class TrackingDataset(Dataset):
                 sample["bbox_2d_kpts"] = cam_to_2d(bbox_3d_kpts, K=sample["intrinsics"])
                 sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
 
+        if self.include_nocs:
+            nocs = depth_to_nocs_map(
+                depth=sample["depth"],
+                mask=mask,
+                R=sample["pose"][..., :3, :3],
+                T=sample["pose"][..., :3, 3],
+                K=sample["intrinsics"],
+                extents=sample["mesh_diameter"],
+            )
+            sample["nocs"] = nocs
+
         sample = self.augment_sample(sample, i)
 
         if self.use_factors:
@@ -399,9 +409,7 @@ class TrackingDataset(Dataset):
             if "occlusion" in self.factors:
                 num_proj_px = rasterize_bbox_cv(bbox_3d_kpts_proj, img_size=(self.h, self.w)).sum()
                 num_visib_px = get_visib_px_num(occ_mask)
-                occlusion_factor = 1 - (
-                    num_visib_px / num_proj_px
-                ) if num_proj_px > 0 else 1
+                occlusion_factor = 1 - (num_visib_px / num_proj_px) if num_proj_px > 0 else 1
                 occlusion_factor = np.clip(occlusion_factor, self.f_min_occ_factor, self.f_max_occ_factor)
                 if self.max_num_objs == 1:
                     occlusion_factor = np.array([occlusion_factor])
