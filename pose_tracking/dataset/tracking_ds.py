@@ -15,6 +15,7 @@ from pose_tracking.dataset.dataloading import load_sample
 from pose_tracking.dataset.ds_common import process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
+from pose_tracking.utils.detr_utils import get_crops
 from pose_tracking.utils.factor_utils import (
     calc_bbox_area,
     calc_factor_strength,
@@ -354,6 +355,7 @@ class TrackingDataset(Dataset):
                     bbox_2ds = [bbox_2ds]
                 else:
                     bbox_2ds = list(bbox_2ds)
+            bbox_2ds_xyxy = [b.reshape(1, -1) for b in bbox_2ds]
             for idx, bbox_2d in enumerate(bbox_2ds):
                 bbox_2d = bbox_2d.astype(np.float32)
                 if self.do_normalize_bbox:
@@ -389,7 +391,15 @@ class TrackingDataset(Dataset):
                 K=sample["intrinsics"],
                 extents=sample["mesh_diameter"],
             )
+            nocs_crop = get_crops(
+                nocs[None],
+                bbox_xyxy=[torch.tensor(bbox_2ds_xyxy).float()[0]],
+                hw=nocs.shape[-2:],
+                is_normalized=False,
+                padding=5,
+            )
             sample["nocs"] = nocs
+            sample["nocs_crop"] = nocs_crop
 
         sample = self.augment_sample(sample, i)
 
