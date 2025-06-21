@@ -318,6 +318,7 @@ class TrackingDataset(Dataset):
             bbox_3d_kpts = ibbs_res["all_points"]
             if self.include_kpt_projections:
                 sample["bbox_2d_kpts_collinear_idxs"] = ibbs_res["collinear_quad_idxs"]
+                sample["bbox_3d_kpts_w"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts_corners"] = world_to_cam(sample["mesh_bbox"], sample["pose"]).astype(np.float32)
@@ -384,7 +385,7 @@ class TrackingDataset(Dataset):
 
         if self.include_nocs:
             nocs = depth_to_nocs_map(
-                depth=sample["depth"],
+                depth=sample.get("depth", self.get_depth(i)),
                 mask=mask,
                 R=sample["pose"][..., :3, :3],
                 T=sample["pose"][..., :3, 3],
@@ -398,7 +399,7 @@ class TrackingDataset(Dataset):
                 hw=nocs.shape[-2:],
                 is_normalized=False,
                 padding=5,
-            )
+            )[0]
             sample["nocs"] = nocs
             sample["nocs_crop"] = nocs_crop
 
