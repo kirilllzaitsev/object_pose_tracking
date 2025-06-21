@@ -10,22 +10,14 @@ import torch
 import torch.nn.functional as F
 from pose_tracking.dataset.dataloading import transfer_batch_to_device
 from pose_tracking.losses import SSIM
-from pose_tracking.metrics import (
-    calc_metrics,
-)
+from pose_tracking.metrics import calc_metrics
 from pose_tracking.models.encoders import is_param_part_of_encoders
 from pose_tracking.trainer import Trainer
 from pose_tracking.utils.artifact_utils import save_results_v2
 from pose_tracking.utils.common import detach_and_cpu
 from pose_tracking.utils.detr_utils import postprocess_detr_outputs
-from pose_tracking.utils.geom import (
-    convert_2d_t_to_3d,
-    egocentric_delta_pose_to_pose,
-)
-from pose_tracking.utils.misc import (
-    match_module_by_name,
-    reduce_dict,
-)
+from pose_tracking.utils.geom import convert_2d_t_to_3d, egocentric_delta_pose_to_pose
+from pose_tracking.utils.misc import distributed_rank, match_module_by_name, reduce_dict
 from pose_tracking.utils.pipe_utils import get_trackformer_args
 from pose_tracking.utils.pose import convert_r_t_to_rt
 from pose_tracking.utils.rotation_conversions import (
@@ -628,9 +620,16 @@ class TrainerDeformableDETR(Trainer):
         intrinsics = torch.stack([x["intrinsics"] for x in targets])
 
         extra_kwargs = {}
+        if self.model_without_ddp.use_uncertainty:
+            coformer_kwargs = {}
+            coformer_kwargs["gt_pose"] = torch.cat([x["pose"] for x in targets], dim=0)
+            if self.model_without_ddp.use_nocs:
+                for k in ["nocs", "nocs_crop"]:
+                    coformer_kwargs[k] = torch.stack([x[k] for x in targets], dim=0)
+            extra_kwargs["coformer_kwargs"] = coformer_kwargs
         if self.model_without_ddp.use_depth:
             extra_kwargs["depth"] = depth
-        if self.use_render_token and self.train_epoch_count > 5:
+        if self.use_render_token and self.train_epoch_count > 0:
             mesh = [t["mesh"] for t in targets]
 
             def render_batch_pose_preds_no_grad(**kwargs):
