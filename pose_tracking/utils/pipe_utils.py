@@ -274,6 +274,7 @@ def get_model(args, num_classes=None):
             factors=args.factors,
             roi_feature_dim=args.mt_roi_feature_dim,
             n_layers_f_transformer=args.mt_n_layers_f_transformer,
+            use_nocs=args.mt_use_nocs
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -704,6 +705,7 @@ def get_datasets(
     use_mask_for_bbox_2d=False,
     do_load_mesh_in_memory=False,
     use_allocentric_pose=False,
+    use_nocs=False,
     do_return_next_if_obj_invisible=False,
     max_train_videos=None,
     max_val_videos=None,
@@ -765,7 +767,8 @@ def get_datasets(
         use_mask_for_visibility_check=True,
         include_mesh=include_mesh,
         include_kpt_projections=use_priv_decoder or is_cnn_kpt_model,
-        do_return_next_if_obj_invisible=do_return_next_if_obj_invisible
+        do_return_next_if_obj_invisible=do_return_next_if_obj_invisible,
+        include_nocs=use_nocs,
     )
     if ds_name in ["ycbi"]:
         ycbi_kwargs = dict(

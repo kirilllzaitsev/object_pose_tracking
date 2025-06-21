@@ -1,3 +1,4 @@
+from pose_tracking.utils.misc import is_tensor
 import torch
 import torch.nn.functional as F
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
@@ -136,11 +137,11 @@ def postprocess_detr_outputs_nms(outputs, target_sizes):
 def prepare_bbox_for_cropping(bbox, hw, padding=5, is_normalized=False):
     # prepares xyxy bbox
     new_boxes = []
-    bbox = bbox.clone()
-    if bbox.ndim == 2:
-        bbox = [bbox]
-    else:
-        assert bbox.ndim == 3
+    if not isinstance(bbox, list):
+        if bbox.ndim == 2:
+            bbox = [bbox]
+        else:
+            assert bbox.ndim == 3
     h, w = hw
     for i, boxes_padded in enumerate(bbox):
         boxes_padded = boxes_padded.clone()
@@ -169,8 +170,9 @@ def get_crops(
     hw,
     crop_size=(60, 80),
     padding=5,
+    is_normalized=True,
 ):
-    new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=True, padding=padding)
+    new_boxes = prepare_bbox_for_cropping(bbox_xyxy, hw=hw, is_normalized=is_normalized, padding=padding)
     rgb_crop = roi_align(
         rgb,
         new_boxes,

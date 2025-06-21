@@ -187,6 +187,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
         target_hw=args.target_hw,
         do_return_next_if_obj_invisible=args.do_return_next_if_obj_invisible,
         tf_use_only_det=args.tf_use_only_det,
+        use_nocs=args.mt_use_nocs,
     )
 
     train_dataset, val_dataset = (
