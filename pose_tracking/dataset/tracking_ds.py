@@ -12,7 +12,7 @@ import torch
 import trimesh
 from pose_tracking.config import PROJ_DIR, logger
 from pose_tracking.dataset.dataloading import load_sample
-from pose_tracking.dataset.ds_common import process_raw_sample
+from pose_tracking.dataset.ds_common import adjust_img_for_torch, process_raw_sample
 from pose_tracking.metrics import normalize_rotation_matrix
 from pose_tracking.utils.common import get_ordered_paths
 from pose_tracking.utils.detr_utils import get_crops
@@ -391,6 +391,7 @@ class TrackingDataset(Dataset):
                 K=sample["intrinsics"],
                 extents=sample["mesh_diameter"],
             )
+            nocs = adjust_img_for_torch(nocs).float()
             nocs_crop = get_crops(
                 nocs[None],
                 bbox_xyxy=[torch.tensor(bbox_2ds_xyxy).float()[0]],
