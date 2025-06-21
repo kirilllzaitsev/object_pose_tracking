@@ -25,7 +25,6 @@ from pose_tracking.utils.kpt_utils import (
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.segm_utils import mask_morph
 from timm.models.resnet import resnet18, resnet50
-from torchvision.models import resnet18, resnet50
 
 
 def get_hook(outs, name):
@@ -323,6 +322,7 @@ class DETRBase(nn.Module):
         use_roi=False,
         do_refinement_with_attn=False,
         use_depth=False,
+        use_nocs=True,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
         factors=None,
@@ -342,6 +342,7 @@ class DETRBase(nn.Module):
         self.do_extract_rt_features = do_extract_rt_features
         self.use_v1_code = use_v1_code
         self.use_uncertainty = use_uncertainty
+        self.use_nocs = use_nocs
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -445,6 +446,8 @@ class DETRBase(nn.Module):
                 ),
                 n_layers,
             )
+        if use_nocs:
+            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
         if use_pose_tokens:
             self.pose_proj = nn.Linear(d_model, d_model)
             pose_token_encoder_layer = nn.TransformerEncoderLayer(
@@ -497,6 +500,9 @@ class DETRBase(nn.Module):
                 use_render_token=use_render_token,
                 n_layers_f_transformer=n_layers_f_transformer,
             )
+        self.gt_pose_proj = nn.Linear(9, d_model)  # 3 for t, 6 for rot
+        for p in self.gt_pose_proj.parameters():
+            p.requires_grad = False
         init_params(self)
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
@@ -512,7 +518,9 @@ class DETRBase(nn.Module):
             raise ValueError(f"Unknown encoding type {encoding_type}")
         return pe_encoder
 
-    def forward(self, x, pose_tokens=None, prev_tokens=None, depth=None, pose_renderer_fn=None, **kwargs):
+    def forward(
+        self, x, pose_tokens=None, prev_tokens=None, depth=None, pose_renderer_fn=None, coformer_kwargs=None, **kwargs
+    ):
         extract_res = self.extract_tokens(x, depth=depth, **kwargs)
         tokens = extract_res["tokens"]
 
@@ -542,6 +550,7 @@ class DETRBase(nn.Module):
             img_features=extract_res.get("img_features"),
             rgb=x,
             pose_renderer_fn=pose_renderer_fn,
+            coformer_kwargs=coformer_kwargs,
         )
 
     def forward_tokens(
@@ -554,6 +563,7 @@ class DETRBase(nn.Module):
         img_features=None,
         rgb=None,
         pose_renderer_fn=None,
+        coformer_kwargs=None,
     ):
         tokens = tokens.transpose(-1, -2)  # (B, D, N) -> (B, N, D)
 
@@ -638,16 +648,37 @@ class DETRBase(nn.Module):
                     pred_t = self.t_mlps[layer_idx](t_mlp_in)
                 out["t"] = pred_t
             if self.do_predict_2d_t:
-                outputs_depth = self.depth_embed[layer_idx](pose_token)
+                if self.do_extract_rt_features:
+                    outputs_depth, last_latent_depth = self.depth_embed[layer_idx](pose_token)
+                else:
+                    outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
 
             b = pred_logits.shape[0]
             if self.use_uncertainty:
+                rt_latents = [last_latent_rot, last_latent_t]
+                if self.do_predict_2d_t:
+                    rt_latents.append(last_latent_depth)
+                coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
+                gt_pose = coformer_kwargs.get("gt_pose")
+                new_latents = []
+                if gt_pose is not None:
+                    gt_pose_latent = self.gt_pose_proj(gt_pose)
+                    new_latents.append(gt_pose_latent)
+                nocs = coformer_kwargs.get("nocs")
+                if self.cnn_nocs:
+                    assert nocs is not None
+                if nocs is not None:
+                    nocs_feats = self.cnn_nocs(nocs)
+                    nocs_crop_feats = self.cnn_nocs(coformer_kwargs["nocs_crop"])
+                    new_latents.extend([nocs_feats, nocs_crop_feats])
+                new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
+
                 out_fdetr = self.coformer(
                     o,
                     rgb=rgb,
                     pred_boxes=pred_boxes,
-                    rt_latents=[last_latent_rot, last_latent_t],
+                    rt_latents=rt_latents + new_latents,
                     layer_idx=layer_idx,
                     pose_token=pose_token if self.use_pose_tokens else None,
                     pose_renderer_fn=pose_renderer_fn,
