@@ -395,13 +395,24 @@ class TrackingDataset(Dataset):
             nocs = adjust_img_for_torch(nocs).float()
             nocs_crop = get_crops(
                 nocs[None],
-                bbox_xyxy=[torch.tensor(bbox_2ds_xyxy).float()[0]],
+                bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy)).float()[0]],
                 hw=nocs.shape[-2:],
                 is_normalized=False,
                 padding=5,
+                crop_size=(64, 64),
+            )
+            nocs_crop_mask = get_crops(
+                torch.tensor(mask)[None, None].float(),
+                bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy)).float()[0]],
+                hw=mask.shape[-2:],
+                is_normalized=False,
+                padding=5,
+                crop_size=(64, 64),
             )[0]
+            nocs_crop_mask = (nocs_crop_mask > 0.5).float()
             sample["nocs"] = nocs
             sample["nocs_crop"] = nocs_crop
+            sample["nocs_crop_mask"] = nocs_crop_mask
 
         sample = self.augment_sample(sample, i)
 

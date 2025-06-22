@@ -258,12 +258,6 @@ class VideoDatasetTracking(VideoDataset):
                 if k in mesh_keys:
                     new_sample[f"prev_{k}"] = v
 
-            for k in ['nocs', 'nocs_crop']:
-                if k in sample_prev:
-                    new_sample[f"prev_{k}"] = sample_prev[k]
-                if k in sample:
-                    new_sample[k] = sample[k]
-
             if self.do_predict_rel_pose:
 
                 pose_mat_prev_gt_abs = self.pose_to_mat_converter_fn(
@@ -359,6 +353,7 @@ class VideoDatasetTracking(VideoDataset):
                     "obj_name",
                     "nocs",
                     "nocs_crop",
+                    "nocs_crop_mask",
                 ]
                 + mesh_keys
                 if k in new_sample
