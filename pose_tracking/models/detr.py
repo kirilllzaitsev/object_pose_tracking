@@ -181,6 +181,41 @@ class DETRPretrained(nn.Module):
         return res
 
 
+def get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4):
+    features = [nn.Conv2d(in_channels, hidden_filters, kernel_size=3, stride=1, padding=1, bias=False)]
+
+    for i in range(num_layers):
+        if i >= 1:
+            features.append(nn.UpsamplingBilinear2d(scale_factor=2))
+        features.append(
+            nn.Conv2d(
+                hidden_filters,
+                hidden_filters,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False,
+            )
+        )
+        features.append(FrozenBatchNorm2d(hidden_filters))
+        features.append(nn.ReLU(inplace=True))
+
+        features.append(
+            nn.Conv2d(
+                hidden_filters,
+                hidden_filters,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=False,
+            )
+        )
+        features.append(FrozenBatchNorm2d(hidden_filters))
+        features.append(nn.ReLU(inplace=True))
+    features.append(nn.Conv2d(hidden_filters, out_filters, kernel_size=3, stride=1, padding=1, bias=False))
+    return nn.Sequential(*features)
+
+
 class PoseConfidenceTransformer(nn.Module):
     def __init__(
         self,
