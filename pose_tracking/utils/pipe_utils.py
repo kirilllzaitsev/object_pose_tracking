@@ -274,7 +274,8 @@ def get_model(args, num_classes=None):
             factors=args.factors,
             roi_feature_dim=args.mt_roi_feature_dim,
             n_layers_f_transformer=args.mt_n_layers_f_transformer,
-            use_nocs=args.mt_use_nocs
+            use_nocs=args.mt_use_nocs,
+            use_nocs_pred=args.mt_use_nocs_pred
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -509,6 +510,7 @@ def get_trackformer_args(args):
     tf_args.roi_feature_dim = args.mt_roi_feature_dim
     tf_args.use_render_token = args.mt_use_render_token
     tf_args.use_uncertainty = args.mt_use_uncertainty
+    tf_args.use_nocs = args.mt_use_nocs_pred
     tf_args.use_pose_tokens = args.mt_use_pose_tokens
 
     tf_args.backbone = args.encoder_name

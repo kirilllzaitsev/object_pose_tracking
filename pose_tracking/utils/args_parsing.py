@@ -274,6 +274,9 @@ def get_parser():
         "--mt_use_nocs", action="store_true", help="Use NOCS inputs"
     )
     model_args.add_argument(
+        "--mt_use_nocs_pred", action="store_true", help="Use NOCS head"
+    )
+    model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
