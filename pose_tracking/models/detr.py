@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP, MLPFactors
-from pose_tracking.models.encoders import get_encoders
+from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
@@ -357,7 +357,8 @@ class DETRBase(nn.Module):
         use_roi=False,
         do_refinement_with_attn=False,
         use_depth=False,
-        use_nocs=True,
+        use_nocs=False,
+        use_nocs_pred=False,
         final_feature_dim=None,
         pose_token_time_encoding="sin",
         factors=None,
@@ -378,6 +379,7 @@ class DETRBase(nn.Module):
         self.use_v1_code = use_v1_code
         self.use_uncertainty = use_uncertainty
         self.use_nocs = use_nocs
+        self.use_nocs_pred = use_nocs_pred
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -483,6 +485,8 @@ class DETRBase(nn.Module):
             )
         if use_nocs:
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+            if self.use_nocs_pred:
+                self.nocs_head = get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4)
         if use_pose_tokens:
             self.pose_proj = nn.Linear(d_model, d_model)
             pose_token_encoder_layer = nn.TransformerEncoderLayer(
@@ -701,13 +705,22 @@ class DETRBase(nn.Module):
                     gt_pose_latent = self.gt_pose_proj(gt_pose)
                     new_latents.append(gt_pose_latent)
                 nocs = coformer_kwargs.get("nocs")
-                if self.cnn_nocs:
+                if self.use_nocs or self.use_nocs_pred:
                     assert nocs is not None
-                if nocs is not None:
+                if self.use_nocs:
                     nocs_feats = self.cnn_nocs(nocs)
-                    nocs_crop_feats = self.cnn_nocs(coformer_kwargs["nocs_crop"])
+                    nocs_crop_feats = self.cnn_nocs(
+                        einops.rearrange(coformer_kwargs["nocs_crop"], "b n ... -> (b n) ...")
+                    )  # crop per obj
                     new_latents.extend([nocs_feats, nocs_crop_feats])
                 new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
+                if self.use_nocs_pred:
+                    nocs_pred = self.nocs_head(einops.rearrange(o, "b q d -> (b q) d").view(-1, 4, 8, 8))
+                    nocs_pred_feats = self.cnn_nocs(nocs_pred)
+                    nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
+                    nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
+                    new_latents.append(nocs_pred_feats)
+                    out["nocs_pred"] = nocs_pred
 
                 out_fdetr = self.coformer(
                     o,
@@ -747,6 +760,8 @@ class DETRBase(nn.Module):
                 res["factors"] = last_out["factors"]
             res["uncertainty_rot"] = last_out["uncertainty_rot"]
             res["uncertainty_t"] = last_out["uncertainty_t"]
+            if self.use_nocs_pred:
+                res["nocs_pred"] = last_out["nocs_pred"]
         res["tokens"] = tokens_enc
 
         return res
