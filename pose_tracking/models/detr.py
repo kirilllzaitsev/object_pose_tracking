@@ -228,10 +228,14 @@ class PoseConfidenceTransformer(nn.Module):
         roi_feature_dim=256,
         factors=None,
         use_render_token=False,
+        use_nocs=False,
+        use_nocs_pred=False,
     ):
         super().__init__()
 
         self.use_render_token = use_render_token
+        self.use_nocs = use_nocs
+        self.use_nocs_pred = use_nocs_pred
 
         self.n_queries = n_queries
         self.d_model = d_model
@@ -263,9 +267,27 @@ class PoseConfidenceTransformer(nn.Module):
         )
         self.uncertainty_layer = FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer)
 
-        # assert n_layers == 6, "assumes 6 decoder layers"
+        self.gt_pose_proj = nn.Linear(9, d_model)  # 3 for t, 6 for rot
+        for p in self.gt_pose_proj.parameters():
+            p.requires_grad = False
 
-    def forward(self, o, rgb, pred_boxes, rt_latents, layer_idx, pose_token=None, pose_renderer_fn=None, out_rt=None):
+        if use_nocs:
+            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+            if self.use_nocs_pred:
+                self.nocs_head = get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4)
+
+    def forward(
+        self,
+        o,
+        rgb,
+        pred_boxes,
+        rt_latents,
+        layer_idx,
+        pose_token=None,
+        pose_renderer_fn=None,
+        out_rt=None,
+        coformer_kwargs=None,
+    ):
         out = {}
         if layer_idx != self.n_layers - 1:
             return out
@@ -307,21 +329,48 @@ class PoseConfidenceTransformer(nn.Module):
         if pose_token is not None:
             obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
         crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
-        obs_tokens = torch.cat(
-            [
-                obs_tokens,
-                *[x.unsqueeze(-1).detach() for x in rt_latents],
-                crop_feats_per_q.unsqueeze(-1).detach(),
-            ],
-            dim=-1,
-        )
+
         if self.use_render_token and pose_renderer_fn is not None:
             render_poses = torch.cat([out_rt["t"], out_rt["rot"]], dim=-1)
             rendered = pose_renderer_fn(poses_pred=render_poses)
             # TODO: a learnable net? crop_cnn is frozen atm
             rendered_feats = self.crop_cnn(rendered["rgb"].to(render_poses.device))
             rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
-            obs_tokens = torch.cat([obs_tokens, rendered_feats.unsqueeze(-1).detach()], dim=-1)
+            rt_latents.append(rendered_feats)
+
+        new_latents = []
+        coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
+        gt_pose = coformer_kwargs.get("gt_pose")
+        if gt_pose is not None:
+            gt_pose_latent = self.gt_pose_proj(gt_pose)
+            new_latents.append(gt_pose_latent)
+        nocs = coformer_kwargs.get("nocs")
+        if self.use_nocs or self.use_nocs_pred:
+            assert nocs is not None
+        if self.use_nocs:
+            nocs_feats = self.cnn_nocs(nocs)
+            nocs_crop_feats = self.cnn_nocs(
+                einops.rearrange(coformer_kwargs["nocs_crop"], "b n ... -> (b n) ...")
+            )  # crop per obj
+            new_latents.extend([nocs_feats, nocs_crop_feats])
+        new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
+        if self.use_nocs_pred:
+            nocs_pred = self.nocs_head(einops.rearrange(o, "b q d -> (b q) d").view(-1, 4, 8, 8))
+            nocs_pred_feats = self.cnn_nocs(nocs_pred)
+            nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
+            nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
+            new_latents.append(nocs_pred_feats)
+            out["nocs_pred"] = nocs_pred
+
+        latents = rt_latents + new_latents
+        obs_tokens = torch.cat(
+            [
+                obs_tokens,
+                *[x.unsqueeze(-1).detach() for x in latents],
+                crop_feats_per_q.unsqueeze(-1).detach(),
+            ],
+            dim=-1,
+        )
 
         obs_tokens = einops.rearrange(obs_tokens, "b q d f -> (b q) f d")
         factor_tokens = einops.rearrange(factor_tokens, "b q d f -> (b q) f d")
@@ -483,10 +532,6 @@ class DETRBase(nn.Module):
                 ),
                 n_layers,
             )
-        if use_nocs:
-            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
-            if self.use_nocs_pred:
-                self.nocs_head = get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4)
         if use_pose_tokens:
             self.pose_proj = nn.Linear(d_model, d_model)
             pose_token_encoder_layer = nn.TransformerEncoderLayer(
@@ -538,10 +583,9 @@ class DETRBase(nn.Module):
                 factors=factors,
                 use_render_token=use_render_token,
                 n_layers_f_transformer=n_layers_f_transformer,
+                use_nocs=use_nocs,
+                use_nocs_pred=use_nocs_pred,
             )
-        self.gt_pose_proj = nn.Linear(9, d_model)  # 3 for t, 6 for rot
-        for p in self.gt_pose_proj.parameters():
-            p.requires_grad = False
         init_params(self)
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
@@ -698,39 +742,17 @@ class DETRBase(nn.Module):
                 rt_latents = [last_latent_rot, last_latent_t]
                 if self.do_predict_2d_t:
                     rt_latents.append(last_latent_depth)
-                coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
-                gt_pose = coformer_kwargs.get("gt_pose")
-                new_latents = []
-                if gt_pose is not None:
-                    gt_pose_latent = self.gt_pose_proj(gt_pose)
-                    new_latents.append(gt_pose_latent)
-                nocs = coformer_kwargs.get("nocs")
-                if self.use_nocs or self.use_nocs_pred:
-                    assert nocs is not None
-                if self.use_nocs:
-                    nocs_feats = self.cnn_nocs(nocs)
-                    nocs_crop_feats = self.cnn_nocs(
-                        einops.rearrange(coformer_kwargs["nocs_crop"], "b n ... -> (b n) ...")
-                    )  # crop per obj
-                    new_latents.extend([nocs_feats, nocs_crop_feats])
-                new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
-                if self.use_nocs_pred:
-                    nocs_pred = self.nocs_head(einops.rearrange(o, "b q d -> (b q) d").view(-1, 4, 8, 8))
-                    nocs_pred_feats = self.cnn_nocs(nocs_pred)
-                    nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
-                    nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
-                    new_latents.append(nocs_pred_feats)
-                    out["nocs_pred"] = nocs_pred
 
                 out_fdetr = self.coformer(
                     o,
                     rgb=rgb,
                     pred_boxes=pred_boxes,
-                    rt_latents=rt_latents + new_latents,
+                    rt_latents=rt_latents,
                     layer_idx=layer_idx,
                     pose_token=pose_token if self.use_pose_tokens else None,
                     pose_renderer_fn=pose_renderer_fn,
                     out_rt={"t": out["t"], "rot": out["rot"]} if self.coformer.use_render_token else None,
+                    coformer_kwargs=coformer_kwargs,
                 )
                 out.update(out_fdetr)
 
