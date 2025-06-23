@@ -386,6 +386,13 @@ class PoseConfidenceTransformer(nn.Module):
             out[f"uncertainty_{k}"] = v
         return out
 
+    def __repr__(self):
+        return print_cls(
+            self,
+            extra_str=super().__repr__(),
+            excluded_attrs=["crop_cnn", "factor_mlps"],
+        )
+
 
 class DETRBase(nn.Module):
 
