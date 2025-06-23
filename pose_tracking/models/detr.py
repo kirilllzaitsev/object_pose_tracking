@@ -306,6 +306,7 @@ class PoseConfidenceTransformer(nn.Module):
         pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
         rgb_crop = get_crops(rgb, pred_boxes_xyxy.detach(), hw=hw, crop_size=(80 * 2, 80 * 2))
         crop_feats = self.crop_cnn(rgb_crop)
+        rgb_feats = self.crop_cnn(rgb)
         if self.use_factors:
             factors = {}
             factor_latents = {}
@@ -360,12 +361,14 @@ class PoseConfidenceTransformer(nn.Module):
             new_latents.append(nocs_pred_feats)
             out["nocs_pred"] = nocs_pred
 
-        latents = rt_latents + new_latents
+        rgb_feats_per_q = rgb_feats.unsqueeze(1).repeat(1, self.n_queries, 1)
         obs_tokens = torch.cat(
             [
                 obs_tokens,
-                *[x.unsqueeze(-1).detach() for x in latents],
+                *[x.unsqueeze(-1).detach() for x in rt_latents],
+                *[x.unsqueeze(-1) for x in new_latents],
                 crop_feats_per_q.unsqueeze(-1).detach(),
+                rgb_feats_per_q.unsqueeze(-1).detach(),
             ],
             dim=-1,
         )
