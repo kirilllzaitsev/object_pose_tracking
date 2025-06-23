@@ -274,7 +274,8 @@ class PoseConfidenceTransformer(nn.Module):
         if use_nocs:
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
             if self.use_nocs_pred:
-                self.nocs_head = get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4)
+                self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=64, out_filters=3, num_layers=4)
+                self.nocs_proj = nn.Linear(d_model + roi_feature_dim, d_model + roi_feature_dim)
 
     def forward(
         self,
@@ -355,7 +356,9 @@ class PoseConfidenceTransformer(nn.Module):
             new_latents.extend([nocs_feats, nocs_crop_feats])
         new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
         if self.use_nocs_pred:
-            nocs_pred = self.nocs_head(einops.rearrange(o, "b q d -> (b q) d").view(-1, 4, 8, 8))
+            nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
+            nocs_in = self.nocs_proj(nocs_in)
+            nocs_pred = self.nocs_head(einops.rearrange(nocs_in, "b q d -> (b q) d").view(-1, 4 * 2, 8, 8))
             nocs_pred_feats = self.cnn_nocs(nocs_pred)
             nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
