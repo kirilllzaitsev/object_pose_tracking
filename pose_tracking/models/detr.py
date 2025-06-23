@@ -341,19 +341,14 @@ class PoseConfidenceTransformer(nn.Module):
 
         new_latents = []
         coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
-        gt_pose = coformer_kwargs.get("gt_pose")
-        if gt_pose is not None:
-            gt_pose_latent = self.gt_pose_proj(gt_pose)
-            new_latents.append(gt_pose_latent)
         nocs = coformer_kwargs.get("nocs")
         if self.use_nocs or self.use_nocs_pred:
             assert nocs is not None
         if self.use_nocs:
-            nocs_feats = self.cnn_nocs(nocs)
             nocs_crop_feats = self.cnn_nocs(
                 einops.rearrange(coformer_kwargs["nocs_crop"], "b n ... -> (b n) ...")
             )  # crop per obj
-            new_latents.extend([nocs_feats, nocs_crop_feats])
+            new_latents.extend([nocs_crop_feats])
         new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
         if self.use_nocs_pred:
             nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
