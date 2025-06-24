@@ -335,11 +335,7 @@ class TrackingDataset(Dataset):
                 bbox_2ds = []
                 if not self.include_mask:
                     mask = self.get_mask(i)
-                if self.max_num_objs > 1:
-                    colors = [v for k, v in self.segm_labels_to_color.items() if k in self.obj_names]
-                    bin_masks = [np.all(mask == c, axis=-1) for c in colors]
-                else:
-                    bin_masks = [mask]
+                bin_masks = self.get_bin_masks(mask)
                 for is_visib, bin_mask in zip(sample["is_visible"], bin_masks):
                     if is_visib:
                         bbox_2d = infer_bounding_box(bin_mask)
@@ -458,6 +454,10 @@ class TrackingDataset(Dataset):
         )
 
         return sample
+
+    def get_bin_masks(self, mask):
+        bin_masks = [mask]
+        return bin_masks
 
     def add_mesh_data_to_sample(self, i, sample):
         sample["mesh_pts"] = self.mesh_pts
@@ -583,6 +583,11 @@ class TrackingMultiObjDataset(TrackingDataset):
             ocolor = self.segm_labels_to_color[oname]
             visibilities.append((mask == ocolor).all(axis=-1).sum() > self.min_pixels_for_visibility)
         return visibilities
+
+    def get_bin_masks(self, mask):
+        colors = [v for k, v in self.segm_labels_to_color.items() if k in self.obj_names]
+        bin_masks = [np.all(mask == c, axis=-1) for c in colors]
+        return bin_masks
 
 
 class TrackingDatasetEval:
