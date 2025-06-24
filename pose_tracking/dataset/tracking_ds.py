@@ -240,12 +240,13 @@ class TrackingDataset(Dataset):
 
         if self.include_rgb:
             sample["rgb"] = self.get_color(i)
-        if self.include_depth:
+        if self.include_depth or self.include_nocs:
             depth = self.get_depth(i)
-            if self.do_normalize_depth:
-                depth /= self.max_depth
-                sample["max_depth"] = self.max_depth
-            sample["depth"] = depth
+            if self.include_depth:
+                sample["depth"] = depth
+                if self.do_normalize_depth:
+                    sample["depth"] = sample["depth"] / self.max_depth
+                    sample["max_depth"] = self.max_depth
 
         if (
             self.use_mask_for_visibility_check
@@ -303,9 +304,10 @@ class TrackingDataset(Dataset):
                 sample["features_rgb"] = torch.load(features_path, weights_only=False)
 
         if self.include_pose:
-            sample["pose"] = self.get_pose(i)
+            pose = self.get_pose(i)
+            sample["pose"] = pose
             if self.use_allocentric_pose:
-                sample["pose"] = egocentric_to_allocentric(sample["pose"])
+                sample["pose"] = egocentric_to_allocentric(copy.deepcopy(sample["pose"]))
 
         sample["rgb_path"] = self.color_files[i]
         sample["intrinsics"] = self.get_intrinsics(i)
