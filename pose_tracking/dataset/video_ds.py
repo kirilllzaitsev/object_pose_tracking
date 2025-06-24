@@ -369,8 +369,6 @@ class VideoDatasetTracking(VideoDataset):
         return seq
 
     def rm_invisible_obj(self, s, visible_obj_mask):
-        # if len(visible_obj_idxs) == 1:
-        #     return s
         s = s.copy()
         for k, v in s.items():
             if k in ["pose", "class_id"] or "mesh_" in k or "bbox_" in k:

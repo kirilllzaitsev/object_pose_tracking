@@ -383,35 +383,46 @@ class TrackingDataset(Dataset):
                 sample["bbox_2d_kpts"] /= np.array([self.w, self.h])
 
         if self.include_nocs:
-            nocs = depth_to_nocs_map(
-                depth=sample.get("depth", self.get_depth(i)),
-                mask=mask,
-                R=sample["pose"][..., :3, :3],
-                T=sample["pose"][..., :3, 3],
-                K=sample["intrinsics"],
-                extents=sample["mesh_diameter"],
-            )
-            nocs = adjust_img_for_torch(nocs).float()
-            nocs_crop = get_crops(
-                nocs[None],
-                bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy)).float()[0]],
-                hw=nocs.shape[-2:],
-                is_normalized=False,
-                padding=5,
-                crop_size=(64, 64),
-            )
-            nocs_crop_mask = get_crops(
-                torch.tensor(mask)[None, None].float(),
-                bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy)).float()[0]],
-                hw=mask.shape[-2:],
-                is_normalized=False,
-                padding=5,
-                crop_size=(64, 64),
-            )[0]
-            nocs_crop_mask = (nocs_crop_mask > 0.5).float()
-            sample["nocs"] = nocs
-            sample["nocs_crop"] = nocs_crop
-            sample["nocs_crop_mask"] = nocs_crop_mask
+
+            def use_idx_if_multi(arr, idx):
+                if self.max_num_objs == 1:
+                    return arr
+                return arr[idx]
+
+            bin_masks = self.get_bin_masks(mask)
+            nocs_crops = []
+            nocs_crop_masks = []
+            for oidx in range(len(bbox_2ds_xyxy)):
+                nocs = depth_to_nocs_map(
+                    depth=depth,
+                    mask=bin_masks[oidx],
+                    R=use_idx_if_multi(pose, oidx)[:3, :3],
+                    T=use_idx_if_multi(pose, oidx)[:3, 3],
+                    K=sample["intrinsics"],
+                    extents=use_idx_if_multi(sample["mesh_diameter"], oidx),
+                )
+                nocs = adjust_img_for_torch(nocs).float()
+                nocs_crop = get_crops(
+                    nocs[None],
+                    bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy[oidx])).float()],
+                    hw=nocs.shape[-2:],
+                    is_normalized=False,
+                    padding=5,
+                    crop_size=(64, 64),
+                )
+                nocs_crop_mask = get_crops(
+                    torch.tensor(bin_masks[oidx])[None, None].float(),
+                    bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy[oidx])).float()],
+                    hw=bin_masks[oidx].shape[-2:],
+                    is_normalized=False,
+                    padding=5,
+                    crop_size=(64, 64),
+                )[0]
+                nocs_crop_mask = (nocs_crop_mask > 0.5).float()
+                nocs_crops.append(nocs_crop[0])
+                nocs_crop_masks.append(nocs_crop_mask[0])
+            sample["nocs_crop"] = torch.stack(nocs_crops)
+            sample["nocs_crop_mask"] = torch.stack(nocs_crop_masks)
 
         sample = self.augment_sample(sample, i)
 
