@@ -210,9 +210,11 @@ class MLPFactors(MLP):
     def forward(self, x):
         for layer_idx, layer in enumerate(self.layers[:-1]):
             x = self.act(layer(x))
-            if layer_idx < len(self.dropouts):
+            if layer_idx < len(self.dropouts) - 1:
                 x = self.dropouts[layer_idx](x)
         last_hidden = x
+        if len(self.dropouts) > 0:
+            x = self.dropouts[-1](x)
         x = self.layers[-1](x)
         if self.act_out is not None:
             x = self.act_out(x)
