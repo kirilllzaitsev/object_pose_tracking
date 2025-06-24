@@ -53,10 +53,10 @@ def get_ds_sample(
             hw = rgb.shape[-2:]
             t_torch = cast_to_torch(t)
             t_2d_norm, center_depth = convert_3d_t_for_2d(t_torch, cast_to_torch(intrinsics).to(t_torch.dtype), hw)
-            sample["center_depth"] = center_depth[None]
+            sample["center_depth"] = center_depth[..., None]
             if math.isfinite(max_depth_m):
                 sample["center_depth"] = sample["center_depth"] / max_depth_m
-            sample["xy"] = t_2d_norm
+            sample["xy"] = t_2d_norm.squeeze(1)
         if rot_repr is not None:
             quat = convert_rotation_representation(torch.from_numpy(rot), rot_representation=rot_repr)
             pose = np.concatenate([t, quat], axis=-1)

@@ -85,6 +85,8 @@ class YCBvDataset(TrackingMultiObjDataset):
             obj_names=self.obj_names,
             segm_labels_to_color=YCBV_OBJ_NAME_TO_COLOR,
             pose_dirname="annotated_poses",
+            mask_dirname="mask",
+            is_mask_provided=os.path.exists(self.color_files[0].replace("rgb", "mask").replace(".png", f"_{0:06d}.png")),
             color_file_id_strs=color_file_id_strs,
             **kwargs,
         )

@@ -82,6 +82,7 @@ class TrackingDataset(Dataset):
         use_mask_for_visibility_check=True,
         use_bg_augm=False,
         do_return_next_if_obj_invisible=False,
+        is_mask_provided=False,
         max_depth=10,
         bbox_format="xyxy",
         transforms_rgb=None,
@@ -172,7 +173,7 @@ class TrackingDataset(Dataset):
         self.h, self.w = cv2.imread(self.color_files[0]).shape[:2]
         self.t_dim = 3 if t_repr == "3d" else 2
         self.init_mask = torch.tensor(self.get_mask(0)) if include_mask else None
-        self.is_mask_provided = os.path.exists(self.color_files[0].replace("rgb", "masks"))
+        self.is_mask_provided = is_mask_provided or os.path.exists(self.color_files[0].replace("rgb", "masks"))
         self.use_mask_for_visibility_check = use_mask_for_visibility_check and self.is_mask_provided
         self.do_filter_invisible_single_obj_frames = do_filter_invisible_single_obj_frames and self.is_mask_provided
 
