@@ -85,8 +85,8 @@ class YCBvDataset(TrackingMultiObjDataset):
             obj_names=self.obj_names,
             segm_labels_to_color=YCBV_OBJ_NAME_TO_COLOR,
             pose_dirname="annotated_poses",
-            mask_dirname="mask",
-            is_mask_provided=os.path.exists(self.color_files[0].replace("rgb", "mask").replace(".png", f"_{0:06d}.png")),
+            mask_dirname="mask_visib",
+            is_mask_provided=os.path.exists(self.color_files[0].replace("rgb", "mask_visib").replace(".png", f"_{0:06d}.png")),
             color_file_id_strs=color_file_id_strs,
             **kwargs,
         )
@@ -112,7 +112,7 @@ class YCBvDataset(TrackingMultiObjDataset):
         return sample
 
     def get_mask(self, i):
-        mask_path_template = self.color_files[i].replace("rgb", "mask").replace(".png", "_{i:06d}.png")
+        mask_path_template = self.color_files[i].replace("rgb", self.mask_dirname).replace(".png", "_{i:06d}.png")
         annot_idx_to_obj_name = {}
         mask_paths = []
         gt = self.scene_gt[str(i + self.first_idx)]
@@ -185,7 +185,7 @@ class YCBvDataset(TrackingMultiObjDataset):
                 cur[:3, 3] = np.array(k["cam_t_m2c"]) / 1e3
                 if mask is not None:  # When multi-instance exists, use mask to determine which one
                     gt_mask = cv2.imread(
-                        f"{self.video_dir}/mask_visib/{self.id_strs[i_frame]}_{i_k:06d}.png",
+                        f"{self.video_dir}/{self.mask_dirname}/{self.id_strs[i_frame]}_{i_k:06d}.png",
                         -1,
                     ).astype(bool)
                     intersect = (gt_mask * mask).astype(bool)
