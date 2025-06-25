@@ -688,11 +688,16 @@ def convert_2d_t_to_3d(t_pred, depth_pred, intrinsics, hw=None):
 
     t_pred_2d_backproj = []
     for sample_idx in range(len(t_pred)):
+        K = (
+            intrinsics[sample_idx]
+            if (isinstance(intrinsics, list) or (hasattr(intrinsics, "ndim") and intrinsics.ndim == 3))
+            else intrinsics
+        )
         t_pred_2d_backproj.append(
             backproj_2d_pts(
                 t_pred_2d_denorm[sample_idx][None],
                 depth=depth_pred[sample_idx],
-                K=intrinsics[sample_idx],
+                K=K,
             ).squeeze()
         )
     t_pred = torch.stack(t_pred_2d_backproj).to(depth_pred.device)
@@ -971,10 +976,11 @@ def depth_to_xyz(depth, R, T, K, mask):
 
 
 def normalize_nocs(emb, extents):
-    if isinstance(extents, float):
-        for i in range(3):
-            emb[..., i] = emb[..., i] / extents + 0.5
-    else:
+    if hasattr(extents, "len"):
+        assert len(extents) == 3, extents
         for i in range(3):
             emb[..., i] = emb[..., i] / extents[i] + 0.5
+    else:
+        for i in range(3):
+            emb[..., i] = emb[..., i] / extents + 0.5
     return emb
