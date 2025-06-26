@@ -258,7 +258,7 @@ class PoseConfidenceTransformer(nn.Module):
             self.factor_mlps = {}
             for k in factors:
                 in_dim = roi_feature_dim if k in self.local_factors else d_model
-                self.factor_mlps[k] = MLPFactors(in_dim, 10, d_model, num_layers=2, dropout=0.2, act_out=None)
+                self.factor_mlps[k] = MLPFactors(in_dim, 1, d_model, num_layers=2, dropout=0.2, act_out=None)
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
 
         self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
