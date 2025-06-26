@@ -728,6 +728,7 @@ def get_datasets(
     target_hw=None,
     tf_use_only_det=False,
 ):
+    assert not (use_nocs and do_normalize_depth)
 
     transform_rgb = get_transforms(transform_names, transform_prob=transform_prob) if transform_names else None
     is_tf_model = "trackformer" in model_name
@@ -746,8 +747,8 @@ def get_datasets(
     ds_kwargs_common = dict(
         shorter_side=None,
         zfar=max_depth_m,
-        include_mask=include_mask,
-        include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model,
+        include_mask=include_mask or use_nocs,
+        include_depth=include_depth or is_cnnlstm_model or is_detr_kpt_model or use_nocs,
         include_bbox_2d=include_bbox_2d,
         start_frame_idx=start_frame_idx,
         mask_pixels_prob=mask_pixels_prob,

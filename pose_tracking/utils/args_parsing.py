@@ -270,17 +270,13 @@ def get_parser():
     model_args.add_argument(
         "--mt_do_refinement_with_attn", action="store_true", help="Use transformer for layer-wise refinement"
     )
-    model_args.add_argument(
-        "--mt_use_nocs", action="store_true", help="Use NOCS inputs"
-    )
-    model_args.add_argument(
-        "--mt_use_nocs_pred", action="store_true", help="Use NOCS head"
-    )
+    model_args.add_argument("--mt_use_nocs", action="store_true", help="Use NOCS inputs")
+    model_args.add_argument("--mt_use_nocs_pred", action="store_true", help="Use NOCS head")
     model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
     model_args.add_argument("--do_predict_kpts", action="store_true", help="Predict keypoints")
-    model_args.add_argument("--use_kpts_for_rot", action="store_true", help="Use keypoints for rot estimation")
+    model_args.add_argument("--use_kpts_for_pose", action="store_true", help="Use keypoints for rot estimation")
     model_args.add_argument(
         "--use_pnp_for_rot_pred", action="store_true", help="Use EPnP for rot estimation based on predicted kpts"
     )
@@ -542,7 +538,7 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
 
     if args.use_obs_belief:
         assert args.use_depth
-    if args.use_kpts_for_rot or args.use_pnp_for_rot_pred:
+    if args.use_kpts_for_pose or args.use_pnp_for_rot_pred:
         assert args.do_predict_kpts
     if args.mt_do_refinement_with_pose_token:
         assert args.mt_do_refinement
@@ -595,6 +591,8 @@ def fix_outdated_args(args):
             args.rt_hidden_dim = args.hidden_dim
     if not hasattr(args, "mt_use_uncertainty"):
         args.mt_use_uncertainty = not is_none("factors")
+    if noattr("use_kpts_for_pose"):
+        args.use_kpts_for_pose = args.use_kpts_for_rot
     if noattr("use_mask_for_bbox_2d"):
         args.use_mask_for_bbox_2d = True
 
