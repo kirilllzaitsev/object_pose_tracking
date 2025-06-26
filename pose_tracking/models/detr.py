@@ -340,15 +340,32 @@ class PoseConfidenceTransformer(nn.Module):
             rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
             rt_latents.append(rendered_feats)
 
-        new_latents = []
         coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
-        nocs = coformer_kwargs.get("nocs")
         if self.use_nocs or self.use_nocs_pred:
-            assert nocs is not None
+            assert "nocs_crop" in coformer_kwargs
+            assert out_rt is not None
         if self.use_nocs:
-            nocs_crop_feats = self.cnn_nocs(
-                einops.rearrange(coformer_kwargs["nocs_crop"], "b n ... -> (b n) ...")
-            )  # crop per obj
+            rot = convert_rot_vector_to_matrix(out_rt["rot"]).detach()
+            t = out_rt["t"].detach()
+            nocs = depth_to_nocs_map_batched(
+                depth=coformer_kwargs["depth"].repeat_interleave(nqueries, dim=0),
+                mask=coformer_kwargs["mask"].repeat_interleave(nqueries, dim=0),
+                R=rot.view(-1, 3, 3),
+                T=t.view(-1, 3),
+                K=coformer_kwargs["intrinsics"].repeat_interleave(nqueries, dim=0),
+                extents=coformer_kwargs["mesh_diameter"].repeat_interleave(nqueries, dim=0),
+            )
+            nocs = nocs.permute(0, 3, 1, 2)
+            nocs_crop = get_crops(
+                nocs,
+                bbox_xyxy=pred_boxes_xyxy.flatten(0, 1).detach(),
+                hw=rgb.shape[-2:],
+                is_normalized=True,
+                padding=5,
+                crop_size=(64, 64),
+            )
+            nocs_crop_feats = self.cnn_nocs(nocs_crop)  # crop per obj
+            nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
         new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
         if self.use_nocs_pred:
