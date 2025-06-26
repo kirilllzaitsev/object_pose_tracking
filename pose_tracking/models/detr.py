@@ -60,7 +60,7 @@ class FactorTransformer(nn.Module):
     def __init__(self, d_model, n_heads, dropout=0.0, num_layers=1):
         super().__init__()
         self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
+            TransformerDecoderLayer(
                 d_model=d_model,
                 nhead=n_heads,
                 dim_feedforward=4 * d_model,
