@@ -1,59 +1,25 @@
-import copy
-
 import einops
 import torch
 import torch.nn as nn
 from einops import rearrange
 from pose_tracking.models.cnnlstm import MLP, MLPFactors
+from pose_tracking.models.detr_utils import (
+    CNNFeatureExtractor,
+    TransformerDecoderLayer,
+    get_clones,
+    get_hook,
+)
 from pose_tracking.models.encoders import FrozenBatchNorm2d, get_encoders
 from pose_tracking.models.matcher import box_cxcywh_to_xyxy
 from pose_tracking.models.pos_encoding import (
     PosEncoding,
-    PosEncodingCoord,
-    PosEncodingDepth,
     PositionEmbeddingLearned,
-    SpatialPosEncoding,
     timestep_embedding,
 )
 from pose_tracking.utils.detr_utils import get_crops
-from pose_tracking.utils.geom import backproj_2d_pts, calibrate_2d_pts_batch
-from pose_tracking.utils.kpt_utils import (
-    extract_kpts,
-    get_kpt_within_mask_indicator,
-    load_extractor,
-)
+from pose_tracking.utils.geom import depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
-from pose_tracking.utils.segm_utils import mask_morph
-from timm.models.resnet import resnet18, resnet50
-
-
-def get_hook(outs, name):
-    def hook(self, input, output):
-        outs[name] = output
-
-    return hook
-
-
-class CNNFeatureExtractor(nn.Module):
-    def __init__(self, out_dim=256, model_name="resnet18"):
-        super().__init__()
-        if model_name == "resnet18":
-            self.model = resnet18(pretrained=True)
-            fc_in_dim = 512
-        elif model_name == "resnet50":
-            self.model = resnet50(pretrained=True)
-            fc_in_dim = 2048
-        else:
-            raise ValueError(f"Unknown model name {model_name}")
-
-        if out_dim == fc_in_dim:
-            self.model.fc = nn.Identity()
-        else:
-            self.model.fc = nn.Linear(fc_in_dim, out_dim)
-
-    def forward(self, x):
-        x = self.model(x)
-        return x
+from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
 
 class FactorTransformer(nn.Module):
@@ -90,95 +56,6 @@ class FactorTransformer(nn.Module):
         out["rot"] = self.heads["rot"](decoded_rot).squeeze(-1)
         out["t"] = self.heads["t"](decoded_t).squeeze(-1)
         return out
-
-
-class DETRPretrained(nn.Module):
-
-    def __init__(
-        self,
-        num_classes,
-        use_pretrained_backbone=True,
-        rot_out_dim=4,
-        t_out_dim=3,
-        opt_only=[],
-        d_model=256,
-        n_layers=6,
-        dropout=0.0,
-        dropout_heads=0.0,
-        head_num_layers=2,
-    ):
-        super().__init__()
-
-        self.use_pretrained_backbone = use_pretrained_backbone
-
-        self.rot_out_dim = rot_out_dim
-        self.t_out_dim = t_out_dim
-        self.opt_only = opt_only
-        self.d_model = d_model
-        self.n_layers = n_layers
-        self.num_classes = num_classes
-        self.dropout = dropout
-        self.dropout_heads = dropout_heads
-        self.head_num_layers = head_num_layers
-
-        self.use_rot = not opt_only or (opt_only and "rot" in opt_only)
-        self.use_t = not opt_only or (opt_only and "t" in opt_only)
-
-        self.model = torch.hub.load("facebookresearch/detr:main", "detr_resnet50", pretrained=use_pretrained_backbone)
-
-        self.class_embed = get_clones(nn.Linear(256, num_classes + 1), n_layers)
-        self.bbox_embed = get_clones(
-            MLP(d_model, 4, hidden_dim=d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-        )
-        self.model.class_embed = nn.Identity()
-        self.model.bbox_embed = nn.Identity()
-        self.model.transformer.decoder.norm = nn.Identity()
-
-        for m in self.model.modules():
-            if isinstance(m, nn.Dropout):
-                m.p = dropout
-
-        if self.use_t:
-            self.t_mlps = get_clones(
-                MLP(d_model, t_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-            )
-        if self.use_rot:
-            self.rot_mlps = get_clones(
-                MLP(d_model, rot_out_dim, d_model, num_layers=head_num_layers, dropout=dropout_heads), n_layers
-            )
-
-        self.decoder_outs = {}
-        for i, layer in enumerate(self.model.transformer.decoder.layers):
-            name = f"layer_{i}"
-            layer.register_forward_hook(get_hook(self.decoder_outs, name))
-
-    def forward(self, x):
-        main_out = self.model(x)
-        outs = []
-        for layer_idx, (n, o) in enumerate(sorted(self.decoder_outs.items())):
-            out = {}
-            out["pred_logits"] = self.class_embed[layer_idx](o).transpose(0, 1)
-            out["pred_boxes"] = self.bbox_embed[layer_idx](o).sigmoid().transpose(0, 1)
-            if self.use_rot:
-                pred_rot = self.rot_mlps[layer_idx](o)
-                out["rot"] = pred_rot.transpose(0, 1)
-            if self.use_t:
-                pred_t = self.t_mlps[layer_idx](o)
-                out["t"] = pred_t.transpose(0, 1)
-
-            outs.append(out)
-        last_out = outs.pop()
-        res = {
-            "pred_logits": last_out["pred_logits"],
-            "pred_boxes": last_out["pred_boxes"],
-            "aux_outputs": outs,
-        }
-        if self.use_rot:
-            res["rot"] = last_out["rot"]
-        if self.use_t:
-            res["t"] = last_out["t"]
-
-        return res
 
 
 def get_query_to_nocs_net(in_channels=4, hidden_filters=64, out_filters=3, num_layers=4):
@@ -915,143 +792,3 @@ class DETR(DETRBase):
         tokens = self.proj(tokens)
         res["tokens"] = rearrange(tokens, "b n d -> b d n")
         return res
-
-
-class KeypointDETR(DETRBase):
-
-    def __init__(
-        self,
-        *args,
-        kpt_extractor_name="superpoint",
-        kpt_spatial_dim=2,
-        descriptor_dim=256,
-        use_mask_on_input=False,
-        use_mask_as_obj_indicator=False,
-        do_calibrate_kpt=False,
-        do_freeze_kpt_detector=True,
-        **kwargs,
-    ):
-        self.do_calibrate_kpt = do_calibrate_kpt
-        self.do_freeze_kpt_detector = do_freeze_kpt_detector
-
-        self.use_mask_on_input = use_mask_on_input
-        self.use_mask_as_obj_indicator = use_mask_as_obj_indicator
-        self.kpt_spatial_dim = kpt_spatial_dim
-        self.descriptor_dim = descriptor_dim
-
-        self.do_backproj_kpts_to_3d = self.kpt_spatial_dim == 3
-
-        super().__init__(
-            *args,
-            **kwargs,
-        )
-
-        self.token_dim = descriptor_dim
-        if use_mask_as_obj_indicator:
-            self.token_dim += 1
-        if self.use_depth:
-            self.pe_depth = PosEncodingDepth(self.d_model, use_mlp=False)
-        self.proj = nn.Conv1d(self.token_dim, self.d_model, kernel_size=1, stride=1)
-
-        self.kpt_extractor_name = kpt_extractor_name
-        self.extractor = load_extractor(kpt_extractor_name)
-
-        if do_freeze_kpt_detector:
-            for param in self.extractor.parameters():
-                param.requires_grad = False
-
-    def forward(self, x, pose_tokens=None, prev_tokens=None, **kwargs):
-        extract_res = self.extract_tokens(x, **kwargs)
-        tokens = extract_res["tokens"]
-        memory_key_padding_mask = extract_res.get("memory_key_padding_mask")
-
-        if self.encoding_type == "learned":
-            pos_enc = self.pe_encoder
-        elif self.encoding_type == "sin":
-            pos_enc = self.pe_encoder(tokens)
-        elif self.encoding_type == "none":
-            pos_enc = torch.zeros_like(tokens)[:, 0].unsqueeze(-1)
-        else:
-            pos_enc = self.pe_encoder(extract_res["kpts"])
-
-        out = self.forward_tokens(
-            tokens,
-            pos_enc,
-            memory_key_padding_mask=memory_key_padding_mask,
-            prev_pose_tokens=pose_tokens,
-            prev_tokens=prev_tokens,
-            img_features=extract_res.get("img_features"),
-            rgb=x,
-        )
-
-        for k in ["kpts", "descriptors", "score_map"]:
-            out[k] = extract_res[k]
-
-        return out
-
-    def extract_tokens(self, rgb, intrinsics=None, depth=None, mask=None):
-        if self.use_mask_on_input:
-            assert mask is not None and len(mask) > 0
-            mask = torch.stack([mask_morph(m, op_name="dilate") for m in mask]).unsqueeze(1)
-            rgb = rgb * mask
-        bs, c, h, w = rgb.shape
-        extracted_kpts = extract_kpts(rgb, extractor=self.extractor)
-        memory_key_padding_mask = extracted_kpts.get("memory_key_padding_mask")
-
-        descriptors = extracted_kpts["descriptors"]
-        kpts = extracted_kpts["keypoints"]
-
-        if depth is not None:
-            depth_1d = []
-            for i in range(bs):
-                depth_1d.append(depth[i, 0, kpts[i, :, 1].long(), kpts[i, :, 0].long()])
-            depth_1d = torch.stack(depth_1d, dim=0).to(kpts.device)
-        kpts = kpts / torch.tensor([w, h], dtype=kpts.dtype).to(kpts.device)
-
-        if self.do_backproj_kpts_to_3d or self.do_calibrate_kpt:
-            assert intrinsics is not None
-            K_norm = intrinsics.clone().float()
-            K_norm[..., 0, 0] /= w
-            K_norm[..., 0, 2] /= w
-            K_norm[..., 1, 1] /= h
-            K_norm[..., 1, 2] /= h
-            if self.do_backproj_kpts_to_3d:
-                assert depth is not None
-                kpts = backproj_2d_pts(kpts, depth=depth_1d, K=K_norm)
-            elif self.do_calibrate_kpt:
-                kpts = calibrate_2d_pts_batch(kpts, K=K_norm)
-
-        tokens = descriptors  # B x N x D
-
-        if self.use_mask_as_obj_indicator:
-            # TODO: n objs (kpts on each obj)
-            obj_indicator = get_kpt_within_mask_indicator(extracted_kpts["keypoints"], mask.squeeze(1)).unsqueeze(1)
-            tokens = torch.cat([tokens, obj_indicator.transpose(-1, -2)], dim=-1)
-        if self.use_depth:
-            depth_1d_pe = self.pe_depth(depth_1d.unsqueeze(-1))
-            if self.use_mask_as_obj_indicator:
-                depth_1d_pe = torch.cat([depth_1d_pe, torch.zeros_like(obj_indicator).transpose(-2, -1)], dim=-1)
-            tokens = tokens + depth_1d_pe
-
-        tokens = self.proj(tokens.transpose(-1, -2))
-
-        return {
-            "tokens": tokens,
-            "kpts": kpts,
-            "score_map": extracted_kpts["score_map"],
-            "descriptors": descriptors,
-            "memory_key_padding_mask": memory_key_padding_mask,
-        }
-
-    def get_pos_encoder(self, encoding_type, n_tokens=None):
-        if encoding_type == "spatial":
-            pe_encoder = SpatialPosEncoding(self.d_model, ndim=self.kpt_spatial_dim)
-        elif encoding_type == "sin_coord":
-            pe_encoder = PosEncodingCoord(self.d_model)
-        else:
-            pe_encoder = super().get_pos_encoder(encoding_type, n_tokens=n_tokens)
-        return pe_encoder
-
-
-def get_clones(module, N):
-    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
