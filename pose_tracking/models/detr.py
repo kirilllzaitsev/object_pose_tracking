@@ -275,7 +275,8 @@ class PoseConfidenceTransformer(nn.Module):
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
             if self.use_nocs_pred:
                 self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=64, out_filters=3, num_layers=4)
-                self.nocs_proj = nn.Linear(d_model + roi_feature_dim, d_model + roi_feature_dim)
+                self.nocs_head_in_dim = 512
+                self.nocs_proj = nn.Linear(d_model + roi_feature_dim, self.nocs_head_in_dim)
 
     def forward(
         self,
@@ -330,15 +331,15 @@ class PoseConfidenceTransformer(nn.Module):
         obs_tokens = o.unsqueeze(-1).detach()
         if pose_token is not None:
             obs_tokens = torch.cat([obs_tokens, pose_token.unsqueeze(-1).detach()], dim=-1)
-        crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
 
+        new_latents = []
         if self.use_render_token and pose_renderer_fn is not None:
             render_poses = torch.cat([out_rt["t"], out_rt["rot"]], dim=-1)
             rendered = pose_renderer_fn(poses_pred=render_poses)
             # TODO: a learnable net? crop_cnn is frozen atm
             rendered_feats = self.crop_cnn(rendered["rgb"].to(render_poses.device))
             rendered_feats = einops.rearrange(rendered_feats, "(b q) d -> b q d", b=b)
-            rt_latents.append(rendered_feats)
+            new_latents.append(rendered_feats)
 
         coformer_kwargs = {} if coformer_kwargs is None else coformer_kwargs
         if self.use_nocs or self.use_nocs_pred:
@@ -367,7 +368,8 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_feats = self.cnn_nocs(nocs_crop)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
-        new_latents = [l.unsqueeze(1).repeat(1, self.n_queries, 1) for l in new_latents]
+
+        crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
         if self.use_nocs_pred:
             nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
             nocs_in = self.nocs_proj(nocs_in)
@@ -776,7 +778,7 @@ class DETRBase(nn.Module):
                     layer_idx=layer_idx,
                     pose_token=pose_token if self.use_pose_tokens else None,
                     pose_renderer_fn=pose_renderer_fn,
-                    out_rt={"t": out["t"], "rot": out["rot"]} if self.coformer.use_render_token else None,
+                    out_rt={"t": out["t"], "rot": out["rot"]},
                     coformer_kwargs=coformer_kwargs,
                 )
                 out.update(out_fdetr)
