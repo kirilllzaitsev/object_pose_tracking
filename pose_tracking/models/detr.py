@@ -251,7 +251,10 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
             nocs_in = self.nocs_proj(nocs_in)
             nocs_pred = self.nocs_head(einops.rearrange(nocs_in, "b q d -> (b q) d").view(-1, 4 * 2, 8, 8))
-            nocs_pred_feats = self.cnn_nocs(nocs_pred)
+            nocs_pred_masked = nocs_pred * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
+                nqueries, dim=0
+            )
+            nocs_pred_feats = self.cnn_nocs(nocs_pred_masked)
             nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
             new_latents.append(nocs_pred_feats)
