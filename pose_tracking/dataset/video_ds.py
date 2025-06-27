@@ -354,6 +354,7 @@ class VideoDatasetTracking(VideoDataset):
                     "nocs",
                     "nocs_crop",
                     "nocs_crop_mask",
+                    "bbox_3d_kpts_proj",
                 ]
                 + mesh_keys
                 if k in new_sample

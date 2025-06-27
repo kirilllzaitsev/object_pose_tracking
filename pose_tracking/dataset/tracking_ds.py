@@ -316,7 +316,7 @@ class TrackingDataset(Dataset):
         if self.mesh_pts is not None:
             sample = self.add_mesh_data_to_sample(i, sample)
 
-        if self.bbox_num_kpts == 32 or self.include_kpt_projections:
+        if self.bbox_num_kpts == 32:
             ibbs_res = interpolate_bbox_edges(copy.deepcopy(sample["mesh_bbox"]), num_points=24)
             bbox_3d_kpts = ibbs_res["all_points"]
             if self.include_kpt_projections:
@@ -325,12 +325,13 @@ class TrackingDataset(Dataset):
                 sample["bbox_3d_kpts"] = world_to_cam(bbox_3d_kpts, sample["pose"]).astype(np.float32)
                 sample["bbox_3d_kpts_mesh"] = bbox_3d_kpts.astype(np.float32)
                 sample["bbox_3d_kpts_corners"] = world_to_cam(sample["mesh_bbox"], sample["pose"]).astype(np.float32)
-                sample["bbox_3d_kpts_corners"][:, 2] *= 1e-0
         else:
             bbox_3d_kpts = copy.deepcopy(sample["mesh_bbox"])
 
-        if self.use_factors and "occlusion" in self.factors:
+        if self.include_kpt_projections or (self.use_factors and "occlusion" in self.factors):
             bbox_3d_kpts_proj = world_to_2d(bbox_3d_kpts, sample["intrinsics"], sample["pose"])
+            if self.include_kpt_projections:
+                sample["bbox_3d_kpts_proj"] = bbox_3d_kpts_proj
 
         if self.include_bbox_2d:
             if self.use_mask_for_bbox_2d:
