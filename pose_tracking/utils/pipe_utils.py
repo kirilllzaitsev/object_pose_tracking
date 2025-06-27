@@ -275,7 +275,8 @@ def get_model(args, num_classes=None):
             roi_feature_dim=args.mt_roi_feature_dim,
             n_layers_f_transformer=args.mt_n_layers_f_transformer,
             use_nocs=args.mt_use_nocs,
-            use_nocs_pred=args.mt_use_nocs_pred
+            use_nocs_pred=args.mt_use_nocs_pred,
+            use_kpts_for_pose=args.use_kpts_for_pose,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -514,6 +515,7 @@ def get_trackformer_args(args):
     tf_args.use_nocs = args.mt_use_nocs
     tf_args.use_nocs_pred = args.mt_use_nocs_pred
     tf_args.use_pose_tokens = args.mt_use_pose_tokens
+    tf_args.use_kpts = args.use_kpts_for_pose
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc
@@ -711,6 +713,8 @@ def get_datasets(
     use_allocentric_pose=False,
     use_nocs=False,
     do_return_next_if_obj_invisible=False,
+    tf_use_only_det=False,
+    include_kpt_projections=False,
     max_train_videos=None,
     max_val_videos=None,
     max_test_videos=None,
@@ -726,7 +730,6 @@ def get_datasets(
     bbox_num_kpts=8,
     factors=None,
     target_hw=None,
-    tf_use_only_det=False,
 ):
     assert not (use_nocs and do_normalize_depth)
 
@@ -771,7 +774,7 @@ def get_datasets(
         use_allocentric_pose=use_allocentric_pose,
         use_mask_for_visibility_check=True,
         include_mesh=include_mesh,
-        include_kpt_projections=use_priv_decoder or is_cnn_kpt_model,
+        include_kpt_projections=include_kpt_projections or use_priv_decoder or is_cnn_kpt_model,
         do_return_next_if_obj_invisible=do_return_next_if_obj_invisible,
         include_nocs=use_nocs,
     )

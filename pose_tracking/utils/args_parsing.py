@@ -538,8 +538,6 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
 
     if args.use_obs_belief:
         assert args.use_depth
-    if args.use_kpts_for_pose or args.use_pnp_for_rot_pred:
-        assert args.do_predict_kpts
     if args.mt_do_refinement_with_pose_token:
         assert args.mt_do_refinement
     if args.mt_do_refinement_with_attn:
