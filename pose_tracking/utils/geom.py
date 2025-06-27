@@ -953,6 +953,12 @@ def depth_to_nocs_map(depth, R, T, K, mask, extents):
     return nocs_map
 
 
+def depth_to_nocs_map_batched(depth, R, T, K, mask, extents):
+    xyz = depth_to_xyz_batched(depth, R, T, K, mask)
+    nocs_map = normalize_nocs(xyz, extents)
+    return nocs_map
+
+
 def depth_to_xyz(depth, R, T, K, mask):
     # https://github.com/THU-DA-6D-Pose-Group/GDR-Net/blob/main/tools/lm/lm_pbr_1_gen_xyz_crop.py
     Kinv = np.linalg.inv(K)
@@ -976,6 +982,9 @@ def depth_to_xyz(depth, R, T, K, mask):
 
 
 def normalize_nocs(emb, extents):
+    if emb.ndim == 4:
+        lib = torch if is_tensor(emb) else np
+        return lib.stack([normalize_nocs(emb[i], extents[i]) for i in range(emb.shape[0])], 0)
     if hasattr(extents, "len"):
         assert len(extents) == 3, extents
         for i in range(3):
@@ -984,3 +993,51 @@ def normalize_nocs(emb, extents):
         for i in range(3):
             emb[..., i] = emb[..., i] / extents + 0.5
     return emb
+
+def depth_to_xyz_batched(depth, R, T, K, mask):
+    """
+    depth_to_xyz for batched inputs
+
+    Args:
+        depth: [B, H, W]           — depth maps
+        R: [B, 3, 3]               — rotation matrices (camera-to-object)
+        T: [B, 3]                  — translation vectors
+        K: [B, 3, 3]               — camera intrinsics
+        mask: [B, H, W]            — binary masks
+    Returns:
+        points_obj: [B, H, W, 3]   — 3D object coordinates
+    """
+    depth = depth.squeeze(1)
+    H, W = depth.shape[-2:]
+    device = depth.device
+
+    if R.ndim == 3:
+        B = R.shape[0]
+    else:
+        B = 1
+
+    # Create homogeneous pixel grid once (shared across batch)
+    grid_x, grid_y = torch.meshgrid(torch.arange(W, device=device), torch.arange(H, device=device), indexing="xy")
+    grid = torch.stack([grid_x, grid_y, torch.ones_like(grid_x)], dim=-1)  # [H, W, 3]
+
+    # Expand to batch: [B, H, W, 3]
+    grid = grid.unsqueeze(0).repeat(B, 1, 1, 1).float()
+
+    # Invert intrinsics
+    Kinv = torch.inverse(K)  # [B, 3, 3]
+
+    # Backproject pixels to camera space
+    grid_cam = torch.einsum("bij, bhwj -> bhwi", Kinv, grid)  # [B, H, W, 3]
+    depth_exp = depth.unsqueeze(-1)  # [B, H, W, 1]
+    points_cam = depth_exp * grid_cam  # [B, H, W, 3]
+
+    # Transform to object space: R^T @ (X_cam - T)
+    if T.ndim == 2:
+        T = T.unsqueeze(1)
+    centered = points_cam - T[:, None, :]  # [B, H, W, 3]
+    points_obj = torch.einsum("bij, bhwj -> bhwi", R.transpose(-1, -2), centered)  # [B, H, W, 3]
+
+    # Mask background
+    points_obj = points_obj * mask.unsqueeze(-1)  # [B, H, W, 3]
+
+    return points_obj
