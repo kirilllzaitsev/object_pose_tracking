@@ -328,8 +328,11 @@ class TrainerDeformableDETR(Trainer):
 
                     if self.do_predict_2d_t:
                         center_depth_pred = out["center_depth"][idx]
+                        intrinsics_rep = []
+                        for bidx in range(batch_size):
+                            intrinsics_rep.extend(intrinsics[bidx].unsqueeze(0).repeat(len(center_depth_pred), 1, 1))
                         convert_2d_t_pred_to_3d_res = convert_2d_t_to_3d(
-                            t_pred, center_depth_pred, intrinsics, hw=(h, w)
+                            t_pred, center_depth_pred, intrinsics_rep, hw=(h, w)
                         )
                         t_pred = convert_2d_t_pred_to_3d_res["t_pred"]
 
@@ -622,13 +625,7 @@ class TrainerDeformableDETR(Trainer):
         intrinsics = torch.stack([x["intrinsics"] for x in targets])
 
         extra_kwargs = {}
-        if self.model_without_ddp.use_uncertainty:
-            coformer_kwargs = {}
-            coformer_kwargs["gt_pose"] = torch.cat([x["pose"] for x in targets], dim=0)
-            if self.model_without_ddp.use_nocs:
-                for k in ["nocs", "nocs_crop"]:
-                    coformer_kwargs[k] = torch.stack([x[k] for x in targets], dim=0)
-            extra_kwargs["coformer_kwargs"] = coformer_kwargs
+        extra_kwargs["coformer_kwargs"] = self.get_coformer_kwargs(targets, batch_t)
         if self.model_without_ddp.use_depth:
             extra_kwargs["depth"] = depth
         if self.use_render_token and self.train_epoch_count > 0:
@@ -677,6 +674,19 @@ class TrainerDeformableDETR(Trainer):
             raise e
 
         return {"out": out, "loss_dict": loss_dict}
+
+    def get_coformer_kwargs(self, targets, batch_t):
+        coformer_kwargs = {}
+        if self.model_without_ddp.use_uncertainty:
+            coformer_kwargs["gt_pose"] = torch.cat([x["pose"] for x in targets], dim=0)
+            if self.model_without_ddp.use_nocs:
+                for k in ["nocs_crop", "nocs_crop_mask"]:
+                    coformer_kwargs[k] = torch.cat([x[k] for x in targets], dim=0)
+                for k in ["mesh_diameter", "intrinsics"]:
+                    coformer_kwargs[k] = torch.stack([x[k] for x in targets], dim=0)
+                for k in ["depth", "mask"]:
+                    coformer_kwargs[k] = batch_t[k]
+        return coformer_kwargs
 
     def calc_metrics_batch_mot(
         self, pose_mat_pred_metrics, pose_mat_gt_metrics, mesh_pts, mesh_bbox, mesh_diameter, sym_types=None
@@ -772,7 +782,9 @@ class TrainerTrackformer(TrainerDeformableDETR):
         rgb = batch_t["image"]
         targets = batch_t["target"]
         # when .eval(), clears all track_* in targets in detr_tracking
-        out, targets_res, features, *_ = self.model(rgb, targets, prev_features=prev_features)
+        out, targets_res, features, *_ = self.model(
+            rgb, targets, prev_features=prev_features, coformer_kwargs=self.get_coformer_kwargs(targets, batch_t)
+        )
         loss_dict = self.criterion(out, targets_res)
         return {
             "out": out,
