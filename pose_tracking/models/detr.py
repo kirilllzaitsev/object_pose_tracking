@@ -644,11 +644,43 @@ class DETRBase(nn.Module):
                     outputs_depth = self.depth_embed[layer_idx](pose_token)
                 out["center_depth"] = outputs_depth
 
-            b = pred_logits.shape[0]
+            b, nqueries = pred_logits.shape[:2]
+            if self.use_kpts_for_pose:
+                # TODO: probably have to add 3d info to kpts (intrinsics/depth) + sup
+                kpt_in = einops.rearrange(pose_token, "b q d -> (b q) d").unsqueeze(1)
+                kpt_in = self.kpt_proj(kpt_in)
+                kpt_tokens = self.kpt_tokens.repeat(b, nqueries, 1, 1)
+                kpt_tokens = einops.rearrange(kpt_tokens, "b q d k -> (b q) k d")
+                kpt_tokens_post = self.kpt_transformer[layer_idx](kpt_tokens, kpt_in)
+                pose_tokens = torch.stack(
+                    [
+                        self.rot_token.repeat(b, nqueries, 1),
+                        self.t_token.repeat(b, nqueries, 1),
+                    ],
+                    dim=-1,
+                )
+                pose_tokens = einops.rearrange(pose_tokens, "b q d f -> (b q) f d")
+                pose_tokens = self.pose_transformer[layer_idx](pose_tokens, kpt_tokens_post)
+                pose_tokens = einops.rearrange(pose_tokens, "(b q) f d -> b q d f", b=b)
+                rot_tokens, t_tokens = pose_tokens[..., 0], pose_tokens[..., 1]
+                kpt_tokens_post = einops.rearrange(kpt_tokens_post, "(b q) k d -> b q k d", b=b)
+                if self.use_uncertainty:
+                    out["rot"], last_latent_rot = self.rot_embed[layer_idx](rot_tokens)
+                    out["t"], last_latent_t = self.t_embed[layer_idx](torch.cat([t_tokens, pose_token], -1))
+                    out["kpts"], last_latent_kpts = self.kpt_embed[layer_idx](kpt_tokens_post)
+                else:
+                    out["rot"] = self.rot_embed[layer_idx](rot_tokens)
+                    out["t"] = self.t_embed[layer_idx](t_tokens)
+                    out["kpts"] = self.kpt_embed[layer_idx](kpt_tokens_post)
+
             if self.use_uncertainty:
                 rt_latents = [last_latent_rot, last_latent_t]
-                if self.do_predict_2d_t:
-                    rt_latents.append(last_latent_depth)
+                if self.use_kpts_for_pose:
+                    for i in range(last_latent_kpts.shape[-2]):
+                        rt_latents.append(last_latent_kpts[..., i, :])
+                else:
+                    if self.do_predict_2d_t:
+                        rt_latents.append(last_latent_depth)
 
                 out_fdetr = self.coformer(
                     o,
