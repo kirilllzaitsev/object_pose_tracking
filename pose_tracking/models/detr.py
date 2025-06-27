@@ -496,6 +496,79 @@ class DETRBase(nn.Module):
                 use_nocs=use_nocs,
                 use_nocs_pred=use_nocs_pred,
             )
+
+        if use_kpts_for_pose:
+            # similar to pose conf transformer. obs tokens and eight learnable kpt tokens
+            self.kpt_proj = nn.Linear(d_model, d_model)
+            self.kpt_tokens = nn.Parameter(torch.rand((1, 1, d_model, 8)), requires_grad=True)
+            self.kpt_transformer = get_clones(
+                nn.TransformerDecoder(
+                    nn.TransformerDecoderLayer(
+                        d_model=d_model,
+                        nhead=n_heads,
+                        dim_feedforward=4 * d_model,
+                        dropout=dropout,
+                        batch_first=True,
+                    ),
+                    num_layers=1,
+                ),
+                self.n_layers,
+            )
+            self.pose_transformer = get_clones(
+                nn.TransformerDecoder(
+                    nn.TransformerDecoderLayer(
+                        d_model=d_model,
+                        nhead=n_heads,
+                        dim_feedforward=4 * d_model,
+                        dropout=dropout,
+                        batch_first=True,
+                    ),
+                    num_layers=1,
+                ),
+                self.n_layers,
+            )
+            self.rot_token = nn.Parameter(torch.rand((1, 1, d_model)), requires_grad=True)
+            self.t_token = nn.Parameter(torch.rand((1, 1, d_model)), requires_grad=True)
+            self.t_embed = get_clones(
+                MLP(
+                    t_mlp_in_dim * 2,
+                    t_out_dim,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
+                    do_return_last_latent=do_extract_rt_features,
+                ),
+                n_layers,
+            )
+            self.rot_embed = get_clones(
+                MLP(
+                    rot_mlp_in_dim,
+                    rot_out_dim,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=head_num_layers,
+                    dropout=dropout_heads,
+                    do_return_last_latent=do_extract_rt_features,
+                ),
+                n_layers,
+            )
+            self.kpt_embed = get_clones(
+                MLP(
+                    d_model,
+                    2,
+                    hidden_dim=d_model if use_v1_code else head_hidden_dim,
+                    num_layers=1,
+                    dropout=dropout_heads,
+                    do_return_last_latent=do_extract_rt_features,
+                ),
+                n_layers,
+            )
+            ms_to_stop_grads = [self.rot_mlps, self.t_mlps]
+            if self.do_predict_2d_t:
+                ms_to_stop_grads.append(self.depth_embed)
+            for m in ms_to_stop_grads:
+                for p in m.parameters():
+                    p.requires_grad = False
+
         init_params(self)
 
     def get_pos_encoder(self, encoding_type, sin_max_len=1024, n_tokens=None):
