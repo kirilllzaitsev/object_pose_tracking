@@ -151,7 +151,7 @@ class PoseConfidenceTransformer(nn.Module):
         if use_nocs:
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
             if self.use_nocs_pred:
-                self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=64, out_filters=3, num_layers=4)
+                self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=256, out_filters=3, num_layers=4)
                 self.nocs_head_in_dim = 512
                 self.nocs_proj = nn.Linear(d_model + roi_feature_dim, self.nocs_head_in_dim)
 
@@ -222,6 +222,7 @@ class PoseConfidenceTransformer(nn.Module):
         if self.use_nocs or self.use_nocs_pred:
             assert "nocs_crop" in coformer_kwargs
             assert out_rt is not None
+
         if self.use_nocs:
             rot = convert_rot_vector_to_matrix(out_rt["rot"]).detach()
             t = out_rt["t"].detach()
@@ -324,6 +325,7 @@ class DETRBase(nn.Module):
         use_uncertainty=False,
         use_render_token=False,
         n_layers_f_transformer=1,
+        use_kpts_for_pose=False,
     ):
         super().__init__()
 
@@ -336,6 +338,7 @@ class DETRBase(nn.Module):
         self.use_uncertainty = use_uncertainty
         self.use_nocs = use_nocs
         self.use_nocs_pred = use_nocs_pred
+        self.use_kpts_for_pose = use_kpts_for_pose
 
         self.num_classes = num_classes
         self.d_model = d_model
@@ -701,7 +704,6 @@ class DETRBase(nn.Module):
         res = {
             "pred_logits": last_out["pred_logits"],
             "pred_boxes": last_out.get("pred_boxes"),
-            "decoded": last_out.get("decoded"),
             "aux_outputs": outs,
         }
         if self.use_rot:
@@ -717,12 +719,13 @@ class DETRBase(nn.Module):
         if self.use_pose_tokens:
             res["pose_tokens"] = [o["pose_token"] for o in outs] + [last_out["pose_token"]]
         if self.use_uncertainty:
-            if self.coformer.use_factors:
-                res["factors"] = last_out["factors"]
             res["uncertainty_rot"] = last_out["uncertainty_rot"]
             res["uncertainty_t"] = last_out["uncertainty_t"]
-            if self.use_nocs_pred:
-                res["nocs_pred"] = last_out["nocs_pred"]
+            for k in ["decoded", "obs_tokens", "nocs_crop", "nocs_pred", "factors", "nocs_crop_gt"]:
+                if k in last_out:
+                    res[k] = last_out[k]
+        if self.use_kpts_for_pose:
+            res["kpts"] = last_out["kpts"]
         res["tokens"] = tokens_enc
 
         return res
