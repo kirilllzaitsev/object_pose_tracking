@@ -144,6 +144,9 @@ class PoseConfidenceTransformer(nn.Module):
         )
         self.uncertainty_layer = FactorTransformer(d_model, n_heads, dropout=dropout, num_layers=n_layers_f_transformer)
 
+        if self.use_factors:
+            self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
+
         self.gt_pose_proj = nn.Linear(9, d_model)  # 3 for t, 6 for rot
         for p in self.gt_pose_proj.parameters():
             p.requires_grad = False
@@ -171,13 +174,15 @@ class PoseConfidenceTransformer(nn.Module):
         if layer_idx != self.n_layers - 1:
             return out
         b, nqueries = pred_boxes.shape[:2]
-        factor_tokens = torch.cat(
-            [
-                self.uncertainty_tokens.repeat(b, nqueries, 1, 1),
-                self.free_factors.repeat(b, nqueries, 1, 1),
-            ],
-            dim=-1,
-        )
+        factor_tokens = self.uncertainty_tokens.repeat(b, nqueries, 1, 1)
+        if self.use_factors:
+            factor_tokens = torch.cat(
+                [
+                    factor_tokens,
+                    self.free_factors.repeat(b, nqueries, 1, 1),
+                ],
+                dim=-1,
+            )
 
         assert rgb is not None
         hw = rgb.shape[-2:]
