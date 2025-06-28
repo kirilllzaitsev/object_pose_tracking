@@ -21,15 +21,15 @@ from pose_tracking.utils.geom import depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
-DEBUG = False
 DEBUG = True
+DEBUG = False
 
 
 class FactorTransformer(nn.Module):
     def __init__(self, d_model, n_heads, dropout=0.0, num_layers=1):
         super().__init__()
         self.decoder = nn.TransformerDecoder(
-            TransformerDecoderLayer(
+            nn.TransformerDecoderLayer(
                 d_model=d_model,
                 nhead=n_heads,
                 dim_feedforward=4 * d_model,
@@ -257,6 +257,9 @@ class PoseConfidenceTransformer(nn.Module):
             if DEBUG:
                 out["nocs_crop"] = einops.rearrange(nocs_crop, "(b q) c h w -> b q c h w", b=b)
                 out["nocs_crop_gt"] = coformer_kwargs["nocs_crop"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
+                out["nocs_crop_mask_gt"] = (
+                    coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
+                )
 
         crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
         if self.use_nocs_pred:
@@ -805,7 +808,15 @@ class DETRBase(nn.Module):
         if self.use_uncertainty:
             res["uncertainty_rot"] = last_out["uncertainty_rot"]
             res["uncertainty_t"] = last_out["uncertainty_t"]
-            for k in ["decoded", "obs_tokens", "nocs_crop", "nocs_pred", "factors", "nocs_crop_gt"]:
+            for k in [
+                "decoded",
+                "obs_tokens",
+                "nocs_crop",
+                "nocs_pred",
+                "factors",
+                "nocs_crop_gt",
+                "nocs_crop_mask_gt",
+            ]:
                 if k in last_out:
                     res[k] = last_out[k]
         if self.use_kpts_for_pose:
