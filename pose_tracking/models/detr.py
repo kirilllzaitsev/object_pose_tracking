@@ -21,6 +21,9 @@ from pose_tracking.utils.geom import depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
+DEBUG = False
+DEBUG = True
+
 
 class FactorTransformer(nn.Module):
     def __init__(self, d_model, n_heads, dropout=0.0, num_layers=1):
@@ -51,8 +54,9 @@ class FactorTransformer(nn.Module):
         out = {}
         decoded_rot = decoded[:, 0]
         decoded_t = decoded[:, 1]
-        # out["decoded"] = decoded
-        # out["obs_tokens"] = obs_tokens
+        if DEBUG:
+            out["decoded"] = decoded
+            out["obs_tokens"] = obs_tokens
         out["rot"] = self.heads["rot"](decoded_rot).squeeze(-1)
         out["t"] = self.heads["t"](decoded_t).squeeze(-1)
         return out
@@ -250,6 +254,9 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_feats = self.cnn_nocs(nocs_crop)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
+            if DEBUG:
+                out["nocs_crop"] = einops.rearrange(nocs_crop, "(b q) c h w -> b q c h w", b=b)
+                out["nocs_crop_gt"] = coformer_kwargs["nocs_crop"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
 
         crop_feats_per_q = einops.rearrange(crop_feats, "(b q) c -> b q c", b=b)
         if self.use_nocs_pred:

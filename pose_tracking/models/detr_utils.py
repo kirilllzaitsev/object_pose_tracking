@@ -186,7 +186,7 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             is_causal=is_causal,
-            need_weights=False,
+            need_weights=True,
         )[0]
         return self.dropout1(x)
 
@@ -206,7 +206,7 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             is_causal=is_causal,
-            need_weights=False,
+            need_weights=True,
         )[0]
         return self.dropout2(x)
 
