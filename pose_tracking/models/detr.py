@@ -127,7 +127,7 @@ class PoseConfidenceTransformer(nn.Module):
             self.global_factors = [f for f in factors if f in ["scale"]]
             self.local_factors = [f for f in factors if f not in self.global_factors]
 
-        self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+        self.crop_cnn = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
         for p in self.crop_cnn.parameters():
             p.requires_grad = False
         if self.use_factors:
@@ -138,7 +138,6 @@ class PoseConfidenceTransformer(nn.Module):
                 self.factor_mlps[k] = MLPFactors(in_dim, 1, d_model, num_layers=2, dropout=0.2, act_out=None)
             self.factor_mlps = nn.ModuleDict(self.factor_mlps)
 
-        self.free_factors = nn.Parameter(torch.rand((1, 1, d_model, self.n_free_factors)), requires_grad=True)
         self.uncertainty_tokens = nn.Parameter(
             torch.rand((1, 1, d_model, self.n_uncertainty_tokens)), requires_grad=True
         )
@@ -152,7 +151,7 @@ class PoseConfidenceTransformer(nn.Module):
             p.requires_grad = False
 
         if use_nocs:
-            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet18")
+            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
             if self.use_nocs_pred:
                 self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=256, out_filters=3, num_layers=4)
                 self.nocs_head_in_dim = 512
