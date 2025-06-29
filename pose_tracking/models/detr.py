@@ -294,7 +294,7 @@ class PoseConfidenceTransformer(nn.Module):
             if k in u_out:
                 out[k] = einops.rearrange(u_out.pop(k), "(b q) f d -> b q f d", b=b, q=nqueries)
         for k, v in u_out.items():
-            v = einops.rearrange(v, "(b q) -> b q", b=b, q=nqueries)
+            v = einops.rearrange(v, "(b q) ... -> b q ...", b=b, q=nqueries)
             out[f"uncertainty_{k}"] = v
         return out
 
