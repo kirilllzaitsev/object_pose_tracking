@@ -135,6 +135,11 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         num_classes = args.num_classes
 
+    if args.mt_use_render_token and args.use_ddp:
+        if is_main_process:
+            init_nvdiffrast()
+        torch.distributed.barrier()
+
     if is_main_process:
         log_exp_meta(args, save_args=True, logdir=logdir, exp=exp, args_to_group_map=args_to_group_map)
     print_args(args, logger=logger)

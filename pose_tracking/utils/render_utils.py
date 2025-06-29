@@ -152,6 +152,20 @@ def to_homo_torch(pts):
     return homo
 
 
+def init_nvdiffrast():
+    import nvdiffrast.torch as dr
+
+    print("Pre-building interpolate kernel...")
+    ctx = dr.RasterizeGLContext(device=torch.device("cuda:0"))  # create temp context
+    dummy_pos = torch.zeros(1, 3, 4, device="cuda:0")
+    dummy_tri = torch.zeros(1, 3, dtype=torch.int32, device="cuda:0")
+    dummy_rast, _ = dr.rasterize(ctx, dummy_pos, dummy_tri, [1, 1])
+
+    dummy_attr = torch.zeros(1, 3, 4, device="cuda:0")
+    _ = dr.interpolate(dummy_attr, dummy_rast, dummy_tri)
+    print("Interpolate kernel built.")
+
+
 class Dispatcher:
     # https://github.com/NVlabs/nvdiffrast/issues/23
     def __init__(self, gpu_ids):
