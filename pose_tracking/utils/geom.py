@@ -994,6 +994,7 @@ def normalize_nocs(emb, extents):
             emb[..., i] = emb[..., i] / extents + 0.5
     return emb
 
+
 def depth_to_xyz_batched(depth, R, T, K, mask):
     """
     depth_to_xyz for batched inputs

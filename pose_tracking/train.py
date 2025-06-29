@@ -47,6 +47,7 @@ from pose_tracking.utils.pipe_utils import (
     get_num_classes,
     get_trainer,
 )
+from pose_tracking.utils.render_utils import init_nvdiffrast
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler

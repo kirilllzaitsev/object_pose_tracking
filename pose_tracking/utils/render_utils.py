@@ -191,12 +191,21 @@ class Dispatcher:
 
     @staticmethod
     def worker(self, device):
-        torch.cuda.set_device(device)
-        ctx = dr.RasterizeCudaContext(device=device)
+        try:
+            torch.cuda.set_device(device)
+            ctx = dr.RasterizeGLContext(output_db=False, device=device)
+            print(f"[Worker {device}] initialized ctx")
+        except Exception as e:
+            print(f"[Worker {device}] initialization failed: {e}")
+            raise e
         while True:
             self.events[device].wait()
             assert device not in self.return_values
-            self.return_values[device] = self.funcs[device](ctx)
+            try:
+                self.return_values[device] = self.funcs[device](ctx)
+            except Exception as e:
+                print(f"[Worker {device}] Exception: {e}")
+                raise e
             del self.funcs[device]
             self.events[device].clear()
             self.return_events[device].set()
@@ -414,16 +423,11 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None, us
                 extra=extra,
                 rasterize_fn=rasterize_fn,
             )
-            rgb_r, depth_r, normal_r, mask_r = (
+            rgb_r, mask_r = (
                 r_res["color"],
-                r_res["depth"],
-                r_res["normal"],
                 r_res["mask"],
             )
             rgb_rs.append(rgb_r)
-            depth_rs.append(depth_r[..., None])
-            normal_rs.append(normal_r)
-            xyz_map_rs.append(extra["xyz_map"])
             mask_rs.append(mask_r)
             return r_res
 
@@ -435,8 +439,5 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None, us
 
     return {
         "rgb": torch.cat(rgb_rs, dim=0).permute(0, 3, 1, 2),
-        "depth": torch.cat(depth_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(depth_rs) else None,
-        "normal": torch.cat(normal_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(normal_rs) else None,
-        "xyz_map": torch.cat(xyz_map_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(xyz_map_rs) else None,
         "mask": torch.cat(mask_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(mask_rs) else None,
     }
