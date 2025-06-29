@@ -1,7 +1,9 @@
 import functools
+import gc
 import math
 import os
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -121,6 +123,7 @@ class TrainerDeformableDETR(Trainer):
         if use_render_token or use_pe_loss:
             assert dr is not None, "nvdiffrast must be installed"
             self.glctx = None
+            time.sleep(20 * distributed_rank())
             gpu_ids = list(range(torch.cuda.device_count()))
             self.rasterizer = Rasterizer(Dispatcher(gpu_ids=gpu_ids), device=self.device)
             if self.use_ddp:
@@ -583,6 +586,9 @@ class TrainerDeformableDETR(Trainer):
 
         if len(failed_ts) > 0:
             self.logger.error(f"Failed steps: {failed_ts}")
+
+        if self.use_render_token:
+            gc.collect()
 
         return {
             "losses": seq_stats,
