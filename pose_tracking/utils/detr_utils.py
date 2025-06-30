@@ -137,11 +137,6 @@ def postprocess_detr_outputs_nms(outputs, target_sizes):
 def prepare_bbox_for_cropping(bbox, hw, padding=5, is_normalized=False):
     # prepares xyxy bbox
     new_boxes = []
-    if not isinstance(bbox, list):
-        if bbox.ndim == 2:
-            bbox = [bbox]
-        else:
-            assert bbox.ndim == 3
     h, w = hw
     for i, boxes_padded in enumerate(bbox):
         boxes_padded = boxes_padded.clone()
@@ -151,7 +146,7 @@ def prepare_bbox_for_cropping(bbox, hw, padding=5, is_normalized=False):
             boxes_padded[..., [1, 3]] *= hw[0]
         else:
             if boxes_padded.max() < 1:
-                print(f"WARNING: boxes seem not normalized {boxes_padded=}")
+                print(f"WARNING: boxes seem normalized {boxes_padded=}")
         boxes_padded[..., 0] = boxes_padded[..., 0] - padding
         boxes_padded[..., 1] = boxes_padded[..., 1] - padding
         boxes_padded[..., 2] = boxes_padded[..., 2] + padding
