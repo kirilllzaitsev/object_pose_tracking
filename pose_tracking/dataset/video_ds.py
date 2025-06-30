@@ -354,6 +354,7 @@ class VideoDatasetTracking(VideoDataset):
                     "nocs",
                     "nocs_crop",
                     "nocs_crop_mask",
+                    "nocs_crop_coords_2d",
                     "bbox_3d_kpts_proj",
                 ]
                 + mesh_keys

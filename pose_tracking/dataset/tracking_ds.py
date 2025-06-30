@@ -393,6 +393,7 @@ class TrackingDataset(Dataset):
             bin_masks = self.get_bin_masks(mask)
             nocs_crops = []
             nocs_crop_masks = []
+            nocs_crop_coords_2ds = []
             for oidx in range(len(bbox_2ds_xyxy)):
                 nocs = depth_to_nocs_map(
                     depth=depth,
@@ -419,11 +420,22 @@ class TrackingDataset(Dataset):
                     padding=5,
                     crop_size=(64, 64),
                 )[0]
+                ys, xs = torch.meshgrid(torch.arange(self.h), torch.arange(self.w), indexing="ij")
+                coord_img = torch.stack((xs, ys), dim=0).float()  # (H, W, 2)
+                nocs_crop_coords_2d = get_crops(
+                    coord_img[None] * bin_masks[oidx],
+                    bbox_xyxy=[torch.tensor(np.array(bbox_2ds_xyxy[oidx])).float()],
+                    is_normalized=False,
+                    crop_size=(64, 64),
+                    hw=bin_masks[oidx].shape[-2:],
+                )
                 nocs_crop_mask = (nocs_crop_mask > 0.5).float()
                 nocs_crops.append(nocs_crop[0])
                 nocs_crop_masks.append(nocs_crop_mask[0])
+                nocs_crop_coords_2ds.append(nocs_crop_coords_2d[0])
             sample["nocs_crop"] = torch.stack(nocs_crops)
             sample["nocs_crop_mask"] = torch.stack(nocs_crop_masks)
+            sample["nocs_crop_coords_2d"] = torch.stack(nocs_crop_coords_2ds)
 
         sample = self.augment_sample(sample, i)
 
