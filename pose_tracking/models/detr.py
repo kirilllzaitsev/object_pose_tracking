@@ -245,7 +245,7 @@ class PoseConfidenceTransformer(nn.Module):
             nocs = nocs.permute(0, 3, 1, 2)
             nocs_crop = get_crops(
                 nocs,
-                bbox_xyxy=pred_boxes_xyxy.flatten(0, 1).detach(),
+                bbox_xyxy=pred_boxes_xyxy.flatten(0, 1).unsqueeze(1).detach(),
                 hw=rgb.shape[-2:],
                 is_normalized=True,
                 padding=5,
