@@ -420,7 +420,7 @@ class TrackingDataset(Dataset):
                     padding=5,
                     crop_size=(64, 64),
                 )[0]
-                ys, xs = torch.meshgrid(torch.arange(self.h), torch.arange(self.w), indexing="ij")
+                ys, xs = torch.meshgrid(torch.linspace(0, 1, self.h), torch.linspace(0, 1, self.w), indexing="ij")
                 coord_img = torch.stack((xs, ys), dim=0).float()  # (H, W, 2)
                 nocs_crop_coords_2d = get_crops(
                     coord_img[None] * bin_masks[oidx],
