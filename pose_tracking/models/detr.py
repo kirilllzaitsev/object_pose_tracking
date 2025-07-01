@@ -175,12 +175,6 @@ class PoseConfidenceTransformer(nn.Module):
                     num_layers=2,
                     dropout=dropout,
                 )
-                self.extents_mlp = MLP(
-                    in_dim=2,
-                    out_dim=self.extents_mlp_out,
-                    hidden_dim=256,
-                    num_layers=1,
-                )
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50", in_chans=self.in_chans)
             if self.use_nocs_pred:
                 self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=256, out_filters=3, num_layers=4)
@@ -261,9 +255,6 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_coords_2d = coformer_kwargs["nocs_crop_coords_2d"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
             nocs_crop_coords_2d = einops.rearrange(nocs_crop_coords_2d, "b q c h w -> (b q) c h w", b=b, q=nqueries)
             extents = coformer_kwargs["mesh_diameter"].repeat_interleave(nqueries, dim=0)
-            extents_proj = self.extents_mlp(
-                coformer_kwargs["mesh_diameter"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
-            )
 
         if self.use_nocs:
             rot = convert_rot_vector_to_matrix(out_rt["rot"]).detach()
@@ -294,7 +285,7 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
             if self.use_nocs_pred:
-                out["nocs_crop_t"] = self.nocs_t_mlp(torch.cat([nocs_crop_feats, extents_proj], dim=-1))
+                out["nocs_crop_t"] = self.nocs_t_mlp(nocs_crop_feats)
                 out["nocs_crop_rot"] = self.nocs_rot_mlp(nocs_crop_feats)
             if DEBUG:
                 out["nocs_crop"] = einops.rearrange(nocs_crop, "(b q) c h w -> b q c h w", b=b)
@@ -323,7 +314,7 @@ class PoseConfidenceTransformer(nn.Module):
             new_latents.append(nocs_pred_feats)
             out["nocs_pred"] = nocs_pred
             if self.use_nocs_pose_pred:
-                out["nocs_pred_t"] = self.nocs_t_mlp(torch.cat([nocs_pred_feats, extents_proj], dim=-1))
+                out["nocs_pred_t"] = self.nocs_t_mlp(nocs_pred_feats)
                 out["nocs_pred_rot"] = self.nocs_rot_mlp(nocs_pred_feats)
 
         rgb_feats_per_q = rgb_feats.unsqueeze(1).repeat(1, self.n_queries, 1)
