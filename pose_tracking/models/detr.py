@@ -17,7 +17,7 @@ from pose_tracking.models.pos_encoding import (
     timestep_embedding,
 )
 from pose_tracking.utils.detr_utils import get_crops
-from pose_tracking.utils.geom import depth_to_nocs_map_batched
+from pose_tracking.utils.geom import denormalize_nocs, depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
@@ -111,12 +111,14 @@ class PoseConfidenceTransformer(nn.Module):
         use_render_token=False,
         use_nocs=False,
         use_nocs_pred=False,
+        use_nocs_pose_pred=False,
     ):
         super().__init__()
 
         self.use_render_token = use_render_token
         self.use_nocs = use_nocs
         self.use_nocs_pred = use_nocs_pred
+        self.use_nocs_pose_pred = use_nocs_pose_pred
 
         self.n_queries = n_queries
         self.d_model = d_model
@@ -155,7 +157,31 @@ class PoseConfidenceTransformer(nn.Module):
             p.requires_grad = False
 
         if use_nocs:
-            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50")
+            self.in_chans = 3
+            if use_nocs_pose_pred:
+                self.in_chans += 2
+                self.extents_mlp_out = 64
+                self.nocs_rot_mlp = MLP(
+                    in_dim=d_model,
+                    out_dim=6,
+                    hidden_dim=256,
+                    num_layers=2,
+                    dropout=dropout,
+                )
+                self.nocs_t_mlp = MLP(
+                    in_dim=d_model + self.extents_mlp_out,
+                    out_dim=3,
+                    hidden_dim=256,
+                    num_layers=2,
+                    dropout=dropout,
+                )
+                self.extents_mlp = MLP(
+                    in_dim=2,
+                    out_dim=self.extents_mlp_out,
+                    hidden_dim=256,
+                    num_layers=1,
+                )
+            self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50", in_chans=self.in_chans)
             if self.use_nocs_pred:
                 self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=256, out_filters=3, num_layers=4)
                 self.nocs_head_in_dim = 512

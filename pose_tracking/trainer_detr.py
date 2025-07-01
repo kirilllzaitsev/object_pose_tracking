@@ -686,7 +686,7 @@ class TrainerDeformableDETR(Trainer):
         if self.model_without_ddp.use_uncertainty:
             coformer_kwargs["gt_pose"] = torch.cat([x["pose"] for x in targets], dim=0)
             if self.model_without_ddp.use_nocs:
-                for k in ["nocs_crop", "nocs_crop_mask"]:
+                for k in ["nocs_crop", "nocs_crop_mask", "nocs_crop_coords_2d"]:
                     coformer_kwargs[k] = torch.cat([x[k] for x in targets], dim=0)
                 for k in ["mesh_diameter", "intrinsics"]:
                     coformer_kwargs[k] = torch.stack([x[k] for x in targets], dim=0)

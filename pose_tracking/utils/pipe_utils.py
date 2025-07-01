@@ -277,6 +277,7 @@ def get_model(args, num_classes=None):
             use_nocs=args.mt_use_nocs,
             use_nocs_pred=args.mt_use_nocs_pred,
             use_kpts_for_pose=args.use_kpts_for_pose,
+            use_nocs_pose_pred=args.mt_use_nocs_pose_pred,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -516,6 +517,7 @@ def get_trackformer_args(args):
     tf_args.use_nocs_pred = args.mt_use_nocs_pred
     tf_args.use_pose_tokens = args.mt_use_pose_tokens
     tf_args.use_kpts = args.use_kpts_for_pose
+    tf_args.use_nocs_pose_pred = args.mt_use_nocs_pose_pred
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc
