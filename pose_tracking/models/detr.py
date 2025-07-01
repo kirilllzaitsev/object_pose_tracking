@@ -257,6 +257,14 @@ class PoseConfidenceTransformer(nn.Module):
             assert "nocs_crop" in coformer_kwargs
             assert out_rt is not None
 
+        if self.use_nocs_pose_pred:
+            nocs_crop_coords_2d = coformer_kwargs["nocs_crop_coords_2d"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
+            nocs_crop_coords_2d = einops.rearrange(nocs_crop_coords_2d, "b q c h w -> (b q) c h w", b=b, q=nqueries)
+            extents = coformer_kwargs["mesh_diameter"].repeat_interleave(nqueries, dim=0)
+            extents_proj = self.extents_mlp(
+                coformer_kwargs["mesh_diameter"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
+            )
+
         if self.use_nocs:
             rot = convert_rot_vector_to_matrix(out_rt["rot"]).detach()
             t = out_rt["t"].detach()
@@ -277,9 +285,17 @@ class PoseConfidenceTransformer(nn.Module):
                 padding=5,
                 crop_size=(64, 64),
             )
-            nocs_crop_feats = self.cnn_nocs(nocs_crop)  # crop per obj
+            if self.use_nocs_pred:
+                nocs_crop_denorm = denormalize_nocs(nocs_crop, extents=extents)
+                nocs_crop_in = torch.cat([nocs_crop_denorm, nocs_crop_coords_2d], dim=1)
+            else:
+                nocs_crop_in = nocs_crop
+            nocs_crop_feats = self.cnn_nocs(nocs_crop_in)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
+            if self.use_nocs_pred:
+                out["nocs_crop_t"] = self.nocs_t_mlp(torch.cat([nocs_crop_feats, extents_proj], dim=-1))
+                out["nocs_crop_rot"] = self.nocs_rot_mlp(nocs_crop_feats)
             if DEBUG:
                 out["nocs_crop"] = einops.rearrange(nocs_crop, "(b q) c h w -> b q c h w", b=b)
                 out["nocs_crop_gt"] = coformer_kwargs["nocs_crop"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
@@ -295,11 +311,20 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_pred_masked = nocs_pred * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
-            nocs_pred_feats = self.cnn_nocs(nocs_pred_masked)
+            if self.use_nocs_pred:
+                nocs_pred_masked_denorm = denormalize_nocs(nocs_pred_masked, extents=extents)
+                nocs_pred_in = torch.cat([nocs_pred_masked_denorm, nocs_crop_coords_2d], dim=1)
+            else:
+                nocs_pred_in = nocs_pred_masked
+
+            nocs_pred_feats = self.cnn_nocs(nocs_pred_in)
             nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
             new_latents.append(nocs_pred_feats)
             out["nocs_pred"] = nocs_pred
+            if self.use_nocs_pose_pred:
+                out["nocs_pred_t"] = self.nocs_t_mlp(torch.cat([nocs_pred_feats, extents_proj], dim=-1))
+                out["nocs_pred_rot"] = self.nocs_rot_mlp(nocs_pred_feats)
 
         rgb_feats_per_q = rgb_feats.unsqueeze(1).repeat(1, self.n_queries, 1)
         obs_tokens = torch.cat(
@@ -366,6 +391,7 @@ class DETRBase(nn.Module):
         use_render_token=False,
         n_layers_f_transformer=1,
         use_kpts_for_pose=False,
+        use_nocs_pose_pred=False,
     ):
         super().__init__()
 
@@ -535,6 +561,7 @@ class DETRBase(nn.Module):
                 n_layers_f_transformer=n_layers_f_transformer,
                 use_nocs=use_nocs,
                 use_nocs_pred=use_nocs_pred,
+                use_nocs_pose_pred=use_nocs_pose_pred,
             )
 
         if use_kpts_for_pose:
@@ -842,6 +869,10 @@ class DETRBase(nn.Module):
                 "factors",
                 "nocs_crop_gt",
                 "nocs_crop_mask_gt",
+                "nocs_crop_t",
+                "nocs_crop_rot",
+                "nocs_pred_t",
+                "nocs_pred_rot",
             ]:
                 if k in last_out:
                     res[k] = last_out[k]
