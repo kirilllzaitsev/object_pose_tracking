@@ -1,3 +1,5 @@
+import os
+
 import einops
 import torch
 import torch.nn as nn
@@ -21,8 +23,7 @@ from pose_tracking.utils.geom import denormalize_nocs, depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
-DEBUG = True
-DEBUG = False
+DEBUG = os.environ.get("DEBUG")
 
 
 class FactorTransformer(nn.Module):
@@ -160,7 +161,6 @@ class PoseConfidenceTransformer(nn.Module):
             self.in_chans = 3
             if use_nocs_pose_pred:
                 self.in_chans += 2
-                self.extents_mlp_out = 64
                 self.nocs_rot_mlp = MLP(
                     in_dim=d_model,
                     out_dim=6,
@@ -169,7 +169,7 @@ class PoseConfidenceTransformer(nn.Module):
                     dropout=dropout,
                 )
                 self.nocs_t_mlp = MLP(
-                    in_dim=d_model + self.extents_mlp_out,
+                    in_dim=d_model,
                     out_dim=3,
                     hidden_dim=256,
                     num_layers=2,
@@ -276,7 +276,7 @@ class PoseConfidenceTransformer(nn.Module):
                 padding=5,
                 crop_size=(64, 64),
             )
-            if self.use_nocs_pred:
+            if self.use_nocs_pose_pred:
                 nocs_crop_denorm = denormalize_nocs(nocs_crop, extents=extents)
                 nocs_crop_in = torch.cat([nocs_crop_denorm, nocs_crop_coords_2d], dim=1)
             else:
@@ -284,7 +284,7 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_feats = self.cnn_nocs(nocs_crop_in)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
-            if self.use_nocs_pred:
+            if self.use_nocs_pose_pred:
                 out["nocs_crop_t"] = self.nocs_t_mlp(nocs_crop_feats)
                 out["nocs_crop_rot"] = self.nocs_rot_mlp(nocs_crop_feats)
             if DEBUG:
@@ -302,7 +302,7 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_pred_masked = nocs_pred * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
-            if self.use_nocs_pred:
+            if self.use_nocs_pose_pred:
                 nocs_pred_masked_denorm = denormalize_nocs(nocs_pred_masked, extents=extents)
                 nocs_pred_in = torch.cat([nocs_pred_masked_denorm, nocs_crop_coords_2d], dim=1)
             else:
