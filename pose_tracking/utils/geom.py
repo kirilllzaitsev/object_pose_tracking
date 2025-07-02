@@ -947,16 +947,18 @@ def bbox_from_corners(corners):  # corners [[3], [3]] or [Bs, 2, 3]
     return bbox
 
 
-def depth_to_nocs_map(depth, R, T, K, mask, extents):
+def depth_to_nocs_map(depth, R, T, K, mask, extents, do_norm=True):
     xyz = depth_to_xyz(depth, R, T, K, mask)
-    nocs_map = normalize_nocs(xyz, extents)
-    return nocs_map
+    if do_norm:
+        xyz = normalize_nocs(xyz, extents)
+    return xyz
 
 
-def depth_to_nocs_map_batched(depth, R, T, K, mask, extents):
+def depth_to_nocs_map_batched(depth, R, T, K, mask, extents, do_norm=True):
     xyz = depth_to_xyz_batched(depth, R, T, K, mask)
-    nocs_map = normalize_nocs(xyz, extents)
-    return nocs_map
+    if do_norm:
+        xyz = normalize_nocs(xyz, extents)
+    return xyz
 
 
 def depth_to_xyz(depth, R, T, K, mask):
@@ -983,15 +985,56 @@ def depth_to_xyz(depth, R, T, K, mask):
 
 def normalize_nocs(emb, extents):
     if emb.ndim == 4:
+        assert emb.shape[0] == len(extents), f"{extents=}, {emb.shape=}"
         lib = torch if is_tensor(emb) else np
         return lib.stack([normalize_nocs(emb[i], extents[i]) for i in range(emb.shape[0])], 0)
+    use_first_dim = emb.shape[0] == 3
+    if not use_first_dim:
+        assert emb.shape[-1] == 3
     if hasattr(extents, "len"):
         assert len(extents) == 3, extents
         for i in range(3):
-            emb[..., i] = emb[..., i] / extents[i] + 0.5
+            if use_first_dim:
+                emb[i, ...] = emb[i, ...] / extents[i] + 0.5
+            else:
+                emb[..., i] = emb[..., i] / extents[i] + 0.5
     else:
         for i in range(3):
-            emb[..., i] = emb[..., i] / extents + 0.5
+            if use_first_dim:
+                emb[i, ...] = emb[i, ...] / extents + 0.5
+            else:
+                emb[..., i] = emb[..., i] / extents + 0.5
+    return emb
+
+
+def denormalize_nocs(emb, extents):
+    if emb.ndim == 4:
+        assert emb.shape[0] == len(extents), f"{extents=}, {emb.shape=}"
+        lib = torch if is_tensor(emb) else np
+        return lib.stack([denormalize_nocs(emb[i], extents[i]) for i in range(emb.shape[0])], 0)
+    use_first_dim = emb.shape[0] == 3
+    if not use_first_dim:
+        assert emb.shape[-1] == 3
+    if hasattr(extents, "len"):
+        assert len(extents) == 3, extents
+        for i in range(3):
+            if use_first_dim:
+                emb[i, ...] = (emb[i, ...] - 0.5) * extents[i]
+            else:
+                emb[..., i] = (emb[..., i] - 0.5) * extents[i]
+    else:
+        for i in range(3):
+            if use_first_dim:
+                emb[i, ...] = (emb[i, ...] - 0.5) * extents
+            else:
+                emb[..., i] = (emb[..., i] - 0.5) * extents
+    return emb
+
+
+def denormalize_nocs_coords_2d(emb, hw):
+    assert emb.shape[1] == 2
+    emb[:, 0] = emb[:, 0] * hw[1]
+    emb[:, 1] = emb[:, 1] * hw[0]
     return emb
 
 
