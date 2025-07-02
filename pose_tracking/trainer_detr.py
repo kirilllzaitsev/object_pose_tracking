@@ -439,6 +439,10 @@ class TrainerDeformableDETR(Trainer):
                 "confidence_t",
                 "loss_uncertainty_rot",
                 "loss_uncertainty_t",
+                "loss_t_nocs_crop",
+                "loss_t_nocs_pred",
+                "loss_rot_nocs_crop",
+                "loss_rot_nocs_pred",
             ]:
                 if k in loss_dict_reduced:
                     v = loss_dict_reduced[k]

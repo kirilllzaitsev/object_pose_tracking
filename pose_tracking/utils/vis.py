@@ -574,7 +574,14 @@ def PIL_image_grid(imgs, rows, cols):
 
 
 def make_grid_image(
-    imgs, nrow=None, padding=5, pad_value=255, dtype=np.uint8, use_existing_fig=False, do_return_fig=False
+    imgs,
+    nrow=None,
+    padding=5,
+    pad_value=255,
+    dtype=np.uint8,
+    use_existing_fig=False,
+    do_return_fig=False,
+    use_idxs=False,
 ):
     """
     @imgs: (B,H,W,C) np array
@@ -584,6 +591,9 @@ def make_grid_image(
         print("No images to plot")
     if imgs[0].max() <= 1:
         imgs = [adjust_img_for_plt(img) for img in imgs]
+    if use_idxs:
+        for i, img in enumerate(imgs):
+            imgs[i] = draw_text_in_ul(img, extra_text=f"{i=}", size=0.5, thickness=2)
     imgs = torch.as_tensor(np.asarray(imgs))
     if imgs.shape[-1] == 3:
         imgs = imgs.permute(0, 3, 1, 2)
@@ -941,7 +951,7 @@ def vis_pose(color, pose, K, bbox=None, scale=0.05, bbox_color=(255, 255, 0), ro
 
 def draw_text_in_ul(color_with_pose, extra_text, size=1, thickness=3):
     color_with_pose = cv2.putText(
-        copy.deepcopy(color_with_pose),
+        fix_img_color_for_opencv(copy.deepcopy(color_with_pose)),
         extra_text,
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
