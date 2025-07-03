@@ -947,21 +947,21 @@ def bbox_from_corners(corners):  # corners [[3], [3]] or [Bs, 2, 3]
     return bbox
 
 
-def depth_to_nocs_map(depth, R, T, K, mask, extents, do_norm=True):
+def depth_to_nocs_map(depth, R, T, K, extents, mask=None, do_norm=True):
     xyz = depth_to_xyz(depth, R, T, K, mask)
     if do_norm:
         xyz = normalize_nocs(xyz, extents)
     return xyz
 
 
-def depth_to_nocs_map_batched(depth, R, T, K, mask, extents, do_norm=True):
+def depth_to_nocs_map_batched(depth, R, T, K, extents, mask=None, do_norm=True):
     xyz = depth_to_xyz_batched(depth, R, T, K, mask)
     if do_norm:
         xyz = normalize_nocs(xyz, extents)
     return xyz
 
 
-def depth_to_xyz(depth, R, T, K, mask):
+def depth_to_xyz(depth, R, T, K, mask=None):
     # https://github.com/THU-DA-6D-Pose-Group/GDR-Net/blob/main/tools/lm/lm_pbr_1_gen_xyz_crop.py
     Kinv = np.linalg.inv(K)
 
@@ -978,7 +978,9 @@ def depth_to_xyz(depth, R, T, K, mask):
             grid_2d.reshape(height, width, 3, 1),
         )
         - T.reshape(1, 1, 3, 1),
-    ).squeeze() * mask.reshape(height, width, 1)
+    ).squeeze()
+    if mask is not None:
+        ProjEmb *= mask.reshape(height, width, 1)
 
     return ProjEmb
 

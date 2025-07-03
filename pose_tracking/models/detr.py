@@ -23,7 +23,7 @@ from pose_tracking.utils.geom import denormalize_nocs, depth_to_nocs_map_batched
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
-DEBUG = os.environ.get("DEBUG")
+DEBUG = True
 
 
 class FactorTransformer(nn.Module):
@@ -284,9 +284,6 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_crop_feats = self.cnn_nocs(nocs_crop_in)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
-            if self.use_nocs_pose_pred:
-                out["nocs_crop_t"] = self.nocs_t_mlp(nocs_crop_feats)
-                out["nocs_crop_rot"] = self.nocs_rot_mlp(nocs_crop_feats)
             if DEBUG:
                 out["nocs_crop"] = einops.rearrange(nocs_crop, "(b q) c h w -> b q c h w", b=b)
                 out["nocs_crop_gt"] = coformer_kwargs["nocs_crop"].unsqueeze(1).repeat_interleave(nqueries, dim=1)
