@@ -276,11 +276,12 @@ class PoseConfidenceTransformer(nn.Module):
                 padding=5,
                 crop_size=(64, 64),
             )
+            nocs_crop_masked = nocs_crop * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=0)
             if self.use_nocs_pose_pred:
-                nocs_crop_denorm = denormalize_nocs(nocs_crop, extents=extents)
+                nocs_crop_denorm = denormalize_nocs(nocs_crop_masked, extents=extents)
                 nocs_crop_in = torch.cat([nocs_crop_denorm, nocs_crop_coords_2d], dim=1)
             else:
-                nocs_crop_in = nocs_crop
+                nocs_crop_in = nocs_crop_masked
             nocs_crop_feats = self.cnn_nocs(nocs_crop_in)  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
