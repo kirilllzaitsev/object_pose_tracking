@@ -276,13 +276,12 @@ class PoseConfidenceTransformer(nn.Module):
                 padding=5,
                 crop_size=(64, 64),
             )
-            nocs_crop_masked = nocs_crop * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=0)
             if self.use_nocs_pose_pred:
-                nocs_crop_denorm = denormalize_nocs(nocs_crop_masked, extents=extents)
+                nocs_crop_denorm = denormalize_nocs(nocs_crop, extents=extents)
                 nocs_crop_in = torch.cat([nocs_crop_denorm, nocs_crop_coords_2d], dim=1)
             else:
-                nocs_crop_in = nocs_crop_masked
-            nocs_crop_feats = self.cnn_nocs(nocs_crop_in)  # crop per obj
+                nocs_crop_in = nocs_crop
+            nocs_crop_in = nocs_crop_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=0)
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
             if DEBUG:
@@ -297,16 +296,14 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
             nocs_in = self.nocs_proj(nocs_in)
             nocs_pred = self.nocs_head(einops.rearrange(nocs_in, "b q d -> (b q) d").view(-1, 4 * 2, 8, 8))
-            nocs_pred_masked = nocs_pred * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
+            if self.use_nocs_pose_pred:
+                nocs_pred_denorm = denormalize_nocs(nocs_pred, extents=extents)
+                nocs_pred_in = torch.cat([nocs_pred_denorm, nocs_crop_coords_2d], dim=1)
+            else:
+                nocs_pred_in = nocs_pred
+            nocs_pred_in = nocs_pred_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
-            if self.use_nocs_pose_pred:
-                nocs_pred_masked_denorm = denormalize_nocs(nocs_pred_masked, extents=extents)
-                nocs_pred_in = torch.cat([nocs_pred_masked_denorm, nocs_crop_coords_2d], dim=1)
-            else:
-                nocs_pred_in = nocs_pred_masked
-
-            nocs_pred_feats = self.cnn_nocs(nocs_pred_in)
             nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
             new_latents.append(nocs_pred_feats)
