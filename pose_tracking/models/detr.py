@@ -282,6 +282,7 @@ class PoseConfidenceTransformer(nn.Module):
             else:
                 nocs_crop_in = nocs_crop
             nocs_crop_in = nocs_crop_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=0)
+            nocs_crop_feats = self.cnn_nocs(nocs_crop_in.detach())  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
             if DEBUG:
@@ -304,6 +305,7 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_pred_in = nocs_pred_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
+            nocs_pred_feats = self.cnn_nocs(nocs_pred_in.detach())
             nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
             new_latents.append(nocs_pred_feats)
