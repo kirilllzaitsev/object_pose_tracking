@@ -1087,3 +1087,20 @@ def depth_to_xyz_batched(depth, R, T, K, mask):
     points_obj = points_obj * mask.unsqueeze(-1)  # [B, H, W, 3]
 
     return points_obj
+
+
+def xyz_to_spherical(xyz):
+    assert xyz.shape[-1] == 3, xyz.shape
+    x, y, z = xyz[..., 0], xyz[..., 1], xyz[..., 2]
+    r = torch.sqrt(x**2 + y**2 + z**2)
+    theta = torch.acos(z / (r + 1e-7))
+    phi = torch.atan2(y, x)
+    return torch.stack((r, theta, phi), dim=-1)
+
+
+def normalize_nocs_spherical(emb_sp):
+    assert emb_sp.shape[-1] == 3, emb_sp.shape
+    r = emb_sp[..., 0]
+    theta = emb_sp[..., 1] / (torch.pi)
+    phi = (emb_sp[..., 2] + torch.pi) / (2 * torch.pi)
+    return torch.stack((r, theta, phi), dim=-1)
