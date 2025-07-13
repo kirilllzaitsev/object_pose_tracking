@@ -117,8 +117,8 @@ def load_model_from_exp(model, exp_name, artifact_suffix="best", ckpt_load_fn=No
     return model
 
 
-def load_model_from_ckpt(model, ckpt_path):
-    return load_from_ckpt(model, ckpt_path)["model"]
+def load_model_from_ckpt(model, *args, **kwargs):
+    return load_from_ckpt(model, *args, **kwargs)["model"]
 
 
 def load_from_ckpt(
@@ -127,6 +127,7 @@ def load_from_ckpt(
     device: DeviceType = "cpu",
     optimizer: t.Any = None,
     scheduler: t.Any = None,
+    excluded_prefixes=None,
 ) -> dict:
     state_dicts = torch.load(
         checkpoint_path,
@@ -154,7 +155,15 @@ def load_from_ckpt(
         state_dict_model["proj.weight"] = state_dict_model.pop("conv1x1.weight").squeeze()
         state_dict_model["proj.bias"] = state_dict_model.pop("conv1x1.bias")
 
-    model.load_state_dict(state_dict_model)
+    if excluded_prefixes is not None:
+        use_strict = False
+        state_dict_model = {
+            k: v for k, v in state_dict_model.items() if not any(k.startswith(prefix) for prefix in excluded_prefixes)
+        }
+    else:
+        use_strict = True
+
+    model.load_state_dict(state_dict_model, strict=use_strict)
 
     if optimizer is not None:
         optimizer.load_state_dict(state_dicts["optimizer"])
