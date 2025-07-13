@@ -297,6 +297,10 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
             )
 
     model = get_model(args, num_classes=num_classes).to(device)
+    if args.mt_do_train_only_coformer:
+        for n, p in model.named_parameters():
+            if "coformer" not in n:
+                p.requires_grad = False
     logger.info(model)
 
     trainer = get_trainer(
@@ -333,7 +337,7 @@ def main(args, exp_tools: t.Optional[dict] = None, args_to_group_map: t.Optional
     else:
         lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
 
-    if args.ckpt_exp_name and args.do_load_session:
+    if args.ckpt_exp_name and args.do_load_session and not args.mt_do_train_only_coformer:
         download_res = load_artifacts_from_comet(
             exp_name=args.ckpt_exp_name, do_load_session=True, artifact_suffix="best", do_raise_if_missing=True
         )
