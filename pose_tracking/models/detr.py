@@ -19,7 +19,12 @@ from pose_tracking.models.pos_encoding import (
     timestep_embedding,
 )
 from pose_tracking.utils.detr_utils import get_crops
-from pose_tracking.utils.geom import denormalize_nocs, depth_to_nocs_map_batched
+from pose_tracking.utils.geom import (
+    denormalize_nocs,
+    depth_to_nocs_map_batched,
+    normalize_nocs_spherical,
+    xyz_to_spherical,
+)
 from pose_tracking.utils.misc import init_params, print_cls
 from pose_tracking.utils.pose import convert_rot_vector_to_matrix
 
@@ -113,6 +118,7 @@ class PoseConfidenceTransformer(nn.Module):
         use_nocs=False,
         use_nocs_pred=False,
         use_nocs_pose_pred=False,
+        use_spherical_nocs=False,
     ):
         super().__init__()
 
@@ -120,6 +126,7 @@ class PoseConfidenceTransformer(nn.Module):
         self.use_nocs = use_nocs
         self.use_nocs_pred = use_nocs_pred
         self.use_nocs_pose_pred = use_nocs_pose_pred
+        self.use_spherical_nocs = use_spherical_nocs
 
         self.n_queries = n_queries
         self.d_model = d_model
@@ -175,6 +182,8 @@ class PoseConfidenceTransformer(nn.Module):
                     num_layers=2,
                     dropout=dropout,
                 )
+            if use_spherical_nocs:
+                self.in_chans += 3
             self.cnn_nocs = CNNFeatureExtractor(out_dim=roi_feature_dim, model_name="resnet50", in_chans=self.in_chans)
             if self.use_nocs_pred:
                 self.nocs_head = get_query_to_nocs_net(in_channels=8, hidden_filters=256, out_filters=3, num_layers=4)
@@ -276,12 +285,24 @@ class PoseConfidenceTransformer(nn.Module):
                 padding=5,
                 crop_size=(64, 64),
             )
+
             if self.use_nocs_pose_pred:
                 nocs_crop_denorm = denormalize_nocs(nocs_crop, extents=extents)
                 nocs_crop_in = torch.cat([nocs_crop_denorm, nocs_crop_coords_2d], dim=1)
             else:
                 nocs_crop_in = nocs_crop
-            nocs_crop_in = nocs_crop_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(nqueries, dim=0)
+            if self.use_spherical_nocs:
+
+                def conv_nocs_xyz_to_spherical(nocs, is_normalized=True):
+                    if is_normalized:
+                        nocs = nocs - 0.5
+                    return normalize_nocs_spherical(xyz_to_spherical(nocs.permute(0, 2, 3, 1))).permute(0, 3, 1, 2)
+
+                nocs_crop_sp_in = conv_nocs_xyz_to_spherical(nocs_crop)
+                nocs_crop_in = torch.cat([nocs_crop_in, nocs_crop_sp_in], dim=1)
+            nocs_crop_in = nocs_crop_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
+                nqueries, dim=0
+            )
             nocs_crop_feats = self.cnn_nocs(nocs_crop_in.detach())  # crop per obj
             nocs_crop_feats = einops.rearrange(nocs_crop_feats, "(b q) d -> b q d", b=b)
             new_latents.extend([nocs_crop_feats])
@@ -297,11 +318,15 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_in = torch.cat([o, crop_feats_per_q], dim=-1)
             nocs_in = self.nocs_proj(nocs_in)
             nocs_pred = self.nocs_head(einops.rearrange(nocs_in, "b q d -> (b q) d").view(-1, 4 * 2, 8, 8))
+            nocs_gt = coformer_kwargs["nocs_crop"].repeat_interleave(nqueries, dim=0)
             if self.use_nocs_pose_pred:
                 nocs_pred_denorm = denormalize_nocs(nocs_pred, extents=extents)
                 nocs_pred_in = torch.cat([nocs_pred_denorm, nocs_crop_coords_2d], dim=1)
             else:
                 nocs_pred_in = nocs_pred
+            if self.use_spherical_nocs:
+                nocs_pred_sp_in = conv_nocs_xyz_to_spherical(nocs_pred)
+                nocs_pred_in = torch.cat([nocs_pred_in, nocs_pred_sp_in], dim=1)
             nocs_pred_in = nocs_pred_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
