@@ -330,10 +330,10 @@ class PoseConfidenceTransformer(nn.Module):
             nocs_pred_in = nocs_pred_in * coformer_kwargs["nocs_crop_mask"].unsqueeze(1).repeat_interleave(
                 nqueries, dim=0
             )
-            nocs_pred_feats = self.cnn_nocs(nocs_pred_in.detach())
-            nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
+            nocs_pred_feats = self.cnn_nocs(nocs_pred_in)
             nocs_pred_feats = einops.rearrange(nocs_pred_feats, "(b q) d -> b q d", b=b)
-            new_latents.append(nocs_pred_feats)
+            new_latents.append(nocs_pred_feats.detach())
+            nocs_pred = einops.rearrange(nocs_pred, "(b q) ... -> b q ...", b=b)
             out["nocs_pred"] = nocs_pred
             if self.use_nocs_pose_pred:
                 out["nocs_pred_t"] = self.nocs_t_mlp(nocs_pred_feats)
@@ -405,6 +405,7 @@ class DETRBase(nn.Module):
         n_layers_f_transformer=1,
         use_kpts_for_pose=False,
         use_nocs_pose_pred=False,
+        use_spherical_nocs=False,
     ):
         super().__init__()
 
@@ -575,6 +576,7 @@ class DETRBase(nn.Module):
                 use_nocs=use_nocs,
                 use_nocs_pred=use_nocs_pred,
                 use_nocs_pose_pred=use_nocs_pose_pred,
+                use_spherical_nocs=use_spherical_nocs,
             )
 
         if use_kpts_for_pose:
