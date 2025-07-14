@@ -438,6 +438,6 @@ def render_batch_pose_preds(batch, poses_pred, glctx=None, rasterize_fn=None, us
             get_r_res(poses_pred[bidx : bidx + 1])
 
     return {
-        "rgb": torch.cat(rgb_rs, dim=0).permute(0, 3, 1, 2),
-        "mask": torch.cat(mask_rs, dim=0).permute(0, 3, 1, 2) if not is_empty(mask_rs) else None,
+        "rgb": torch.cat(rgb_rs, dim=0).permute(0, 3, 1, 2).detach(),
+        "mask": torch.cat(mask_rs, dim=0).permute(0, 3, 1, 2).detach() if not is_empty(mask_rs) else None,
     }

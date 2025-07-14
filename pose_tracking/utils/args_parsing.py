@@ -70,6 +70,11 @@ def get_parser():
     train_args.add_argument("--use_lrs", action="store_true", help="Use learning rate scheduler")
     train_args.add_argument("--use_m_for_metrics", action="store_true", help="Use meters for metrics calc")
     train_args.add_argument(
+        "--do_allow_partial_ckpt_load",
+        action="store_true",
+        help="Allow excluding some weights when loading a model ckpt",
+    )
+    train_args.add_argument(
         "--do_perturb_init_gt_for_rel_pose",
         action="store_true",
         help="Apply noise to init gt pose for relative pose estimation",
@@ -151,6 +156,7 @@ def get_parser():
         "--mt_use_pose_tokens_temporal", action="store_true", help="Use pose tokens as a temporal link"
     )
     poseformer_args.add_argument("--mt_use_uncertainty", action="store_true", help="Use uncertainty head")
+    poseformer_args.add_argument("--mt_use_spherical_nocs", action="store_true", help="Convert NOCS to spherical coords")
     poseformer_args.add_argument(
         "--mt_use_mask_on_input", action="store_true", help="Mask out non-object part of the image (dilated)"
     )
@@ -273,6 +279,7 @@ def get_parser():
     model_args.add_argument("--mt_use_nocs", action="store_true", help="Use NOCS inputs")
     model_args.add_argument("--mt_use_nocs_pred", action="store_true", help="Use NOCS head")
     model_args.add_argument("--mt_use_nocs_pose_pred", action="store_true", help="Predict pose using NOCS")
+    model_args.add_argument("--mt_do_train_only_coformer", action="store_true", help="Only train Coformer")
     model_args.add_argument(
         "--do_predict_abs_pose", action="store_true", help="Predict absolute pose in addition to relative pose"
     )
@@ -545,6 +552,8 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
         assert not (args.mt_do_refinement or args.mt_do_refinement_with_pose_token)
     if args.mt_use_temporal_loss_double:
         assert args.mt_use_temporal_loss
+    if args.mt_do_train_only_coformer:
+        assert args.ckpt_path or args.ckpt_exp_name
 
     args.rot_out_dim = 6 if args.do_predict_6d_rot else (3 if args.do_predict_3d_rot else 4)
     args.t_out_dim = 2 if args.do_predict_2d_t else 3

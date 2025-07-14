@@ -582,6 +582,7 @@ def make_grid_image(
     use_existing_fig=False,
     do_return_fig=False,
     use_idxs=False,
+    title=None
 ):
     """
     @imgs: (B,H,W,C) np array
@@ -612,6 +613,9 @@ def make_grid_image(
         plt.figure(figsize=(nrow * 5, (len(imgs) // nrow) * 5))
         plt.axis("off")
         plt.imshow(grid)
+        if title is not None:
+            plt.suptitle(title, fontsize=24)
+        plt.tight_layout()
         plt.show()
     if do_return_fig:
         return grid
