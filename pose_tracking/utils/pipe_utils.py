@@ -278,6 +278,7 @@ def get_model(args, num_classes=None):
             use_nocs_pred=args.mt_use_nocs_pred,
             use_kpts_for_pose=args.use_kpts_for_pose,
             use_nocs_pose_pred=args.mt_use_nocs_pose_pred,
+            use_spherical_nocs=args.mt_use_spherical_nocs,
         )
         args.detr_args = argparse.Namespace(**detr_args)
 
@@ -408,6 +409,8 @@ def get_model(args, num_classes=None):
         print(f"Loading model from {args.ckpt_path}")
         model = ckpt_load_fn(model, args.ckpt_path)
     elif args.ckpt_exp_name:  # resume training
+        if args.model_name not in ["memotr"] and (args.mt_do_train_only_coformer and args.do_allow_partial_ckpt_load):
+            ckpt_load_fn = functools.partial(ckpt_load_fn, excluded_prefixes=(["coformer"]))
         print(f"Loading model from {args.ckpt_exp_name_artifact_suffix} artifact at {args.ckpt_exp_name}")
         model = load_model_from_exp(
             model, args.ckpt_exp_name, artifact_suffix=args.ckpt_exp_name_artifact_suffix, ckpt_load_fn=ckpt_load_fn
@@ -518,6 +521,7 @@ def get_trackformer_args(args):
     tf_args.use_pose_tokens = args.mt_use_pose_tokens
     tf_args.use_kpts = args.use_kpts_for_pose
     tf_args.use_nocs_pose_pred = args.mt_use_nocs_pose_pred
+    tf_args.use_spherical_nocs = args.mt_use_spherical_nocs
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc
@@ -1018,7 +1022,11 @@ def get_ds_dirs(args, use_split_if_needed=True):
     if "cube_500_random_v3" in str(ds_video_dir_train):
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_5"]]
     if "dextreme_2k_v2" in str(ds_video_dir_train):
-        ds_video_subdirs_train = [x for x in ds_video_subdirs_train if x not in ["env_1832", "env_1363", "env_1311", "env_63", "env_476", "env_1468", "env_163"]]
+        ds_video_subdirs_train = [
+            x
+            for x in ds_video_subdirs_train
+            if x not in ["env_1832", "env_1363", "env_1311", "env_63", "env_476", "env_1468", "env_163"]
+        ]
         ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_4"]]
     # if "dextreme" in str(ds_video_dir_train):
     #     ds_video_subdirs_val = [x for x in ds_video_subdirs_val if x not in ["env_876", "env_843"]]
