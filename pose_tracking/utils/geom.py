@@ -993,6 +993,7 @@ def normalize_nocs(emb, extents):
     use_first_dim = emb.shape[0] == 3
     if not use_first_dim:
         assert emb.shape[-1] == 3
+    emb = emb.clone() if is_tensor(emb) else emb.copy()
     if hasattr(extents, "len"):
         assert len(extents) == 3, extents
         for i in range(3):
@@ -1014,6 +1015,7 @@ def denormalize_nocs(emb, extents):
         assert emb.shape[0] == len(extents), f"{extents=}, {emb.shape=}"
         lib = torch if is_tensor(emb) else np
         return lib.stack([denormalize_nocs(emb[i], extents[i]) for i in range(emb.shape[0])], 0)
+    emb = emb.clone() if is_tensor(emb) else emb.copy()
     use_first_dim = emb.shape[0] == 3
     if not use_first_dim:
         assert emb.shape[-1] == 3

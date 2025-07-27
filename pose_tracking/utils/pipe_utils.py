@@ -522,6 +522,7 @@ def get_trackformer_args(args):
     tf_args.use_kpts = args.use_kpts_for_pose
     tf_args.use_nocs_pose_pred = args.mt_use_nocs_pose_pred
     tf_args.use_spherical_nocs = args.mt_use_spherical_nocs
+    tf_args.use_factors = args.use_factors
 
     tf_args.backbone = args.encoder_name
     tf_args.r_num_layers_inc = args.r_num_layers_inc

@@ -554,6 +554,8 @@ def postprocess_args(args, use_if_provided=False, do_substitute_exp_name=False):
         assert args.mt_use_temporal_loss
     if args.mt_do_train_only_coformer:
         assert args.ckpt_path or args.ckpt_exp_name
+    if args.factors:
+        assert args.use_factors
 
     args.rot_out_dim = 6 if args.do_predict_6d_rot else (3 if args.do_predict_3d_rot else 4)
     args.t_out_dim = 2 if args.do_predict_2d_t else 3
