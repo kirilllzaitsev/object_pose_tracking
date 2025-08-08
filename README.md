@@ -1,6 +1,20 @@
 # Multi-object 6D Tracking with Pose Confidence
 
-6-DoF tracking of multiple objects with pose confidence estimation.
+CAD-free 6-DoF tracking of multiple objects with pose confidence estimation.
+
+Demos for robotic manipulation, pose tracking of three identical objects and challenging IKEA assets (yellow color stands for predicted, green for groundtruth):
+
+<div align="center">
+
+<a href="https://youtu.be/4a0Fz6Xc7jE"><img src="assets/manip.gif" alt="Real-world manipulation demo" width="400"/></a>
+
+<br>
+<a href="https://youtu.be/4a0Fz6Xc7jE"><img src="assets/cubes.gif" alt="Simulated cubes demo" width="400"/></a>
+<a href="https://youtu.be/4a0Fz6Xc7jE"><img src="assets/ikea.gif" alt="Simulated IKEA demo" width="400"/></a>
+
+</div>
+
+Note that groundtruth for real-world evaluation was obtained using the CAD-based version of [FoundationPose](https://github.com/NVlabs/FoundationPose).
 
 ## Code structure
 
